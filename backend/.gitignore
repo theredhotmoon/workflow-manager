@@ -1,0 +1,59 @@
+# Laravel application key & environment
+.env
+.env.backup
+.env.production
+.env.*.local
+
+# Dependencies
+/vendor/
+
+# Compiled assets (if using Laravel Mix / Vite via backend)
+/public/hot
+/public/storage
+/public/build/
+
+# Storage (user uploads, logs, cache, sessions)
+/storage/*.key
+/storage/app/public/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/testing/
+/storage/framework/views/
+/storage/logs/
+
+# Bootstrap cache
+/bootstrap/cache/
+
+# Composer auth
+auth.json
+
+# PHPUnit
+.phpunit.result.cache
+.phpunit.cache/
+
+# PHP CS Fixer / Laravel Pint
+.php-cs-fixer.cache
+.php_cs.cache
+
+# Editor & IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Sail / Docker overrides
+docker-compose.override.yml
+.sail/
+
+# Telescope / Debugbar artefacts
+/storage/telescope/
+
+# Misc
+npm-debug.log
+yarn-error.log
+*.log

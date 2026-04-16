@@ -1,0 +1,339 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Delegation;
+use App\Models\DelegationLog;
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+
+class DelegationController extends Controller
+{
+    private function log(int $delegationId, int $userId, string $action, ?string $details = null): void
+    {
+        DelegationLog::create([
+            'delegation_id' => $delegationId,
+            'performed_by' => $userId,
+            'action' => $action,
+            'details' => $details,
+        ]);
+    }
+
+    /**
+     * List all delegations (with users) — admin.
+     */
+    public function index()
+    {
+        $delegations = Delegation::with(['users:id,name,email', 'creator:id,name'])
+            ->orderByDesc('start_datetime')
+            ->get();
+
+        return response()->json($delegations);
+    }
+
+    /**
+     * Get logs for a delegation — admin.
+     */
+    public function logs(Delegation $delegation)
+    {
+        $logs = $delegation->logs()->with('performer:id,name')->get();
+        return response()->json($logs);
+    }
+
+    /**
+     * Create delegation — admin.
+     */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'destination' => ['required', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string'],
+            'start_datetime' => ['required', 'date'],
+            'end_datetime' => ['required', 'date', 'after:start_datetime'],
+            'registration_open' => ['sometimes', 'boolean'],
+            'user_ids' => ['sometimes', 'array'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $delegation = Delegation::create([
+            'name' => $validated['name'],
+            'destination' => $validated['destination'],
+            'description' => $validated['description'] ?? null,
+            'start_datetime' => $validated['start_datetime'],
+            'end_datetime' => $validated['end_datetime'],
+            'registration_open' => $validated['registration_open'] ?? true,
+            'created_by' => $request->user()->id,
+        ]);
+
+        $this->log($delegation->id, $request->user()->id, 'created', "Created delegation \"{$delegation->name}\"");
+
+        if (!empty($validated['user_ids'])) {
+            foreach ($validated['user_ids'] as $uid) {
+                $delegation->users()->attach($uid, ['status' => 'approved']);
+                $userName = User::find($uid)?->name ?? $uid;
+                $this->log($delegation->id, $request->user()->id, 'user_added', "Added {$userName} (approved)");
+            }
+        }
+
+        $delegation->load(['users:id,name,email', 'creator:id,name']);
+        return response()->json($delegation, 201);
+    }
+
+    /**
+     * Update delegation — admin.
+     */
+    public function update(Request $request, Delegation $delegation)
+    {
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:255'],
+            'destination' => ['sometimes', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string'],
+            'start_datetime' => ['sometimes', 'date'],
+            'end_datetime' => ['sometimes', 'date'],
+            'registration_open' => ['sometimes', 'boolean'],
+        ]);
+
+        $changes = [];
+        foreach ($validated as $key => $value) {
+            $old = $delegation->$key;
+            if ($key === 'registration_open') {
+                $old = (bool) $old;
+                $value = (bool) $value;
+            }
+            if ((string) $old !== (string) $value) {
+                if ($key === 'registration_open') {
+                    $changes[] = $value ? 'Registration opened' : 'Registration closed';
+                } else {
+                    $changes[] = ucfirst(str_replace('_', ' ', $key)) . " changed";
+                }
+            }
+        }
+
+        $delegation->update($validated);
+
+        if ($changes) {
+            $this->log($delegation->id, $request->user()->id, 'updated', implode('; ', $changes));
+        }
+
+        $delegation->load(['users:id,name,email', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Add a user to delegation (admin assigns directly = approved).
+     */
+    public function addUser(Request $request, Delegation $delegation)
+    {
+        $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'custom_start' => ['sometimes', 'nullable', 'date'],
+            'custom_end' => ['sometimes', 'nullable', 'date'],
+        ]);
+
+        $pivotData = ['status' => 'approved'];
+        if ($request->has('custom_start'))
+            $pivotData['custom_start'] = $request->custom_start;
+        if ($request->has('custom_end'))
+            $pivotData['custom_end'] = $request->custom_end;
+
+        $delegation->users()->syncWithoutDetaching([$request->user_id => $pivotData]);
+
+        // If user already existed with different status, update it
+        $delegation->users()->updateExistingPivot($request->user_id, $pivotData);
+
+        $userName = User::find($request->user_id)?->name ?? $request->user_id;
+        $this->log($delegation->id, $request->user()->id, 'user_added', "Added {$userName} (approved by admin)");
+
+        $delegation->load(['users:id,name,email', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Update user custom dates on a delegation — admin.
+     */
+    public function updateUserDates(Request $request, Delegation $delegation)
+    {
+        $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'custom_start' => ['sometimes', 'nullable', 'date'],
+            'custom_end' => ['sometimes', 'nullable', 'date'],
+        ]);
+
+        $delegation->users()->updateExistingPivot($request->user_id, [
+            'custom_start' => $request->custom_start,
+            'custom_end' => $request->custom_end,
+        ]);
+
+        $userName = User::find($request->user_id)?->name ?? $request->user_id;
+        $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$userName}");
+
+        $delegation->load(['users:id,name,email', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Approve a user's request — admin.
+     */
+    public function approveUser(Request $request, Delegation $delegation)
+    {
+        $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
+
+        $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'approved']);
+
+        $userName = User::find($request->user_id)?->name ?? $request->user_id;
+        $this->log($delegation->id, $request->user()->id, 'user_approved', "Approved {$userName}");
+
+        $delegation->load(['users:id,name,email', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Reject a user's request — admin.
+     */
+    public function rejectUser(Request $request, Delegation $delegation)
+    {
+        $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
+
+        $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'rejected']);
+
+        $userName = User::find($request->user_id)?->name ?? $request->user_id;
+        $this->log($delegation->id, $request->user()->id, 'user_rejected', "Rejected {$userName}");
+
+        $delegation->load(['users:id,name,email', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Remove a user from a delegation — admin.
+     */
+    public function removeUser(Request $request, Delegation $delegation)
+    {
+        $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
+
+        $userName = User::find($request->user_id)?->name ?? $request->user_id;
+        $delegation->users()->detach($request->user_id);
+        $this->log($delegation->id, $request->user()->id, 'user_removed', "Removed {$userName}");
+
+        $delegation->load(['users:id,name,email', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Delete a delegation — admin.
+     */
+    public function destroy(Delegation $delegation)
+    {
+        $delegation->delete();
+        return response()->json(['message' => 'Delegation deleted.']);
+    }
+
+    /**
+     * List open delegations — any authenticated user.
+     */
+    public function openDelegations(Request $request)
+    {
+        $delegations = Delegation::with(['users:id,name', 'creator:id,name'])
+            ->where('registration_open', true)
+            ->where('end_datetime', '>=', now())
+            ->orderBy('start_datetime')
+            ->get();
+
+        // Attach current user's status
+        $userId = $request->user()->id;
+        $delegations->each(function ($del) use ($userId) {
+            $pivot = $del->users->firstWhere('id', $userId)?->pivot;
+            $del->my_status = $pivot?->status; // null = not applied, pending, approved, rejected
+        });
+
+        return response()->json($delegations);
+    }
+
+    /**
+     * Self-register (request to join) — status = pending.
+     */
+    public function selfRegister(Request $request, Delegation $delegation)
+    {
+        if (!$delegation->registration_open) {
+            return response()->json(['message' => 'Registration for this delegation is closed.'], 403);
+        }
+
+        // Check if already in the list
+        $existing = $delegation->users()->where('user_id', $request->user()->id)->first();
+        if ($existing) {
+            return response()->json(['message' => 'You have already applied for this delegation.'], 422);
+        }
+
+        $delegation->users()->attach($request->user()->id, ['status' => 'pending']);
+        $this->log($delegation->id, $request->user()->id, 'self_registered', "{$request->user()->name} requested to join");
+
+        $delegation->load(['users:id,name', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Self-unregister — only if still pending.
+     */
+    public function selfUnregister(Request $request, Delegation $delegation)
+    {
+        $existing = $delegation->users()->where('user_id', $request->user()->id)->first();
+        if (!$existing || $existing->pivot->status !== 'pending') {
+            return response()->json(['message' => 'You can only withdraw a pending request.'], 403);
+        }
+
+        $delegation->users()->detach($request->user()->id);
+        $this->log($delegation->id, $request->user()->id, 'self_unregistered', "{$request->user()->name} withdrew request");
+
+        $delegation->load(['users:id,name', 'creator:id,name']);
+        return response()->json($delegation);
+    }
+
+    /**
+     * Get the current user's delegations (all time, for history).
+     */
+    public function myDelegations(Request $request)
+    {
+        $delegations = Delegation::with(['creator:id,name'])
+            ->whereHas('users', function ($q) use ($request) {
+                $q->where('user_id', $request->user()->id);
+            })
+            ->orderByDesc('start_datetime')
+            ->get();
+
+        $userId = $request->user()->id;
+        $delegations->each(function ($del) use ($userId) {
+            $pivot = $del->users()->where('user_id', $userId)->first()?->pivot;
+            $del->my_status = $pivot?->status;
+            $del->my_custom_start = $pivot?->custom_start;
+            $del->my_custom_end = $pivot?->custom_end;
+        });
+
+        return response()->json($delegations);
+    }
+
+    /**
+     * Get all delegations for a month (admin, for schedule overlay).
+     */
+    public function forMonth(Request $request)
+    {
+        $request->validate(['month' => ['required', 'date_format:Y-m']]);
+
+        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+
+        $delegations = Delegation::with('users:id,name')
+            ->where(function ($q) use ($start, $end) {
+                $q->whereBetween('start_datetime', [$start, $end])
+                    ->orWhereBetween('end_datetime', [$start, $end])
+                    ->orWhere(function ($q2) use ($start, $end) {
+                        $q2->where('start_datetime', '<=', $start)
+                            ->where('end_datetime', '>=', $end);
+                    });
+            })
+            ->orderBy('start_datetime')
+            ->get();
+
+        return response()->json($delegations);
+    }
+}

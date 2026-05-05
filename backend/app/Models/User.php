@@ -46,4 +46,9 @@ class User extends Authenticatable
     {
         return $this->isAdmin() || $this->isScheduleMaintainer();
     }
+
+    public function groups()
+    {
+        return $this->belongsToMany(UserGroup::class, 'user_group_user');
+    }
 }

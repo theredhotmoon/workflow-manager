@@ -1,111 +1,305 @@
 <template>
   <AppLayout>
-    <!-- Main Content -->
     <main class="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
       <!-- Header -->
-      <div class="flex items-center justify-between mb-8">
+      <div class="flex items-center justify-between mb-6">
         <div>
           <h1 class="text-2xl font-bold text-white">User Management</h1>
           <p class="text-slate-400 mt-1">Create, edit, and manage system users</p>
         </div>
-        <button @click="openCreateModal"
-          class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 transition-all duration-200 flex items-center gap-2 text-sm">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button v-if="currentTab === 'users'" @click="openCreateModal"
+          class="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 flex items-center gap-2 text-sm">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
           Add User
         </button>
+        <button v-else @click="openCreateGroupModal"
+          class="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 flex items-center gap-2 text-sm">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          New Group
+        </button>
       </div>
 
-
-
-      <!-- Users Table -->
-      <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-        <!-- Loading -->
-        <div v-if="loading" class="p-12 text-center">
-          <svg class="animate-spin w-8 h-8 text-indigo-400 mx-auto" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      <!-- Tabs -->
+      <div class="flex gap-1 mb-6 bg-white/[0.03] border border-white/10 rounded-xl p-1 w-fit">
+        <button @click="currentTab = 'users'"
+          :class="currentTab === 'users' ? 'bg-white/10 text-white shadow-sm' : 'text-slate-400 hover:text-white'"
+          class="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
           </svg>
-          <p class="text-slate-400 mt-3 text-sm">Loading users...</p>
-        </div>
+          Users
+        </button>
+        <button @click="currentTab = 'groups'"
+          :class="currentTab === 'groups' ? 'bg-white/10 text-white shadow-sm' : 'text-slate-400 hover:text-white'"
+          class="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Groups
+          <span v-if="groups.length" class="px-1.5 py-0.5 text-[10px] bg-violet-500/20 text-violet-300 rounded-md leading-none">{{ groups.length }}</span>
+        </button>
+      </div>
 
-        <!-- Table -->
-        <table v-else class="w-full">
-          <thead>
-            <tr class="border-b border-white/10">
-              <th class="text-left text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4">Name</th>
-              <th class="text-left text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4">Email</th>
-              <th class="text-left text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4 hidden md:table-cell">Created</th>
-              <th class="text-right text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-white/5">
-            <tr v-for="user in users" :key="user.id" class="hover:bg-white/5 transition-colors duration-150">
-              <td class="px-6 py-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-semibold text-xs">
-                    {{ getInitials(user.name) }}
+      <!-- ── USERS TAB ── -->
+      <div v-if="currentTab === 'users'">
+        <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
+          <!-- Loading -->
+          <div v-if="loading" class="p-12 text-center">
+            <svg class="animate-spin w-8 h-8 text-indigo-400 mx-auto" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <p class="text-slate-400 mt-3 text-sm">Loading users...</p>
+          </div>
+
+          <!-- Table -->
+          <table v-else class="w-full">
+            <thead>
+              <tr class="border-b border-white/10">
+                <th class="text-left text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4">Name</th>
+                <th class="text-left text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4">Email</th>
+                <th class="text-left text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4 hidden md:table-cell">Created</th>
+                <th class="text-right text-xs font-medium text-slate-400 uppercase tracking-wider px-6 py-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5">
+              <tr v-for="user in users" :key="user.id" class="hover:bg-white/5 transition-colors duration-150">
+                <td class="px-6 py-4">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-semibold text-xs shrink-0">
+                      {{ getInitials(user.name) }}
+                    </div>
+                    <div>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-white font-medium text-sm">{{ user.name }}</span>
+                        <span v-if="isCurrentNewbie(user.id)" class="text-yellow-400 text-xs shrink-0" title="Active Newbie">⭐</span>
+                        <span v-else-if="hasAnyNewbiePeriod(user.id)" class="text-gray-500 text-xs shrink-0" title="Former Newbie (expired)">⭐</span>
+                        <span v-if="user.is_admin" class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full shrink-0">Admin</span>
+                      </div>
+                      <div v-if="user.groups?.length" class="flex items-center gap-1 mt-1 flex-wrap">
+                        <span v-for="group in user.groups" :key="group.id"
+                          class="px-1.5 py-0.5 text-[9px] font-mono bg-sky-500/15 text-sky-300 border border-sky-500/20 rounded-md leading-none">
+                          {{ group.enum }}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <span class="text-white font-medium text-sm">{{ user.name }}</span>
-                  <span v-if="isCurrentNewbie(user.id)" class="text-yellow-400 text-xs" title="Active Newbie">⭐</span>
-                  <span v-else-if="hasAnyNewbiePeriod(user.id)" class="text-gray-500 text-xs" title="Former Newbie (expired)">⭐</span>
-                  <span v-if="user.is_admin" class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full">Admin</span>
+                </td>
+                <td class="px-6 py-4 text-slate-300 text-sm">{{ user.email }}</td>
+                <td class="px-6 py-4 text-slate-400 text-sm hidden md:table-cell">{{ formatDate(user.created_at) }}</td>
+                <td class="px-6 py-4">
+                  <div class="flex items-center justify-end gap-1">
+                    <button @click="openEditModal(user)" title="Edit"
+                      class="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all duration-200">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button @click="openPasswordModal(user)" title="Change Password"
+                      class="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-all duration-200">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                      </svg>
+                    </button>
+                    <button @click="openDelegationModal(user)" title="Delegation"
+                      class="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all duration-200">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </button>
+                    <button @click="openNewbieModal(user)" title="Mark as Newbie"
+                      class="p-2 text-slate-400 hover:text-yellow-400 hover:bg-yellow-500/10 rounded-lg transition-all duration-200">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                      </svg>
+                    </button>
+                    <button @click="confirmDelete(user)" title="Delete"
+                      class="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="users.length === 0">
+                <td colspan="4" class="px-6 py-12 text-center text-slate-500 text-sm">No users found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── GROUPS TAB ── -->
+      <div v-if="currentTab === 'groups'" :class="selectedGroup ? 'grid lg:grid-cols-5 gap-6' : ''">
+
+        <!-- Groups List -->
+        <div :class="selectedGroup ? 'lg:col-span-2' : ''">
+          <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+
+            <!-- Loading -->
+            <div v-if="groupsLoading" class="p-10 text-center">
+              <svg class="animate-spin w-6 h-6 text-indigo-400 mx-auto" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+            </div>
+
+            <!-- Empty state -->
+            <div v-else-if="groups.length === 0" class="py-14 px-6 text-center">
+              <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
+                <svg class="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <p class="text-slate-400 text-sm font-medium">No groups yet</p>
+              <p class="text-slate-500 text-xs mt-1">Create your first group to start organising users.</p>
+              <button @click="openCreateGroupModal"
+                class="mt-4 px-4 py-2 text-sm font-medium text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 rounded-xl transition-all duration-200">
+                New Group
+              </button>
+            </div>
+
+            <!-- Groups list -->
+            <div v-else class="divide-y divide-white/5">
+              <button v-for="group in groups" :key="group.id"
+                @click="selectGroup(group)"
+                class="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.04] transition-all duration-150 text-left group/item border-l-2"
+                :class="selectedGroup?.id === group.id ? 'border-violet-500 bg-white/[0.06]' : 'border-transparent'">
+                <!-- Icon -->
+                <div class="w-8 h-8 rounded-lg bg-violet-500/15 flex items-center justify-center shrink-0">
+                  <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
                 </div>
-              </td>
-              <td class="px-6 py-4 text-slate-300 text-sm">{{ user.email }}</td>
-              <td class="px-6 py-4 text-slate-400 text-sm hidden md:table-cell">{{ formatDate(user.created_at) }}</td>
-              <td class="px-6 py-4">
-                <div class="flex items-center justify-end gap-1">
-                  <button @click="openEditModal(user)" title="Edit"
-                    class="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all duration-200">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <!-- Name + enum -->
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-white truncate">{{ group.name }}</p>
+                  <p class="text-[10px] font-mono text-sky-400 truncate">{{ group.enum }}</p>
+                </div>
+                <!-- Member count -->
+                <span class="text-xs text-slate-500 shrink-0">{{ group.users?.length ?? 0 }}</span>
+                <!-- Actions -->
+                <div class="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-150">
+                  <span @click.stop="openEditGroupModal(group)" title="Edit group"
+                    class="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md cursor-pointer transition-all duration-150">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
-                  </button>
-                  <button @click="openPasswordModal(user)" title="Change Password"
-                    class="p-2 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-all duration-200">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                    </svg>
-                  </button>
-                  <button @click="openDelegationModal(user)" title="Delegation"
-                    class="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-all duration-200">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </button>
-                  <button @click="openNewbieModal(user)" title="Mark as Newbie"
-                    class="p-2 text-slate-400 hover:text-yellow-400 hover:bg-yellow-500/10 rounded-lg transition-all duration-200">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                    </svg>
-                  </button>
-                  <button @click="confirmDelete(user)" title="Delete"
-                    class="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  </span>
+                  <span @click.stop="confirmDeleteGroup(group)" title="Delete group"
+                    class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md cursor-pointer transition-all duration-150">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                  </button>
+                  </span>
                 </div>
-              </td>
-            </tr>
-            <tr v-if="users.length === 0">
-              <td colspan="4" class="px-6 py-12 text-center text-slate-500 text-sm">No users found.</td>
-            </tr>
-          </tbody>
-        </table>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Members Panel -->
+        <div v-if="selectedGroup" class="lg:col-span-3">
+          <div class="bg-white/5 border border-white/10 rounded-2xl overflow-hidden flex flex-col" style="max-height: calc(100vh - 280px);">
+
+            <!-- Panel header -->
+            <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
+              <div>
+                <h3 class="text-white font-semibold text-base">{{ selectedGroup.name }}</h3>
+                <span class="text-[10px] font-mono text-sky-400">{{ selectedGroup.enum }}</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-2.5 py-1 bg-violet-500/15 text-violet-300 text-xs border border-violet-500/20 rounded-full">
+                  {{ selectedGroup.users?.length ?? 0 }} members
+                </span>
+                <button @click="selectedGroup = null" title="Close panel"
+                  class="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-200">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Search -->
+            <div class="px-4 py-3 border-b border-white/10 shrink-0">
+              <div class="relative">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input v-model="memberSearch" type="text" placeholder="Search users..."
+                  class="w-full pl-9 pr-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all duration-200" />
+              </div>
+            </div>
+
+            <!-- Users list -->
+            <div class="overflow-y-auto flex-1 divide-y divide-white/5">
+              <div v-if="filteredGroupUsers.length === 0" class="py-10 text-center text-slate-500 text-sm">
+                No users match your search.
+              </div>
+              <div v-for="user in filteredGroupUsers" :key="user.id"
+                class="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors duration-150">
+                <!-- Avatar -->
+                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-semibold text-xs shrink-0">
+                  {{ getInitials(user.name) }}
+                </div>
+                <!-- Name + email -->
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-white font-medium truncate">{{ user.name }}</p>
+                  <p class="text-xs text-slate-500 truncate">{{ user.email }}</p>
+                </div>
+                <!-- Member badge / Toggle -->
+                <button
+                  @click="toggleMember(user.id)"
+                  :disabled="togglingUserId === user.id"
+                  class="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  :class="isMember(user.id)
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/20'
+                    : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-violet-500/15 hover:text-violet-300 hover:border-violet-500/20'">
+                  <svg v-if="togglingUserId === user.id" class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                  </svg>
+                  <template v-else>
+                    <svg v-if="isMember(user.id)" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                  </template>
+                  {{ isMember(user.id) ? 'Member' : 'Add' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hint when no group selected and groups exist -->
+        <div v-if="!selectedGroup && groups.length > 0"
+          class="mt-4 text-center text-slate-600 text-sm">
+          Select a group to manage its members.
+        </div>
       </div>
+
     </main>
 
-    <!-- Create/Edit Modal -->
+    <!-- ── MODALS ── -->
+
+    <!-- Create/Edit User Modal -->
     <div v-if="showUserModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeUserModal">
       <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
       <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6">
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-lg font-semibold text-white">{{ editingUser ? 'Edit User' : 'Create New User' }}</h2>
-          <button @click="closeUserModal" class="text-slate-400 hover:text-white">
+          <button @click="closeUserModal" class="text-slate-400 hover:text-white transition-colors">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -113,12 +307,10 @@
         </div>
 
         <form @submit.prevent="saveUser" class="space-y-4">
-          <!-- Error -->
           <div v-if="formError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
             <span class="text-red-300 text-sm">{{ formError }}</span>
           </div>
 
-          <!-- Name -->
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-1.5">Full Name</label>
             <input v-model="userForm.name" type="text" required
@@ -126,7 +318,6 @@
               placeholder="John Doe" />
           </div>
 
-          <!-- Email -->
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-1.5">Email Address</label>
             <input v-model="userForm.email" type="email" required
@@ -134,7 +325,6 @@
               placeholder="john@example.com" />
           </div>
 
-          <!-- Password (only for create) -->
           <template v-if="!editingUser">
             <div>
               <label class="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
@@ -150,7 +340,6 @@
             </div>
           </template>
 
-          <!-- Admin Toggle -->
           <div class="flex items-center justify-between px-4 py-3 bg-white/5 border border-white/10 rounded-xl">
             <div>
               <p class="text-sm font-medium text-slate-300">Administrator</p>
@@ -165,7 +354,6 @@
             </button>
           </div>
 
-          <!-- Actions -->
           <div class="flex items-center gap-3 pt-2">
             <button type="button" @click="closeUserModal"
               class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
@@ -193,7 +381,7 @@
             <h2 class="text-lg font-semibold text-white">Change Password</h2>
             <p class="text-slate-400 text-sm mt-1">For: {{ passwordUser?.name }}</p>
           </div>
-          <button @click="closePasswordModal" class="text-slate-400 hover:text-white">
+          <button @click="closePasswordModal" class="text-slate-400 hover:text-white transition-colors">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -236,7 +424,7 @@
       </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
+    <!-- Delete User Modal -->
     <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDeleteModal">
       <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
       <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
@@ -271,6 +459,95 @@
       </div>
     </div>
 
+    <!-- Create/Edit Group Modal -->
+    <Transition
+      enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
+      enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100"
+      leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
+      <div v-if="showGroupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeGroupModal">
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
+        <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="text-base font-semibold text-white">{{ editingGroup ? 'Edit Group' : 'New Group' }}</h2>
+            <button @click="closeGroupModal" class="text-slate-400 hover:text-white transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <form @submit.prevent="saveGroup" class="space-y-4">
+            <div v-if="groupFormError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+              <span class="text-red-300 text-sm">{{ groupFormError }}</span>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-slate-300 mb-1.5">Group Name</label>
+              <input v-model="groupForm.name" type="text" required
+                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all duration-200 text-sm"
+                placeholder="e.g. Operators" />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-slate-300 mb-1">
+                Enum
+                <span class="text-slate-500 font-normal ml-1">(URL suffix)</span>
+              </label>
+              <input v-model="groupForm.enum" type="text" required
+                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all duration-200 text-sm font-mono"
+                placeholder="e.g. operators" />
+              <p class="text-xs text-slate-500 mt-1.5">Lowercase letters, numbers, hyphens and underscores only.</p>
+            </div>
+
+            <div class="flex items-center gap-3 pt-1">
+              <button type="button" @click="closeGroupModal"
+                class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+                Cancel
+              </button>
+              <button type="submit" :disabled="savingGroup"
+                class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <svg v-if="savingGroup" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                {{ savingGroup ? 'Saving...' : (editingGroup ? 'Update' : 'Create') }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Delete Group Modal -->
+    <div v-if="showGroupDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showGroupDeleteModal = false">
+      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
+      <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div class="text-center mb-6">
+          <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h2 class="text-lg font-semibold text-white mb-2">Delete Group</h2>
+          <p class="text-slate-400 text-sm">Delete <span class="text-white font-medium">{{ deletingGroup?.name }}</span>? All member assignments will be removed.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button @click="showGroupDeleteModal = false"
+            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+            Cancel
+          </button>
+          <button @click="deleteGroupConfirmed" :disabled="deletingGroupLoading"
+            class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
+            <svg v-if="deletingGroupLoading" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            {{ deletingGroupLoading ? 'Deleting...' : 'Delete' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <AppToast />
 
     <!-- Delegation Modal -->
@@ -297,7 +574,6 @@
             </button>
           </div>
 
-          <!-- Mode tabs -->
           <div class="flex gap-1 mb-5 bg-white/5 rounded-xl p-1">
             <button @click="delegationMode = 'create'"
               :class="['flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all',
@@ -313,7 +589,6 @@
 
           <p v-if="delegationError" class="text-red-400 text-sm mb-3">{{ delegationError }}</p>
 
-          <!-- Create New -->
           <form v-if="delegationMode === 'create'" @submit.prevent="createDelegation" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-slate-300 mb-1.5">Delegation name</label>
@@ -349,7 +624,6 @@
             </div>
           </form>
 
-          <!-- Assign Existing -->
           <div v-if="delegationMode === 'assign'" class="space-y-4">
             <div v-if="allDelegations.length === 0" class="text-center py-8 text-slate-500 text-sm">No delegations exist yet. Create one first.</div>
             <div v-else class="space-y-2 max-h-[300px] overflow-y-auto">
@@ -394,7 +668,6 @@
             </div>
           </div>
 
-          <!-- Existing periods -->
           <div v-if="userNewbiePeriods.length" class="mb-4 space-y-1.5">
             <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2">Current periods</p>
             <div v-for="p in userNewbiePeriods" :key="p.id"
@@ -404,7 +677,6 @@
             </div>
           </div>
 
-          <!-- Add new period -->
           <form @submit.prevent="createNewbiePeriod" class="space-y-3">
             <div class="grid grid-cols-2 gap-3">
               <div>
@@ -431,66 +703,67 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useToast } from '../composables/useToast.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 
-const router = useRouter();
+const { showToast } = useToast();
 
-// State
+// ── Tab ──────────────────────────────────────────────
+const currentTab = ref('users');
+
+// ── Users ─────────────────────────────────────────────
 const users = ref([]);
 const loading = ref(true);
 
-// Toast
-const { showToast } = useToast();
-
-// User form modal
 const showUserModal = ref(false);
 const editingUser = ref(null);
 const saving = ref(false);
 const formError = ref('');
 const userForm = reactive({
-  name: '',
-  email: '',
-  password: '',
-  password_confirmation: '',
-  is_admin: false,
+  name: '', email: '', password: '', password_confirmation: '', is_admin: false,
 });
 
-// Password modal
 const showPasswordModal = ref(false);
 const passwordUser = ref(null);
 const savingPassword = ref(false);
 const passwordError = ref('');
-const passwordForm = reactive({
-  password: '',
-  password_confirmation: '',
-});
+const passwordForm = reactive({ password: '', password_confirmation: '' });
 
-// Delete modal
 const showDeleteModal = ref(false);
 const deleteUser = ref(null);
 const deleting = ref(false);
 const deleteError = ref('');
 
-// Delegation modal
+// ── Groups ────────────────────────────────────────────
+const groups = ref([]);
+const groupsLoading = ref(false);
+const selectedGroup = ref(null);
+const togglingUserId = ref(null);
+const memberSearch = ref('');
+
+const showGroupModal = ref(false);
+const editingGroup = ref(null);
+const savingGroup = ref(false);
+const groupFormError = ref('');
+const groupForm = reactive({ name: '', enum: '' });
+
+const showGroupDeleteModal = ref(false);
+const deletingGroup = ref(null);
+const deletingGroupLoading = ref(false);
+
+// ── Delegation ─────────────────────────────────────────
 const showDelegationModal = ref(false);
 const delegationUser = ref(null);
 const delegationMode = ref('create');
 const savingDelegation = ref(false);
 const delegationError = ref('');
 const allDelegations = ref([]);
-const delForm = reactive({
-  name: '',
-  destination: '',
-  start_datetime: '',
-  end_datetime: '',
-});
+const delForm = reactive({ name: '', destination: '', start_datetime: '', end_datetime: '' });
 
-// Newbie modal
+// ── Newbie ─────────────────────────────────────────────
 const showNewbieModal = ref(false);
 const newbieUser = ref(null);
 const savingNewbie = ref(false);
@@ -498,16 +771,51 @@ const userNewbiePeriods = ref([]);
 const newbieForm = reactive({ start_date: '', end_date: '' });
 const allNewbiePeriods = ref([]);
 
-// Load users
+// ── Computed ───────────────────────────────────────────
+const filteredGroupUsers = computed(() => {
+  if (!selectedGroup.value) return [];
+  const q = memberSearch.value.toLowerCase();
+  const memberIds = new Set(selectedGroup.value.users?.map(u => u.id) ?? []);
+  const list = q
+    ? users.value.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+    : users.value;
+  return [...list].sort((a, b) => {
+    const am = memberIds.has(a.id);
+    const bm = memberIds.has(b.id);
+    if (am !== bm) return bm - am;
+    return a.name.localeCompare(b.name);
+  });
+});
+
+function isMember(userId) {
+  return selectedGroup.value?.users?.some(u => u.id === userId) ?? false;
+}
+
+// ── Fetch ──────────────────────────────────────────────
 async function fetchUsers() {
   loading.value = true;
   try {
-    const response = await api.get('/api/users');
-    users.value = response.data;
+    const res = await api.get('/api/users');
+    users.value = res.data;
   } catch {
-    // handle error silently
+    // silent
   } finally {
     loading.value = false;
+  }
+}
+
+async function fetchGroups() {
+  groupsLoading.value = true;
+  try {
+    const res = await api.get('/api/user-groups');
+    groups.value = res.data;
+    if (selectedGroup.value) {
+      selectedGroup.value = groups.value.find(g => g.id === selectedGroup.value.id) ?? null;
+    }
+  } catch {
+    // silent
+  } finally {
+    groupsLoading.value = false;
   }
 }
 
@@ -515,7 +823,30 @@ async function fetchAllNewbiePeriods() {
   try {
     const res = await api.get('/api/newbie-periods/all');
     allNewbiePeriods.value = res.data;
-  } catch { allNewbiePeriods.value = []; }
+  } catch {
+    allNewbiePeriods.value = [];
+  }
+}
+
+onMounted(() => {
+  fetchUsers();
+  fetchAllNewbiePeriods();
+  fetchGroups();
+});
+
+// ── Helpers ────────────────────────────────────────────
+function getInitials(name) {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatDT(dt) {
+  if (!dt) return '';
+  const d = new Date(dt);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
 function isCurrentNewbie(userId) {
@@ -531,20 +862,7 @@ function hasAnyNewbiePeriod(userId) {
   return allNewbiePeriods.value.some(np => np.user_id === userId);
 }
 
-onMounted(() => { fetchUsers(); fetchAllNewbiePeriods(); });
-
-// Helpers
-function getInitials(name) {
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-}
-
-function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'short', day: 'numeric',
-  });
-}
-
-// Create
+// ── User CRUD ──────────────────────────────────────────
 function openCreateModal() {
   editingUser.value = null;
   userForm.name = '';
@@ -556,7 +874,6 @@ function openCreateModal() {
   showUserModal.value = true;
 }
 
-// Edit
 function openEditModal(user) {
   editingUser.value = user;
   userForm.name = user.name;
@@ -576,21 +893,16 @@ function closeUserModal() {
 async function saveUser() {
   saving.value = true;
   formError.value = '';
-
   try {
     if (editingUser.value) {
       await api.put(`/api/users/${editingUser.value.id}`, {
-        name: userForm.name,
-        email: userForm.email,
-        is_admin: userForm.is_admin,
+        name: userForm.name, email: userForm.email, is_admin: userForm.is_admin,
       });
       showToast(`User "${userForm.name}" updated successfully.`);
     } else {
       await api.post('/api/users', {
-        name: userForm.name,
-        email: userForm.email,
-        password: userForm.password,
-        password_confirmation: userForm.password_confirmation,
+        name: userForm.name, email: userForm.email,
+        password: userForm.password, password_confirmation: userForm.password_confirmation,
         is_admin: userForm.is_admin,
       });
       showToast(`User "${userForm.name}" created successfully.`);
@@ -599,17 +911,14 @@ async function saveUser() {
     await fetchUsers();
   } catch (err) {
     const data = err.response?.data;
-    if (data?.errors) {
-      formError.value = Object.values(data.errors).flat().join(' ');
-    } else {
-      formError.value = data?.message || 'An error occurred.';
-    }
+    formError.value = data?.errors
+      ? Object.values(data.errors).flat().join(' ')
+      : (data?.message || 'An error occurred.');
   } finally {
     saving.value = false;
   }
 }
 
-// Password change
 function openPasswordModal(user) {
   passwordUser.value = user;
   passwordForm.password = '';
@@ -626,27 +935,22 @@ function closePasswordModal() {
 async function changePassword() {
   savingPassword.value = true;
   passwordError.value = '';
-
   try {
     await api.put(`/api/users/${passwordUser.value.id}/password`, {
-      password: passwordForm.password,
-      password_confirmation: passwordForm.password_confirmation,
+      password: passwordForm.password, password_confirmation: passwordForm.password_confirmation,
     });
     showToast(`Password for "${passwordUser.value.name}" changed successfully.`);
     closePasswordModal();
   } catch (err) {
     const data = err.response?.data;
-    if (data?.errors) {
-      passwordError.value = Object.values(data.errors).flat().join(' ');
-    } else {
-      passwordError.value = data?.message || 'An error occurred.';
-    }
+    passwordError.value = data?.errors
+      ? Object.values(data.errors).flat().join(' ')
+      : (data?.message || 'An error occurred.');
   } finally {
     savingPassword.value = false;
   }
 }
 
-// Delete
 function confirmDelete(user) {
   deleteUser.value = user;
   deleteError.value = '';
@@ -661,7 +965,6 @@ function closeDeleteModal() {
 async function deleteUserConfirmed() {
   deleting.value = true;
   deleteError.value = '';
-
   try {
     await api.delete(`/api/users/${deleteUser.value.id}`);
     showToast(`User "${deleteUser.value.name}" deleted successfully.`);
@@ -674,12 +977,110 @@ async function deleteUserConfirmed() {
   }
 }
 
-// Delegations
+// ── Group CRUD ─────────────────────────────────────────
+function selectGroup(group) {
+  selectedGroup.value = selectedGroup.value?.id === group.id ? null : group;
+  memberSearch.value = '';
+}
+
+function openCreateGroupModal() {
+  editingGroup.value = null;
+  groupForm.name = '';
+  groupForm.enum = '';
+  groupFormError.value = '';
+  showGroupModal.value = true;
+}
+
+function openEditGroupModal(group) {
+  editingGroup.value = group;
+  groupForm.name = group.name;
+  groupForm.enum = group.enum;
+  groupFormError.value = '';
+  showGroupModal.value = true;
+}
+
+function closeGroupModal() {
+  showGroupModal.value = false;
+  editingGroup.value = null;
+}
+
+async function saveGroup() {
+  savingGroup.value = true;
+  groupFormError.value = '';
+  try {
+    if (editingGroup.value) {
+      const res = await api.put(`/api/user-groups/${editingGroup.value.id}`, groupForm);
+      const idx = groups.value.findIndex(g => g.id === editingGroup.value.id);
+      if (idx !== -1) groups.value[idx] = res.data;
+      if (selectedGroup.value?.id === editingGroup.value.id) selectedGroup.value = res.data;
+      showToast(`Group "${groupForm.name}" updated.`);
+    } else {
+      const res = await api.post('/api/user-groups', groupForm);
+      groups.value.push(res.data);
+      groups.value.sort((a, b) => a.name.localeCompare(b.name));
+      showToast(`Group "${groupForm.name}" created.`);
+    }
+    closeGroupModal();
+  } catch (err) {
+    const data = err.response?.data;
+    groupFormError.value = data?.errors
+      ? Object.values(data.errors).flat().join(' ')
+      : (data?.message || 'An error occurred.');
+  } finally {
+    savingGroup.value = false;
+  }
+}
+
+function confirmDeleteGroup(group) {
+  deletingGroup.value = group;
+  showGroupDeleteModal.value = true;
+}
+
+async function deleteGroupConfirmed() {
+  deletingGroupLoading.value = true;
+  try {
+    await api.delete(`/api/user-groups/${deletingGroup.value.id}`);
+    groups.value = groups.value.filter(g => g.id !== deletingGroup.value.id);
+    if (selectedGroup.value?.id === deletingGroup.value.id) selectedGroup.value = null;
+    showToast(`Group "${deletingGroup.value.name}" deleted.`);
+    showGroupDeleteModal.value = false;
+    deletingGroup.value = null;
+  } catch (err) {
+    showToast(err.response?.data?.message || 'Failed to delete group.', 'error');
+  } finally {
+    deletingGroupLoading.value = false;
+  }
+}
+
+async function toggleMember(userId) {
+  if (!selectedGroup.value) return;
+  togglingUserId.value = userId;
+  const currentIds = selectedGroup.value.users?.map(u => u.id) ?? [];
+  const newIds = currentIds.includes(userId)
+    ? currentIds.filter(id => id !== userId)
+    : [...currentIds, userId];
+  try {
+    const res = await api.put(`/api/user-groups/${selectedGroup.value.id}/users`, { user_ids: newIds });
+    selectedGroup.value = res.data;
+    const idx = groups.value.findIndex(g => g.id === res.data.id);
+    if (idx !== -1) groups.value[idx] = res.data;
+    // Refresh user table groups badges
+    await fetchUsers();
+  } catch {
+    showToast('Failed to update group members.', 'error');
+  } finally {
+    togglingUserId.value = null;
+  }
+}
+
+// ── Delegations ────────────────────────────────────────
 async function fetchDelegations() {
   try {
     const res = await api.get('/api/delegations');
     allDelegations.value = res.data;
-  } catch { allDelegations.value = []; }
+  } catch {
+    allDelegations.value = [];
+  }
 }
 
 function openDelegationModal(user) {
@@ -699,20 +1100,11 @@ function closeDelegationModal() {
   delegationUser.value = null;
 }
 
-function formatDT(dt) {
-  if (!dt) return '';
-  const d = new Date(dt);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
 async function createDelegation() {
   savingDelegation.value = true;
   delegationError.value = '';
   try {
-    await api.post('/api/delegations', {
-      ...delForm,
-      user_ids: [delegationUser.value.id],
-    });
+    await api.post('/api/delegations', { ...delForm, user_ids: [delegationUser.value.id] });
     showToast(`Delegation "${delForm.name}" created and ${delegationUser.value.name} assigned.`);
     closeDelegationModal();
   } catch (err) {
@@ -732,7 +1124,7 @@ async function assignToExisting(del) {
   }
 }
 
-// Newbie functions
+// ── Newbie ─────────────────────────────────────────────
 async function openNewbieModal(user) {
   newbieUser.value = user;
   newbieForm.start_date = '';
@@ -760,7 +1152,9 @@ async function createNewbiePeriod() {
     newbieForm.end_date = '';
   } catch (err) {
     showToast(err.response?.data?.message || 'Failed to create newbie period.', 'error');
-  } finally { savingNewbie.value = false; }
+  } finally {
+    savingNewbie.value = false;
+  }
 }
 
 async function deleteNewbiePeriod(period) {
@@ -768,7 +1162,8 @@ async function deleteNewbiePeriod(period) {
     await api.delete(`/api/newbie-periods/${period.id}`);
     userNewbiePeriods.value = userNewbiePeriods.value.filter(p => p.id !== period.id);
     showToast('Newbie period removed.');
-  } catch { showToast('Failed to remove.', 'error'); }
+  } catch {
+    showToast('Failed to remove.', 'error');
+  }
 }
-
 </script>

@@ -25,6 +25,7 @@ use App\Http\Controllers\ProcedureResponseTemplateController;
 use App\Http\Controllers\ProcedureFeedbackController;
 use App\Http\Controllers\ProceduresToLearnController;
 use App\Http\Controllers\AlarmController;
+use App\Http\Controllers\UserGroupController;
 
 /*
 |--------------------------------------------------------------------------
@@ -228,6 +229,13 @@ Route::middleware('auth:sanctum')->group(function () {
         // User management
         Route::apiResource('users', UserController::class);
         Route::put('/users/{user}/password', [UserController::class, 'changePassword']);
+
+        // User groups
+        Route::get('/user-groups', [UserGroupController::class, 'index']);
+        Route::post('/user-groups', [UserGroupController::class, 'store']);
+        Route::put('/user-groups/{userGroup}', [UserGroupController::class, 'update']);
+        Route::delete('/user-groups/{userGroup}', [UserGroupController::class, 'destroy']);
+        Route::put('/user-groups/{userGroup}/users', [UserGroupController::class, 'syncUsers']);
 
         // Shift group management
         Route::get('/shift-groups', [ShiftGroupController::class, 'index']);

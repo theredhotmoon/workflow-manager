@@ -14,7 +14,8 @@ class UserController extends Controller
      */
     public function index()
     {
-        $users = User::orderBy('name')
+        $users = User::with('groups:id,name,enum')
+            ->orderBy('name')
             ->get(['id', 'name', 'email', 'is_admin', 'created_at', 'updated_at']);
 
         return response()->json($users);

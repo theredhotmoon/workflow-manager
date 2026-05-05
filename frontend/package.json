@@ -2,7 +2,8 @@
     "private": true,
     "scripts": {
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "build:docker": "vite build --config vite.config.docker.js"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.2.0",

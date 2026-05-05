@@ -349,35 +349,81 @@
             </h3>
 
             <div class="space-y-3">
-              <div v-for="item in group.items" :key="item.id" class="flex items-start gap-3">
-                <div class="flex-1">
-                  <div class="flex items-center gap-2 mb-1">
-                    <span class="text-sm text-slate-300">{{ item.label }}</span>
-                    <span v-if="item.requires_confirmation" class="px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full">Needs Confirmation</span>
-                    <button v-if="item.procedure" @click.stop="openProcedureModal(item.procedure.id)"
-                      class="inline-flex items-center ml-1 px-1.5 py-0.5 text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded hover:bg-indigo-500/20 transition-all cursor-pointer"
-                      :title="`Procedure: ${item.procedure.identifier} — ${item.procedure.title}`">
-                      📋 {{ item.procedure.identifier }}
+              <div v-for="item in group.items" :key="item.id"
+                :class="[
+                  'rounded-xl px-2 py-2 -mx-2 transition-colors duration-150',
+                  item.requires_confirmation
+                    ? 'bg-amber-500/[0.04] ring-1 ring-inset ring-amber-500/10'
+                    : 'hover:bg-white/[0.03]'
+                ]">
+
+                <!-- Row: label + outgoing value + confirmation control -->
+                <div class="flex items-start gap-3">
+                  <div class="flex-1 min-w-0">
+                    <!-- Label + badges -->
+                    <div class="flex items-center gap-2 flex-wrap mb-1.5">
+                      <span class="text-sm text-slate-300">{{ item.label }}</span>
+                      <span v-if="item.requires_confirmation" class="px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full shrink-0">Needs Confirmation</span>
+                      <button v-if="item.procedure" @click.stop="openProcedureModal(item.procedure.id)"
+                        class="inline-flex items-center ml-1 px-1.5 py-0.5 text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded hover:bg-indigo-500/20 transition-all cursor-pointer shrink-0"
+                        :title="`Procedure: ${item.procedure.identifier} — ${item.procedure.title}`">
+                        📋 {{ item.procedure.identifier }}
+                      </button>
+                    </div>
+                    <!-- Outgoing user's value -->
+                    <div class="flex items-center gap-2">
+                      <span v-if="item.requires_confirmation" class="text-[9px] text-slate-500 uppercase tracking-wide shrink-0">Outgoing:</span>
+                      <div class="text-sm text-indigo-300 bg-indigo-500/10 px-3 py-1 rounded-lg inline-block">
+                        {{ getResponseDisplay(item) }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- CHECKBOX confirmation: toggle on the right -->
+                  <div v-if="item.requires_confirmation && item.type === 'checkbox'" class="shrink-0 flex flex-col items-center gap-1 pt-0.5">
+                    <span class="text-[9px] text-slate-500 uppercase tracking-wide">Confirm</span>
+                    <button @click="toggleConfirm(getResponseId(item.id))"
+                      :class="[
+                        'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all',
+                        confirmIds.has(getResponseId(item.id))
+                          ? 'bg-emerald-500 border-emerald-500'
+                          : 'bg-white/5 border-amber-500/50 hover:border-emerald-400/50'
+                      ]">
+                      <svg v-if="confirmIds.has(getResponseId(item.id))" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                      </svg>
                     </button>
                   </div>
-                  <!-- Show filled value -->
-                  <div class="text-sm text-indigo-300 bg-indigo-500/10 px-3 py-1.5 rounded-lg inline-block">
-                    {{ getResponseDisplay(item) }}
+
+                  <!-- NUMBER confirmation: compact input on the right -->
+                  <div v-if="item.requires_confirmation && item.type === 'number'" class="shrink-0 flex flex-col items-end gap-0.5 pt-0.5">
+                    <span class="text-[9px] text-slate-500 uppercase tracking-wide">Your value</span>
+                    <input
+                      :value="confirmValues[getResponseId(item.id)] ?? ''"
+                      @input="setConfirmValue(getResponseId(item.id), $event.target.value)"
+                      type="number"
+                      :min="item.min_value ?? undefined"
+                      :max="item.max_value ?? undefined"
+                      placeholder="—"
+                      class="w-24 px-3 py-1.5 text-sm text-right rounded-lg bg-white/5 border border-white/10 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <span v-if="item.min_value !== null || item.max_value !== null"
+                      class="text-[9px] text-slate-600 tabular-nums">
+                      {{ item.min_value ?? '…' }} – {{ item.max_value ?? '…' }}
+                    </span>
                   </div>
                 </div>
-                <!-- Confirm checkbox for flagged items -->
-                <div v-if="item.requires_confirmation" class="shrink-0">
-                  <button @click="toggleConfirm(getResponseId(item.id))"
-                    :class="[
-                      'mt-1 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all',
-                      confirmIds.has(getResponseId(item.id))
-                        ? 'bg-emerald-500 border-emerald-500'
-                        : 'bg-white/5 border-amber-500/50 hover:border-emerald-400/50'
-                    ]">
-                    <svg v-if="confirmIds.has(getResponseId(item.id))" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
+
+                <!-- TEXT confirmation: full-width input below -->
+                <div v-if="item.requires_confirmation && item.type === 'text'" class="mt-2">
+                  <label class="text-[9px] text-slate-500 uppercase tracking-wide block mb-1">Your confirmation</label>
+                  <input
+                    :value="confirmValues[getResponseId(item.id)] ?? ''"
+                    @input="setConfirmValue(getResponseId(item.id), $event.target.value)"
+                    type="text"
+                    placeholder="Enter your confirmation…"
+                    class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 text-sm transition-colors"
+                  />
                 </div>
               </div>
             </div>
@@ -419,27 +465,7 @@
       </div>
     </main>
 
-    <!-- Toast -->
-    <Transition
-      enter-active-class="transition-all duration-400 ease-out"
-      leave-active-class="transition-all duration-300 ease-in"
-      enter-from-class="translate-y-4 opacity-0 scale-95"
-      enter-to-class="translate-y-0 opacity-100 scale-100"
-      leave-from-class="translate-y-0 opacity-100 scale-100"
-      leave-to-class="translate-y-4 opacity-0 scale-95"
-    >
-      <div v-if="toastMessage" class="fixed bottom-6 right-6 z-[60] max-w-sm">
-        <div :class="[
-          'backdrop-blur-xl border rounded-xl px-5 py-4 shadow-2xl shadow-black/40 flex items-start gap-3',
-          toastType === 'error' ? 'bg-slate-800/95 border-red-500/20' : 'bg-slate-800/95 border-emerald-500/20'
-        ]">
-          <p :class="[
-            'text-sm font-medium',
-            toastType === 'error' ? 'text-red-300' : 'text-emerald-300'
-          ]">{{ toastMessage }}</p>
-        </div>
-      </div>
-    </Transition>
+    <AppToast />
 
     <!-- Procedure Preview Modal -->
     <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
@@ -493,11 +519,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { currentUser } from '../router/index.js';
+import { useToast } from '../composables/useToast.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 
 const router = useRouter();
@@ -562,6 +590,7 @@ const submitting = ref(false);
 const pendingSubmissions = ref([]);
 const confirmSubmission = ref(null);
 const confirmIds = ref(new Set());
+const confirmValues = reactive({}); // { [responseId]: secondUser's value } for number/text items
 const confirming = ref(false);
 
 // Procedure modal
@@ -574,17 +603,7 @@ const unreadProcedures = ref([]);
 const recheckingProcedures = ref(false);
 
 // Toast
-const toastMessage = ref('');
-const toastType = ref('success');
-let toastTimer = null;
-
-function showToast(message, type = 'success') {
-  toastMessage.value = message;
-  toastType.value = type;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastMessage.value = ''; }, 4000);
-}
-onUnmounted(() => clearTimeout(toastTimer));
+const { showToast } = useToast();
 
 // Load initial data
 async function loadData() {
@@ -824,6 +843,7 @@ async function openConfirmation(sub) {
     const response = await api.get(`/api/checklist-submissions/${sub.id}`);
     confirmSubmission.value = response.data;
     confirmIds.value = new Set();
+    Object.keys(confirmValues).forEach(k => delete confirmValues[k]);
     step.value = 'confirm-detail';
   } catch {
     showToast('Failed to load submission.', 'error');
@@ -865,11 +885,25 @@ function toggleConfirm(responseId) {
   confirmIds.value = newSet;
 }
 
+// For number/text items: store second user's value and auto-toggle confirmation state
+function setConfirmValue(responseId, value) {
+  if (!responseId) return;
+  confirmValues[responseId] = value;
+  const newSet = new Set(confirmIds.value);
+  if (value !== '' && value !== null && value !== undefined) {
+    newSet.add(responseId);
+  } else {
+    newSet.delete(responseId);
+  }
+  confirmIds.value = newSet;
+}
+
 async function submitConfirmation() {
   confirming.value = true;
   try {
     await api.put(`/api/checklist-submissions/${confirmSubmission.value.id}/confirm`, {
       confirmed_item_ids: Array.from(confirmIds.value),
+      confirmation_values: { ...confirmValues },
     });
     showToast('Checklist confirmed and completed!');
     step.value = 'setup';

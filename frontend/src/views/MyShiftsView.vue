@@ -198,17 +198,7 @@
       </div>
     </Transition>
 
-    <!-- Toast -->
-    <Transition
-      enter-active-class="transition-all duration-300 ease-out"
-      enter-from-class="translate-y-4 opacity-0" enter-to-class="translate-y-0 opacity-100"
-      leave-active-class="transition-all duration-200 ease-in"
-      leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="toast.show" :class="['fixed bottom-6 right-6 z-[70] px-4 py-3 rounded-xl border backdrop-blur-sm shadow-xl text-sm font-medium',
-        toast.type === 'error' ? 'bg-red-500/20 border-red-500/30 text-red-300' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300']">
-        {{ toast.message }}
-      </div>
-    </Transition>
+    <AppToast />
   </AppLayout>
 </template>
 
@@ -216,6 +206,8 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
+import { useToast } from '../composables/useToast';
 
 const loading = ref(true);
 const shifts = ref({});
@@ -343,13 +335,7 @@ watch(monthKey, fetchMyShifts);
 onMounted(fetchMyShifts);
 
 // Toast
-const toast = ref({ show: false, message: '', type: 'success' });
-let toastTimer = null;
-function showToast(msg, type = 'success') {
-  toast.value = { show: true, message: msg, type };
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.value.show = false; }, 3000);
-}
+const { showToast } = useToast();
 
 // Change request
 const changeRequestModal = ref({

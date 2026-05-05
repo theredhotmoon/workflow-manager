@@ -271,33 +271,7 @@
       </div>
     </div>
 
-    <!-- Toast Notification -->
-    <Transition
-      enter-active-class="transition-all duration-400 ease-out"
-      leave-active-class="transition-all duration-300 ease-in"
-      enter-from-class="translate-y-4 opacity-0 scale-95"
-      enter-to-class="translate-y-0 opacity-100 scale-100"
-      leave-from-class="translate-y-0 opacity-100 scale-100"
-      leave-to-class="translate-y-4 opacity-0 scale-95"
-    >
-      <div v-if="toastMessage" class="fixed bottom-6 right-6 z-[60] max-w-sm">
-        <div class="bg-slate-800/95 backdrop-blur-xl border border-emerald-500/20 rounded-xl px-5 py-4 shadow-2xl shadow-black/40 flex items-start gap-3">
-          <div class="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0 mt-0.5">
-            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-emerald-300 text-sm font-medium">{{ toastMessage }}</p>
-          </div>
-          <button @click="toastMessage = ''" class="text-slate-500 hover:text-slate-300 shrink-0 mt-0.5">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
-    </Transition>
+    <AppToast />
 
     <!-- Delegation Modal -->
     <Transition
@@ -457,11 +431,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import { useToast } from '../composables/useToast.js';
 import api from '../axios.js';
-
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
 
 const router = useRouter();
 
@@ -470,16 +445,7 @@ const users = ref([]);
 const loading = ref(true);
 
 // Toast
-const toastMessage = ref('');
-let toastTimer = null;
-
-function showToast(message) {
-  toastMessage.value = message;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastMessage.value = ''; }, 4000);
-}
-
-onUnmounted(() => clearTimeout(toastTimer));
+const { showToast } = useToast();
 
 // User form modal
 const showUserModal = ref(false);

@@ -146,26 +146,18 @@
         </div>
       </Transition>
 
-      <!-- Toast -->
-      <Transition enter-active-class="transition-all duration-400 ease-out" leave-active-class="transition-all duration-300 ease-in"
-        enter-from-class="translate-y-4 opacity-0" enter-to-class="translate-y-0 opacity-100"
-        leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-4 opacity-0">
-        <div v-if="toastMsg" class="fixed bottom-6 right-6 z-[60] max-w-sm">
-          <div :class="['flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl border', toastType === 'success' ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-300' : 'bg-red-500/15 border-red-500/25 text-red-300']">
-            <span class="text-sm font-medium">{{ toastMsg }}</span>
-            <button @click="toastMsg = ''" class="text-white/50 hover:text-white/80 ml-2">×</button>
-          </div>
-        </div>
-      </Transition>
+      <AppToast />
     </main>
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
 
 const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth());
@@ -173,10 +165,7 @@ const closures = ref([]);
 const showModal = ref(false);
 const saving = ref(false);
 const editingId = ref(null);
-const toastMsg = ref('');
-const toastType = ref('success');
 const highlightDate = ref(null);
-let toastTimer = null;
 
 const form = ref({ date: '', end_date: '', title: '', description: '' });
 
@@ -286,12 +275,7 @@ async function deleteClosure(c) {
   } catch { showToast('Failed to remove.', 'error'); }
 }
 
-function showToast(msg, type = 'success') {
-  toastMsg.value = msg; toastType.value = type;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastMsg.value = ''; }, 4000);
-}
-onUnmounted(() => clearTimeout(toastTimer));
+const { showToast } = useToast();
 
 function daysBetween(start, end) {
   const s = new Date(start + 'T12:00:00');

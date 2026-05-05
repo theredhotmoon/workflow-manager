@@ -90,7 +90,7 @@
         @add-template="emit('add-template')"
         @edit-template="t => emit('edit-template', t)"
         @delete-template="t => emit('delete-template', t)"
-        @copied="msg => emit('toast', msg)" />
+        @copied="msg => showToast(msg)" />
     </div>
 
     <!-- Feedback Tab -->
@@ -122,6 +122,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { useToast } from '../../composables/useToast.js';
 import ProcedureFaqTab from './ProcedureFaqTab.vue';
 import ProcedureTemplatesTab from './ProcedureTemplatesTab.vue';
 import ProcedureFeedbackTab from './ProcedureFeedbackTab.vue';
@@ -141,7 +142,8 @@ const props = defineProps({
   maxVersion: { type: Number, default: 1 },
 });
 
-const emit = defineEmits(['add-template', 'edit-template', 'delete-template', 'toast', 'owner-changed', 'open-diff', 'go-to-version']);
+const emit = defineEmits(['add-template', 'edit-template', 'delete-template', 'owner-changed', 'open-diff', 'go-to-version']);
+const { showToast } = useToast();
 
 const activeTab = ref('content');
 const accessLogLoaded = ref(false);

@@ -274,47 +274,18 @@
     </div>
     </Transition>
 
-    <!-- Toast Notification -->
-    <Transition
-      enter-active-class="transition-all duration-400 ease-out"
-      leave-active-class="transition-all duration-300 ease-in"
-      enter-from-class="translate-y-4 opacity-0 scale-95"
-      enter-to-class="translate-y-0 opacity-100 scale-100"
-      leave-from-class="translate-y-0 opacity-100 scale-100"
-      leave-to-class="translate-y-4 opacity-0 scale-95"
-    >
-      <div v-if="toastMessage" class="fixed bottom-6 right-6 z-[60] max-w-sm">
-        <div :class="[
-          'backdrop-blur-xl border rounded-xl px-5 py-4 shadow-2xl shadow-black/40 flex items-start gap-3',
-          toastType === 'error' ? 'bg-slate-800/95 border-red-500/20' : 'bg-slate-800/95 border-emerald-500/20'
-        ]">
-          <div :class="[
-            'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-            toastType === 'error' ? 'bg-red-500/15' : 'bg-emerald-500/15'
-          ]">
-            <svg v-if="toastType === 'error'" class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            <svg v-else class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <p :class="[
-            'text-sm font-medium',
-            toastType === 'error' ? 'text-red-300' : 'text-emerald-300'
-          ]">{{ toastMessage }}</p>
-        </div>
-      </div>
-    </Transition>
+    <AppToast />
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
 
 const router = useRouter();
@@ -346,18 +317,7 @@ const nameError = computed(() =>
 );
 
 // Toast
-const toastMessage = ref('');
-const toastType = ref('success');
-let toastTimer = null;
-
-function showToast(message, type = 'success') {
-  toastMessage.value = message;
-  toastType.value = type;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastMessage.value = ''; }, 4000);
-}
-
-onUnmounted(() => clearTimeout(toastTimer));
+const { showToast } = useToast();
 
 // Fetch templates
 async function fetchTemplates() {

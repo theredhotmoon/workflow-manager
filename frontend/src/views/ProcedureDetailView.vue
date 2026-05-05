@@ -63,8 +63,7 @@
           @delete-template="deleteTemplate"
           @owner-changed="fetchProcedure"
           @open-diff="openDiffModal"
-          @go-to-version="goToVersion"
-          @toast="msg => {}" />
+          @go-to-version="goToVersion" />
 
         <!-- Feedback Report Modal -->
         <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
@@ -155,14 +154,16 @@
           @saved="onEditorSaved" />
       </template>
     </main>
+    <AppToast />
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import ProcedureDiffModal from '../components/procedure/ProcedureDiffModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';

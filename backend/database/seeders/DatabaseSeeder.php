@@ -15,11 +15,13 @@ class DatabaseSeeder extends Seeder
      */
     public function run()
     {
-        User::create([
-            'name' => 'Admin User',
-            'email' => 'admin@shiftchanger.com',
-            'password' => Hash::make('password123'),
-            'is_admin' => true,
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@shiftchanger.com'],
+            [
+                'name'     => 'Admin User',
+                'password' => Hash::make('1234'),
+                'is_admin' => true,
+            ]
+        );
     }
 }

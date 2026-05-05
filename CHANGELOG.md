@@ -1,0 +1,326 @@
+# Changelog
+
+All notable changes to the Shift Changer application are documented here.
+
+---
+
+## 2026-03-20 12:34 — 👁️ All Groups Combined View
+
+New **"All Groups"** tab on the Schedule page — view shifts from **all shift groups at once** on the same calendar.
+
+- **Gradient-styled tab** appears first in the tab bar (indigo → purple → pink)
+- Day cells show shifts **grouped by group** with **colored left borders** and group name labels
+- **Read-only mode** — admin actions (generate, delete, auto-fill, drag-assign, shift count ±) are disabled with a helpful banner
+- Switching to a specific group restores full editing capability
+
+---
+
+## 2026-03-20 09:27 — 📋 Shift Groups (Multi-Schedule Support)
+
+New system for managing **multiple independent shift groups** — perfect for events, special coverage, or any scenario requiring separate schedules alongside the main one.
+
+### How It Works
+- **Tab bar** on the Schedule page — each tab is a shift group with its own shifts and assignments
+- **Default "Main" group** preserves all existing data — zero disruption
+- Click **"+ New Group"** to create additional groups (name + color)
+- **Double-click** a tab name to rename inline
+- **Delete** non-default groups (cascades to shifts & assignments)
+- All operations are **scoped per group**: generate, auto-fill, clear month, day shift count
+
+### Backend
+| What | Details |
+|------|---------|
+| New table | `shift_groups` (name, description, color, is_default, sort_order) |
+| Migration | `shift_group_id` FK on `shifts`, unique constraint → `(date, shift_number, shift_group_id)` |
+| New model | `ShiftGroup` with `shifts()` relationship |
+| New controller | `ShiftGroupController` — full CRUD + reorder |
+| Updated | `ScheduleController`, `ShiftAutoAssignController`, `CurrentShiftController` — all scoped by group |
+| New routes | 5 admin routes for shift group CRUD |
+
+### Frontend
+| View | Change |
+|------|--------|
+| **Schedule** | Tab bar with group switching, create, rename, delete |
+| **AutoFill** | Passes `shift_group_id` to all 3 auto-assign algorithms |
+| **My Shifts** | Shows group name badge next to each shift |
+
+---
+
+## 2026-03-04 00:09 — Version History, Change Reasons & Version Browsing
+
+- **Publish requires reason**: When publishing a new version, a modal prompts for a change reason description (stored in `procedure_versions` table).
+- **Version history**: Each published version is stored as a snapshot (title, purpose, requirements, content, change_reason, publisher, published_at).
+- **Version browsing**: `‹` and `›` arrows next to version number in procedure detail page. Click to load any historical version. Amber banner shows when viewing old version with "go to latest" link.
+- **Change reason banner**: Displayed below header showing what changed in the current version, with publisher and date.
+- **New tables**: `procedure_versions` for full version history snapshots.
+- **New API endpoints**: `GET /procedures/{id}/versions`, `GET /procedures/{id}/versions/{version}`.
+
+---
+
+## 2026-03-03 23:55 — Procedure Versioning, Feedback Review & Learning Tracker
+
+- **Draft/Publish workflow**: Owner can save drafts (no version bump) or publish as new version (increments version). Resume editing saved drafts anytime.
+- **Owner-only editing**: Only procedure owner (or admin) can edit. Edit button hidden from non-owners. Editor redirects if unauthorized.
+- **Feedback review in editor**: Right sidebar panel shows error reports submitted since last version. Owner can mark each as accepted / rejected / deferred + add resolution comment. Open feedbacks auto-resolved on publish.
+- **Procedures to learn**: New "To Learn" page showing procedures with new versions the user hasn't read. Auto mark-as-read on view. Shows 🎉 empty state when all caught up.
+- **DB changes**: Draft fields on procedures, `for_version`/`resolution`/`owner_comment` on feedbacks, new `procedure_user_reads` table.
+- **Route restructuring**: Procedure reading routes moved to auth group (accessible to all users), write operations remain admin-guarded with owner checks in controller.
+
+---
+
+## 2026-03-03 16:17 — Refactored Procedure Display into Shared Components
+
+- Extracted **5 shared components** in `components/procedure/`:
+  - `ProcedureContent.vue` — main orchestrator (purpose at top, tags, metadata grid, tabbed content)
+  - `ProcedureFaqTab.vue` — FAQ questions & replies with full CRUD
+  - `ProcedureTemplatesTab.vue` — response templates with copy/edit/delete (editable mode for admins)
+  - `ProcedureFeedbackTab.vue` — feedback list with admin status editing
+  - `ProcedureAccessLogTab.vue` — lazy-loaded access history
+- **Both views now use the same `ProcedureContent`** — purpose displays at the top in both routable page and modal
+- `ProcedureDetailView.vue` simplified to ~130 lines (from ~430) — only page-specific header/modals remain
+- `ChecklistFillView.vue` modal now uses `<ProcedureContent>` — removed ~200 lines of duplicated code + inline styles
+
+---
+
+## 2026-03-03 16:00 — Full Procedure Modal in Checklist Fill View
+
+- Procedure modal now shows **all details** from the procedure detail page:
+  - Tags, metadata (Owner, Created, Modified, Last Access)
+  - Tabs: **Content**, **FAQ** (ask/reply/delete), **Templates** (copy to clipboard), **Feedback** (view with status), **Access Log** (lazy-loaded)
+- Interactive: ask FAQ questions, reply to threads, copy response templates — all without leaving the checklist
+- Modal widened to max-w-4xl, max-h-90vh for more comfortable browsing
+
+---
+
+## 2026-03-03 15:36 — Checklist Fill View Enhancements
+
+- **Shift Info Card**: when filling a checklist linked to a shift, shows shift number, time range, and colleague names (badges for other users on the same shift)
+- **Progress Bar**: animated gradient bar tracking filled items vs total — turns green on 100% completion
+  - Checkboxes: counted when checked; Text/Number: counted when non-empty
+  - Comments not counted (not mandatory)
+- Added `/api/shifts/{shift}` endpoint returning shift details with assignments
+
+---
+
+## 2026-03-03 15:13 — Procedure Modal Preview & Copy Link
+
+- **Checklist Fill View**: clicking the 📋 badge now opens a **procedure preview modal** with full content instead of navigating away — users stay on the checklist
+  - Modal shows: identifier, title, version, purpose, requirements, and rich HTML content
+  - Header actions: **Copy Link** (🔗), **Open Full Page** (↗), Close (✕)
+  - Loading spinner while procedure data fetches via API
+- **Procedure Detail Page**: added **Copy Link** button in the header (next to Report Error)
+- Copy link always generates the public URL to the procedure detail page (`/procedures/:id`)
+
+---
+
+## 2026-03-02 22:37 — Link Procedures to Checklist Items
+
+- Added `procedure_id` nullable FK to `checklist_items` table
+- **Checklist Builder**: new "procedure" dropdown per item to link a procedure
+- **Checklist Fill View**: items with an assigned procedure show a clickable 📋 badge with the procedure identifier — links directly to the procedure detail page
+- Badge appears in all item types (checkbox, text, number) and in the confirmation step
+- Procedure data is eager-loaded via `groups.items.procedure:id,identifier,title`
+
+---
+
+## 2026-03-02 22:15 — Procedures Module
+
+Full knowledge base system for managing operational procedures.
+
+### Database (6 migrations, 7 models)
+- `procedure_tags` — colored keyword tags
+- `procedures` — main entity with identifier (PROC-XX), versioned content, owner
+- `procedure_tag` — many-to-many pivot
+- `procedure_faq_items` + `procedure_faq_replies` — threaded Q&A
+- `procedure_response_templates` — copy-ready client response fragments with language
+- `procedure_access_logs` — tracks who viewed when
+- `procedure_feedbacks` — error reports & suggestions with status tracking
+
+### Backend (5 controllers, ~25 API routes)
+- `ProcedureTagController` — CRUD for tags
+- `ProcedureController` — CRUD with search/filter, auto-identifier, version bump on content change, access logging, tag sync
+- `ProcedureFaqController` — threaded Q&A (any user can ask/reply, admins can delete any)
+- `ProcedureResponseTemplateController` — CRUD with language support (en, pl, de, fr, es)
+- `ProcedureFeedbackController` — create (any user), list + status update (admin)
+
+### Frontend (4 new views)
+- **ProcedureTagsView** — admin CRUD table with color picker
+- **ProceduresListView** — card grid with search bar and tag filter chips
+- **ProcedureDetailView** — 5 tabs:
+  - Content (styled rich HTML), FAQ (threaded Q&A), Templates (copy-to-clipboard), Feedback (status management), Access Log
+  - Report Error button with modal
+- **ProcedureEditorView** — Tiptap rich text editor with:
+  - Full toolbar (bold/italic/underline/headings/lists/blockquote/code)
+  - **Image paste from clipboard** (base64 inline)
+  - Owner selector, tag multi-select, delete procedure
+
+### Navigation
+- "Procedures" link (all users)
+- "Proc. Tags" link (admin only)
+
+---
+
+## 2026-03-02 20:00 — Office Unavailability Overlay & Newbie Star Indicators
+
+### Schedule View — New Overlay
+- ☑️ **"Show Office Unavailability"** checkbox (grey dot) below Show Newbies
+- **🚫 Grey badges** on calendar days when office is closed, showing closure title
+- Tooltip shows description on hover
+
+### Newbie ⭐ Star Indicators
+- **Users View**: yellow ⭐ appears next to user name if they have an active newbie period
+- **Schedule View**: yellow ⭐ appears next to employee name in the sidebar employee pool
+- Stars appear automatically based on current date vs newbie period dates
+
+---
+
+## 2026-03-02 19:55 — Newbie Marking System
+
+New feature to mark employees as **"newbie"** for a configurable time period, with visibility on the schedule.
+
+### Users View
+- ⭐ **Yellow star button** per user → opens newbie period modal
+- Set **start & end date** for the newbie period
+- View and delete existing periods
+- Multiple periods supported per user
+
+### Schedule View
+- ☑️ **"Show Newbies"** checkbox in sidebar (yellow dot indicator)
+- **Yellow ⭐ badges** on calendar days showing newbie employee names
+- **Employee filtering**: selecting an employee shows only their newbie periods (same logic as delegations)
+
+### Backend
+- `newbie_periods` table (user_id, start/end dates, created_by)
+- `NewbiePeriodController` with forUser, forMonth, CRUD
+- 5 new admin API routes
+
+---
+
+## 2026-03-02 19:45 — Smart Office Closure Conflict Resolution
+
+Enhanced the office closure conflict modal with **three choices**:
+
+| Button | Action |
+|--------|--------|
+| **Cancel** | Abort generation |
+| **🏠 Switch to Remote** | Generate shifts, then auto-switch closed dates to remote mode |
+| **Generate as Office** | Generate as-is (office shifts on closed dates) |
+
+The "Switch to Remote" option generates the month normally, then batch-updates all office shifts on closed dates to 🏠 remote — with a toast confirming how many were switched.
+
+---
+
+## 2026-03-02 19:34 — Multi-Day Office Closures
+
+Added **date range support** to the Office Availability view:
+- New **End Date** field when creating closures
+- Define a whole range (e.g. Dec 24–26) with one title & description
+- Backend creates one entry per day, skipping existing dates
+- Toast shows how many days were added
+
+---
+
+## 2026-03-02 19:20 — Office Availability (Closures Management)
+
+New admin module for managing **office closure dates** — prevents accidental scheduling of office shifts on closed days.
+
+### New Admin View — "Office" (nav link)
+- 📅 **Calendar view** with orange markers on closed dates
+- Click any day to **add a closure** (title + optional description)
+- Click existing closure to **edit** or **delete**
+- Monthly closures list below the calendar with edit/delete actions
+
+### Schedule Conflict Detection
+- When generating shifts with **🏢 Office** work mode, the system checks for closures
+- If conflicts found → **orange confirmation modal** lists all affected dates with titles & descriptions
+- Admin can **Cancel** or **Generate Anyway**
+- Intelligently checks weekday vs weekend closures based on selected work mode defaults
+
+### Backend
+- `office_closures` table with unique date constraint
+- Full CRUD controller + conflict check endpoint
+- 5 new admin API routes
+
+---
+
+## 2026-03-02 19:10 — Delegation Conflict Warning on Assignment
+
+When dragging an employee onto a shift, the system now checks for **delegation conflicts**:
+
+- If the employee is on delegation during the shift date → **purple confirmation modal** appears
+- Shows delegation name, destination, and date range
+- Admin can **Cancel** or **Assign Anyway**
+- Seamlessly chains with existing checks: unavailability → delegation → adjacent shift
+- Delegation data is always pre-loaded for fast conflict detection
+
+---
+
+## 2026-03-02 19:04 — Remote/Office Shift Mode
+
+Added a new **work mode** property to every shift — either 🏢 **Office** or 🏠 **Remote**.
+
+### Generate Month Modal
+- New **"Default work mode"** section with separate dropdowns for **Weekdays** and **Weekends**
+- All generated shifts get the selected mode automatically
+
+### Schedule View
+- Each shift slot now shows a clickable **🏢** or **🏠** icon
+- **Click to toggle** between Office and Remote — updates instantly
+- Styled with teal (remote) / amber (office) colors
+
+### My Shifts View
+- Each shift displays a **🏢 Office** or **🏠 Remote** badge next to the time
+
+### How it works
+1. When generating a new month, pick the default work mode for weekdays and weekends
+2. After generation, click any shift's 🏢/🏠 icon to override individually
+3. Employees see the mode on their My Shifts page
+
+---
+
+## 2026-03-02 18:56 — Delegation Filtering by Employee
+
+Updated the Schedule View delegation overlay to respect employee selection:
+- **Employee selected** → only that employee's delegations appear on the calendar
+- **No employee selected** → all delegations shown (as before)
+
+---
+
+## 2026-03-02 18:44 — Delegations Module
+
+Added a full **delegation management system**: admins define delegations, assign employees, and delegation info is visible across the app.
+
+### Backend
+- **`delegations`** table (name, destination, start/end datetime) + **`delegation_user`** pivot
+- **`DelegationController`** with full CRUD, addUser/removeUser, myDelegations, forMonth
+- 8 new API routes (admin CRUD + user self-service)
+
+### Frontend Integration
+
+| View | What's new |
+|------|-----------|
+| **Users** | 📍 purple pin button per user → modal with **Create New** / **Assign Existing** tabs |
+| **Schedule** | ☑️ "Show Delegations" checkbox → purple badges on day cells with delegated employee names |
+| **My Shifts** | Purple delegation cards with name, destination & time range alongside shift cards |
+| **Availability** | Read-only purple badges on calendar days + purple delegation legend item |
+
+---
+
+## 2026-03-02 18:43 — Polish Law Auto-Assignment Mode
+
+Implemented **"Polish Law"** auto-assignment mode enforcing Polish Labor Code regulations.
+
+### Polish Labor Code rules enforced
+- **11h daily rest** — minimum gap between consecutive shifts
+- **35h weekly rest** — Sundays protected when possible
+- **Max 48h/week** hard cap, targeting 40h average
+- **Max 5 working days/week**
+- **Max 13h/shift** — shifts exceeding this are flagged and skipped
+- **Night shift detection** — shifts overlapping 22:00–06:00 are counted
+- **Fair distribution** — employees with fewer hours get priority
+- **Unavailability respected** — blocked dates are honored
+
+### UI
+- Dropdown now has 3 options: Random Coverage, Rotating Subteam, **Polish Law**
+- Modal with shift counts + rotation days configuration
+- Toast reports: total assigned, night shift count, unfilled shifts, and compliance notes

@@ -23,6 +23,31 @@
       </button>
     </div>
 
+    <!-- Group filter -->
+    <div v-if="selectionMode !== 'all' && groups.length > 0" class="flex items-center gap-1.5 flex-wrap">
+      <span class="text-[10px] text-slate-500 uppercase tracking-wide shrink-0">Group:</span>
+      <button
+        @click="selectedGroupId = null"
+        :class="[
+          'px-2 py-1 text-[10px] font-medium rounded-md border transition-all',
+          selectedGroupId === null
+            ? 'bg-sky-500/20 border-sky-500/30 text-sky-300'
+            : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-300'
+        ]">
+        All
+      </button>
+      <button v-for="group in groups" :key="group.id"
+        @click="selectedGroupId = selectedGroupId === group.id ? null : group.id"
+        :class="[
+          'px-2 py-1 text-[10px] font-mono rounded-md border transition-all',
+          selectedGroupId === group.id
+            ? 'bg-sky-500/20 border-sky-500/30 text-sky-300'
+            : 'bg-white/5 border-white/10 text-slate-400 hover:bg-sky-500/10 hover:border-sky-500/20 hover:text-sky-300'
+        ]">
+        {{ group.enum }}
+      </button>
+    </div>
+
     <!-- Quick filters -->
     <div v-if="selectionMode !== 'all'" class="flex items-center gap-2 flex-wrap">
       <span class="text-[10px] text-slate-500 uppercase tracking-wide">Quick:</span>
@@ -82,7 +107,7 @@
           <span v-if="isDelegated(emp.id)" class="text-purple-400 text-[10px]" title="On delegation">📍</span>
         </label>
         <div v-if="filteredEmployees.length === 0" class="text-center text-[10px] text-slate-500 py-3 italic">
-          {{ search ? 'No matches' : 'Loading...' }}
+          {{ search || selectedGroupId !== null ? 'No matches' : 'Loading...' }}
         </div>
       </div>
 
@@ -90,6 +115,9 @@
       <div class="flex items-center justify-between mt-1.5">
         <span class="text-[10px] text-slate-500 tabular-nums">
           {{ selectedIds.size }} of {{ allEmployees.length }} selected
+          <template v-if="selectedGroupId !== null">
+            (showing {{ filteredEmployees.length }} in group)
+          </template>
         </span>
         <span v-if="selectionMode === 'include' && selectedIds.size === 0"
           class="text-[10px] text-amber-400 flex items-center gap-1">
@@ -126,11 +154,13 @@ const emit = defineEmits(['update:modelValue']);
 const search = ref('');
 const selectionMode = ref('all');
 const selectedIds = ref(new Set());
+const selectedGroupId = ref(null);
 
 // Data
 const allEmployees = ref([]);
 const newbieIds = ref([]);
 const delegatedIds = ref([]);
+const groups = ref([]);
 
 const modeOptions = [
   { value: 'all', label: 'All players' },
@@ -139,10 +169,20 @@ const modeOptions = [
 ];
 
 // Computed
+const activeGroupMemberIds = computed(() => {
+  if (selectedGroupId.value === null) return null;
+  const group = groups.value.find(g => g.id === selectedGroupId.value);
+  return new Set(group?.users?.map(u => u.id) ?? []);
+});
+
 const filteredEmployees = computed(() => {
+  let list = allEmployees.value;
+  if (activeGroupMemberIds.value !== null) {
+    list = list.filter(e => activeGroupMemberIds.value.has(e.id));
+  }
   const q = search.value.toLowerCase().trim();
-  if (!q) return allEmployees.value;
-  return allEmployees.value.filter(e => e.name.toLowerCase().includes(q));
+  if (!q) return list;
+  return list.filter(e => e.name.toLowerCase().includes(q));
 });
 
 const allNewbiesSelected = computed(() =>
@@ -203,11 +243,15 @@ function toggleDelegated() {
 }
 
 function selectAll() {
-  selectedIds.value = new Set(allEmployees.value.map(e => e.id));
+  const next = new Set(selectedIds.value);
+  filteredEmployees.value.forEach(e => next.add(e.id));
+  selectedIds.value = next;
 }
 
 function selectNone() {
-  selectedIds.value = new Set();
+  const next = new Set(selectedIds.value);
+  filteredEmployees.value.forEach(e => next.delete(e.id));
+  selectedIds.value = next;
 }
 
 // Emit model updates
@@ -218,35 +262,40 @@ watch([selectionMode, selectedIds], () => {
   });
 }, { deep: true });
 
+// Reset group filter when switching to 'all' mode
+watch(selectionMode, (mode) => {
+  if (mode === 'all') selectedGroupId.value = null;
+});
+
 // Fetch data
 async function fetchData() {
   try {
-    const [empRes, newbieRes, delegRes] = await Promise.all([
+    const [empRes, newbieRes, delegRes, groupRes] = await Promise.all([
       api.get('/api/employees'),
       api.get('/api/newbie-periods/month', { params: { month: props.monthKey } }),
       api.get('/api/delegations/month', { params: { month: props.monthKey } }),
+      api.get('/api/user-groups').catch(() => ({ data: [] })),
     ]);
 
     allEmployees.value = empRes.data.filter(e => !e.is_admin);
     selectedIds.value = new Set(allEmployees.value.map(e => e.id));
 
-    // Extract unique newbie user IDs
     const nbIds = new Set();
     (newbieRes.data || []).forEach(np => nbIds.add(np.user_id));
     newbieIds.value = Array.from(nbIds);
 
-    // Extract unique delegated user IDs
     const delIds = new Set();
     (delegRes.data || []).forEach(del => {
       (del.users || []).forEach(u => delIds.add(u.id));
     });
     delegatedIds.value = Array.from(delIds);
+
+    groups.value = groupRes.data;
   } catch (err) {
     console.error('PlayerSelectionPanel: fetch error', err);
   }
 }
 
-// Re-fetch when month changes
 watch(() => props.monthKey, () => {
   fetchData();
 });

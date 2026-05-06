@@ -3,19 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\UserGroup;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class UserGroupController extends Controller
 {
-    public function index()
+    public function index(): JsonResponse
     {
         return response()->json(
             UserGroup::with('users:id,name,email')->orderBy('name')->get()
         );
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -28,7 +29,7 @@ class UserGroupController extends Controller
         return response()->json($group, 201);
     }
 
-    public function update(Request $request, UserGroup $userGroup)
+    public function update(Request $request, UserGroup $userGroup): JsonResponse
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -41,16 +42,16 @@ class UserGroupController extends Controller
         return response()->json($userGroup);
     }
 
-    public function destroy(UserGroup $userGroup)
+    public function destroy(UserGroup $userGroup): JsonResponse
     {
         $userGroup->delete();
-        return response()->json(['message' => 'Group deleted.']);
+        return response()->json(null, 204);
     }
 
-    public function syncUsers(Request $request, UserGroup $userGroup)
+    public function syncUsers(Request $request, UserGroup $userGroup): JsonResponse
     {
         $validated = $request->validate([
-            'user_ids' => ['present', 'array'],
+            'user_ids' => ['present', 'array', 'max:500'],
             'user_ids.*' => ['integer', 'exists:users,id'],
         ]);
 

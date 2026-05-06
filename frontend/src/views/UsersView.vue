@@ -187,18 +187,18 @@
                 <span class="text-xs text-slate-500 shrink-0">{{ group.users?.length ?? 0 }}</span>
                 <!-- Actions -->
                 <div class="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-150">
-                  <span @click.stop="openEditGroupModal(group)" title="Edit group"
-                    class="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md cursor-pointer transition-all duration-150">
+                  <button type="button" @click.stop="openEditGroupModal(group)" title="Edit group"
+                    class="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-md transition-all duration-150">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
-                  </span>
-                  <span @click.stop="confirmDeleteGroup(group)" title="Delete group"
-                    class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md cursor-pointer transition-all duration-150">
+                  </button>
+                  <button type="button" @click.stop="confirmDeleteGroup(group)" title="Delete group"
+                    class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all duration-150">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                  </span>
+                  </button>
                 </div>
               </button>
             </div>
@@ -258,9 +258,9 @@
                 <!-- Member badge / Toggle -->
                 <button
                   @click="toggleMember(user.id)"
-                  :disabled="togglingUserId === user.id"
+                  :disabled="togglingUserId !== null"
                   class="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                  :class="isMember(user.id)
+                  :class="user._isMember
                     ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/20'
                     : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-violet-500/15 hover:text-violet-300 hover:border-violet-500/20'">
                   <svg v-if="togglingUserId === user.id" class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
@@ -268,14 +268,14 @@
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                   </svg>
                   <template v-else>
-                    <svg v-if="isMember(user.id)" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg v-if="user._isMember" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
                     </svg>
                     <svg v-else class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                   </template>
-                  {{ isMember(user.id) ? 'Member' : 'Add' }}
+                  {{ user._isMember ? 'Member' : 'Add' }}
                 </button>
               </div>
             </div>
@@ -703,7 +703,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useToast } from '../composables/useToast.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
@@ -753,6 +753,7 @@ const groupForm = reactive({ name: '', enum: '' });
 const showGroupDeleteModal = ref(false);
 const deletingGroup = ref(null);
 const deletingGroupLoading = ref(false);
+const groupsLoaded = ref(false);
 
 // ── Delegation ─────────────────────────────────────────
 const showDelegationModal = ref(false);
@@ -779,17 +780,10 @@ const filteredGroupUsers = computed(() => {
   const list = q
     ? users.value.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
     : users.value;
-  return [...list].sort((a, b) => {
-    const am = memberIds.has(a.id);
-    const bm = memberIds.has(b.id);
-    if (am !== bm) return bm - am;
-    return a.name.localeCompare(b.name);
-  });
+  return [...list]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(u => ({ ...u, _isMember: memberIds.has(u.id) }));
 });
-
-function isMember(userId) {
-  return selectedGroup.value?.users?.some(u => u.id === userId) ?? false;
-}
 
 // ── Fetch ──────────────────────────────────────────────
 async function fetchUsers() {
@@ -798,7 +792,7 @@ async function fetchUsers() {
     const res = await api.get('/api/users');
     users.value = res.data;
   } catch {
-    // silent
+    showToast('Failed to load users. Please refresh.', 'error');
   } finally {
     loading.value = false;
   }
@@ -813,7 +807,7 @@ async function fetchGroups() {
       selectedGroup.value = groups.value.find(g => g.id === selectedGroup.value.id) ?? null;
     }
   } catch {
-    // silent
+    showToast('Failed to load groups. Please refresh.', 'error');
   } finally {
     groupsLoading.value = false;
   }
@@ -831,7 +825,13 @@ async function fetchAllNewbiePeriods() {
 onMounted(() => {
   fetchUsers();
   fetchAllNewbiePeriods();
-  fetchGroups();
+});
+
+watch(currentTab, (tab) => {
+  if (tab === 'groups' && !groupsLoaded.value) {
+    groupsLoaded.value = true;
+    fetchGroups();
+  }
 });
 
 // ── Helpers ────────────────────────────────────────────
@@ -1064,8 +1064,12 @@ async function toggleMember(userId) {
     selectedGroup.value = res.data;
     const idx = groups.value.findIndex(g => g.id === res.data.id);
     if (idx !== -1) groups.value[idx] = res.data;
-    // Refresh user table groups badges
-    await fetchUsers();
+    const groupSnap = { id: res.data.id, name: res.data.name, enum: res.data.enum };
+    users.value = users.value.map(u => {
+      const inGroup = res.data.users?.some(gu => gu.id === u.id);
+      const filteredGroups = (u.groups ?? []).filter(g => g.id !== groupSnap.id);
+      return { ...u, groups: inGroup ? [...filteredGroups, groupSnap] : filteredGroups };
+    });
   } catch {
     showToast('Failed to update group members.', 'error');
   } finally {

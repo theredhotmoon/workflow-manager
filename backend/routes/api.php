@@ -217,6 +217,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Schedule (read-only for all authenticated users)
     Route::get('/schedule', [ScheduleController::class, 'index']);
 
+    // User groups (read-only — needed by schedule maintainers for player filtering)
+    Route::get('/user-groups', [UserGroupController::class, 'index']);
+
     // Alarms
     Route::get('/alarms', [AlarmController::class, 'index']);
     Route::get('/alarms/latest', [AlarmController::class, 'latest']);
@@ -230,11 +233,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('users', UserController::class);
         Route::put('/users/{user}/password', [UserController::class, 'changePassword']);
 
-        // User groups
-        Route::get('/user-groups', [UserGroupController::class, 'index']);
-        Route::post('/user-groups', [UserGroupController::class, 'store']);
-        Route::put('/user-groups/{userGroup}', [UserGroupController::class, 'update']);
-        Route::delete('/user-groups/{userGroup}', [UserGroupController::class, 'destroy']);
+        // User groups (write operations)
+        Route::apiResource('user-groups', UserGroupController::class)
+            ->except(['show', 'index'])
+            ->parameters(['user-groups' => 'userGroup']);
         Route::put('/user-groups/{userGroup}/users', [UserGroupController::class, 'syncUsers']);
 
         // Shift group management

@@ -1,6 +1,6 @@
 # Workflow Manager
 
-A Laravel 9 + Vue 3 shift management application.
+A Laravel 9 + Vue 3 shift managementand workflow management application.
 
 ---
 

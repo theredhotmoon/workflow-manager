@@ -91,6 +91,37 @@ docker compose exec backend php artisan <command>
 
 ---
 
+## Hybrid dev mode (db + backend in Docker, frontend local)
+
+Runs the database and Laravel API in containers, while the Vue SPA runs on your
+host machine via the Vite dev server — no PHP/Composer/Postgres install needed
+locally, but you still get instant frontend HMR.
+
+```powershell
+./dev.ps1
+```
+
+This brings up `db` and `backend` (using `docker-compose.dev.yml`, which exposes
+the backend on `http://localhost:8090` — override with `BACKEND_PORT` in `.env`
+if that's taken too — and relaxes a few env vars for local use), waits for the
+backend to respond, then runs `npm run dev` in `frontend/`.
+
+Open **`http://localhost:5173`**. The Vite dev server proxies `/api` and
+`/sanctum` requests to the containerized backend (see the `server.proxy` block
+in `frontend/vite.config.js`), mirroring what the production frontend Nginx
+container does — so Sanctum's cookie-based auth works without CORS changes.
+
+To run the same containers manually instead of the script:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build db backend
+cd frontend && npm run dev
+```
+
+Full-Docker mode (all three services) is unaffected — see above.
+
+---
+
 ## Running without Docker (local development)
 
 In local dev mode the Laravel backend and the Vite dev server run as separate processes. The `laravel-vite-plugin` wires them together — assets are built directly into `backend/public/build`, and Laravel serves the SPA.

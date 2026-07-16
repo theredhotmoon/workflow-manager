@@ -1,0 +1,26 @@
+# ── Hybrid dev override ──────────────────────────────────────────────────────
+# Use alongside docker-compose.yml to run only `db` + `backend` in containers,
+# while the frontend runs locally via `npm run dev` (Vite).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
+#
+# Full-Docker mode (all three services, including frontend) is unaffected —
+# just run `docker compose up -d --build` as before, without this file.
+#
+# Exposes the backend on a host port (it has none in the production compose
+# file, since prod traffic reaches it through the frontend Nginx container),
+# and relaxes a few settings for local development.
+services:
+  backend:
+    ports:
+      - "${BACKEND_PORT:-8090}:8080"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      LOG_CHANNEL: stack
+      LOG_LEVEL: debug
+      # Always append the Vite dev server origin, so Sanctum's SPA cookie auth
+      # accepts it regardless of whatever SANCTUM_STATEFUL_DOMAINS is set to
+      # in the root .env (which may not include it).
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost},localhost:5173
+      SESSION_DOMAIN: ${SESSION_DOMAIN:-localhost}

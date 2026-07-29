@@ -43,7 +43,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 const props = defineProps({
   node: { type: Object, required: true },
@@ -74,8 +74,6 @@ function onDrop(e) {
 </script>
 
 <script>
-import { computed } from 'vue';
-
 export default {
   name: 'ProcedureTreeNode',
 };

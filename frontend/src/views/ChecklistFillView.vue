@@ -851,7 +851,9 @@ async function openConfirmation(sub) {
     const response = await api.get(`/api/checklist-submissions/${sub.id}`);
     confirmSubmission.value = response.data;
     confirmIds.value = new Set();
-    Object.keys(confirmValues).forEach((k) => delete confirmValues[k]);
+    Object.keys(confirmValues).forEach((k) => {
+      delete confirmValues[k];
+    });
     step.value = 'confirm-detail';
   } catch {
     showToast('Failed to load submission.', 'error');

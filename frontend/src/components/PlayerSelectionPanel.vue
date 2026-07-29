@@ -223,9 +223,13 @@ function toggleNewbies() {
   if (newbieIds.value.length === 0) return;
   const next = new Set(selectedIds.value);
   if (allNewbiesSelected.value) {
-    newbieIds.value.forEach((id) => next.delete(id));
+    newbieIds.value.forEach((id) => {
+      next.delete(id);
+    });
   } else {
-    newbieIds.value.forEach((id) => next.add(id));
+    newbieIds.value.forEach((id) => {
+      next.add(id);
+    });
   }
   selectedIds.value = next;
 }
@@ -234,22 +238,30 @@ function toggleDelegated() {
   if (delegatedIds.value.length === 0) return;
   const next = new Set(selectedIds.value);
   if (allDelegatedSelected.value) {
-    delegatedIds.value.forEach((id) => next.delete(id));
+    delegatedIds.value.forEach((id) => {
+      next.delete(id);
+    });
   } else {
-    delegatedIds.value.forEach((id) => next.add(id));
+    delegatedIds.value.forEach((id) => {
+      next.add(id);
+    });
   }
   selectedIds.value = next;
 }
 
 function selectAll() {
   const next = new Set(selectedIds.value);
-  filteredEmployees.value.forEach((e) => next.add(e.id));
+  filteredEmployees.value.forEach((e) => {
+    next.add(e.id);
+  });
   selectedIds.value = next;
 }
 
 function selectNone() {
   const next = new Set(selectedIds.value);
-  filteredEmployees.value.forEach((e) => next.delete(e.id));
+  filteredEmployees.value.forEach((e) => {
+    next.delete(e.id);
+  });
   selectedIds.value = next;
 }
 
@@ -284,12 +296,16 @@ async function fetchData() {
     selectedIds.value = new Set(allEmployees.value.map((e) => e.id));
 
     const nbIds = new Set();
-    (newbieRes.data || []).forEach((np) => nbIds.add(np.user_id));
+    (newbieRes.data || []).forEach((np) => {
+      nbIds.add(np.user_id);
+    });
     newbieIds.value = Array.from(nbIds);
 
     const delIds = new Set();
     (delegRes.data || []).forEach((del) => {
-      (del.users || []).forEach((u) => delIds.add(u.id));
+      (del.users || []).forEach((u) => {
+        delIds.add(u.id);
+      });
     });
     delegatedIds.value = Array.from(delIds);
 

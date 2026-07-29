@@ -121,7 +121,10 @@ const searchQuery = ref('');
 // Collect IDs in tree
 function gatherIds(nodes) {
   const ids = new Set();
-  for (const n of nodes) { ids.add(n.id); for (const id of gatherIds(n.children || [])) ids.add(id); }
+  for (const n of nodes) {
+    ids.add(n.id);
+    for (const id of gatherIds(n.children || [])) ids.add(id);
+  }
   return ids;
 }
 
@@ -129,21 +132,26 @@ const assignedIds = computed(() => gatherIds(treeData.value));
 
 const unassigned = computed(() =>
   allProcedures.value
-    .filter(p => !assignedIds.value.has(p.id))
-    .sort((a, b) => a.title.localeCompare(b.title))
+    .filter((p) => !assignedIds.value.has(p.id))
+    .sort((a, b) => a.title.localeCompare(b.title)),
 );
 
 const filteredUnassigned = computed(() => {
   if (!searchQuery.value) return unassigned.value;
   const q = searchQuery.value.toLowerCase();
-  return unassigned.value.filter(p =>
-    p.title.toLowerCase().includes(q) || p.identifier.toLowerCase().includes(q)
+  return unassigned.value.filter(
+    (p) => p.title.toLowerCase().includes(q) || p.identifier.toLowerCase().includes(q),
   );
 });
 
 const assignedList = computed(() => {
   const flat = [];
-  const walk = (nodes) => { for (const n of nodes) { flat.push(n); walk(n.children || []); } };
+  const walk = (nodes) => {
+    for (const n of nodes) {
+      flat.push(n);
+      walk(n.children || []);
+    }
+  };
   walk(treeData.value);
   return flat.sort((a, b) => a.title.localeCompare(b.title));
 });
@@ -169,7 +177,9 @@ async function onDropToRoot(e) {
 }
 
 async function fetchTree() {
-  try { treeData.value = (await api.get('/api/procedures-tree')).data; } catch {}
+  try {
+    treeData.value = (await api.get('/api/procedures-tree')).data;
+  } catch {}
 }
 
 async function fetchData() {
@@ -181,7 +191,10 @@ async function fetchData() {
     ]);
     treeData.value = treeRes.data;
     allProcedures.value = procRes.data;
-  } catch {} finally { loadingTree.value = false; }
+  } catch {
+  } finally {
+    loadingTree.value = false;
+  }
 }
 
 onMounted(fetchData);

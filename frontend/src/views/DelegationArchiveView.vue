@@ -191,23 +191,41 @@ const logsData = reactive({});
 const logsLoading = reactive({});
 
 const filters = ref({
-  start_from: '', start_to: '', end_from: '', destination: '', employee_id: '',
+  start_from: '',
+  start_to: '',
+  end_from: '',
+  destination: '',
+  employee_id: '',
 });
 
-const hasFilters = computed(() => Object.values(filters.value).some(v => v));
+const hasFilters = computed(() => Object.values(filters.value).some((v) => v));
 
 function getInitials(name) {
-  return (name || '').split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2);
+  return (name || '')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
 }
 
 function formatDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function formatDateTime(d) {
   if (!d) return '';
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function logColor(action) {
@@ -223,7 +241,9 @@ function toggleExpand(id) {
   expandedIds.has(id) ? expandedIds.delete(id) : expandedIds.add(id);
 }
 
-function getSubTab(id) { return subTabs[id] || 'people'; }
+function getSubTab(id) {
+  return subTabs[id] || 'people';
+}
 
 function setSubTab(id, tab) {
   subTabs[id] = tab;
@@ -236,12 +256,19 @@ function clearFilters() {
 }
 
 async function unarchiveDelegation(del) {
-  const ok = await confirm({ title: 'Unarchive Delegation', message: `Move "${del.name}" back to active delegations?`, confirmLabel: 'Unarchive', danger: false });
+  const ok = await confirm({
+    title: 'Unarchive Delegation',
+    message: `Move "${del.name}" back to active delegations?`,
+    confirmLabel: 'Unarchive',
+    danger: false,
+  });
   if (!ok) return;
   try {
     await api.post(`/api/delegation-archive/${del.id}/unarchive`);
     await fetchData();
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function fetchLogs(delId) {
@@ -249,15 +276,20 @@ async function fetchLogs(delId) {
   try {
     const res = await api.get(`/api/delegation-archive/${delId}/logs`);
     logsData[delId] = res.data;
-  } catch (e) { console.error(e); }
-  finally { logsLoading[delId] = false; }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    logsLoading[delId] = false;
+  }
 }
 
 async function fetchData() {
   loading.value = true;
   try {
     const params = {};
-    Object.entries(filters.value).forEach(([k, v]) => { if (v) params[k] = v; });
+    Object.entries(filters.value).forEach(([k, v]) => {
+      if (v) params[k] = v;
+    });
 
     const [archRes, destRes, usersRes] = await Promise.all([
       api.get('/api/delegation-archive', { params }),
@@ -267,8 +299,11 @@ async function fetchData() {
     archived.value = archRes.data;
     destinations.value = destRes.data;
     allUsers.value = usersRes.data;
-  } catch (e) { console.error(e); }
-  finally { loading.value = false; }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loading.value = false;
+  }
 }
 
 onMounted(fetchData);

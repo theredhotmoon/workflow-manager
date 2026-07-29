@@ -294,7 +294,11 @@ const showPublishModal = ref(false);
 const editorModalRef = ref(null);
 const publishModalRef = ref(null);
 useFocusTrap(editorModalRef, toRef(props, 'show'), { onEscape: () => handleClose() });
-useFocusTrap(publishModalRef, showPublishModal, { onEscape: () => { showPublishModal.value = false; } });
+useFocusTrap(publishModalRef, showPublishModal, {
+  onEscape: () => {
+    showPublishModal.value = false;
+  },
+});
 const changeReason = ref('');
 const loaded = ref(false);
 
@@ -312,22 +316,23 @@ const form = reactive({
 const touchedTitle = ref(false);
 const touchedOwner = ref(false);
 const titleError = computed(() =>
-  touchedTitle.value && !form.title.trim() ? 'Title is required.' : ''
+  touchedTitle.value && !form.title.trim() ? 'Title is required.' : '',
 );
 const ownerError = computed(() =>
-  touchedOwner.value && !form.owner_id ? 'Owner is required.' : ''
+  touchedOwner.value && !form.owner_id ? 'Owner is required.' : '',
 );
 
 const pendingFeedbacks = computed(() => {
   const prevVersion = originalVersion.value - 1;
-  return allFeedbacks.value.filter(fb =>
-    (fb.status === 'open' || fb.status === 'reviewed') &&
-    (fb.for_version === null || fb.for_version >= prevVersion)
+  return allFeedbacks.value.filter(
+    (fb) =>
+      (fb.status === 'open' || fb.status === 'reviewed') &&
+      (fb.for_version === null || fb.for_version >= prevVersion),
   );
 });
 
 const unresolvedCount = computed(() => {
-  return pendingFeedbacks.value.filter(fb => !fb._resolved && !fb.resolution).length;
+  return pendingFeedbacks.value.filter((fb) => !fb._resolved && !fb.resolution).length;
 });
 
 const editor = useEditor({
@@ -336,7 +341,9 @@ const editor = useEditor({
     Image.configure({ inline: false, allowBase64: true }),
     Link.configure({ openOnClick: false }),
     Underline,
-    Placeholder.configure({ placeholder: 'Write procedure steps here... Paste images directly from clipboard.' }),
+    Placeholder.configure({
+      placeholder: 'Write procedure steps here... Paste images directly from clipboard.',
+    }),
   ],
   content: '',
   editorProps: {
@@ -360,25 +367,87 @@ const editor = useEditor({
       return false;
     },
   },
-  onUpdate: ({ editor: ed }) => { form.content = ed.getHTML(); },
+  onUpdate: ({ editor: ed }) => {
+    form.content = ed.getHTML();
+  },
 });
 
 const toolbarButtons = computed(() => {
   if (!editor.value) return [];
   const e = editor.value;
   return [
-    { label: 'Bold', icon: '<b>B</b>', action: () => e.chain().focus().toggleBold().run(), isActive: () => e.isActive('bold') },
-    { label: 'Italic', icon: '<i>I</i>', action: () => e.chain().focus().toggleItalic().run(), isActive: () => e.isActive('italic') },
-    { label: 'Underline', icon: '<u>U</u>', action: () => e.chain().focus().toggleUnderline().run(), isActive: () => e.isActive('underline') },
-    { label: 'Strikethrough', icon: '<s>S</s>', action: () => e.chain().focus().toggleStrike().run(), isActive: () => e.isActive('strike') },
-    { label: 'Heading 1', icon: 'H1', action: () => e.chain().focus().toggleHeading({ level: 1 }).run(), isActive: () => e.isActive('heading', { level: 1 }) },
-    { label: 'Heading 2', icon: 'H2', action: () => e.chain().focus().toggleHeading({ level: 2 }).run(), isActive: () => e.isActive('heading', { level: 2 }) },
-    { label: 'Heading 3', icon: 'H3', action: () => e.chain().focus().toggleHeading({ level: 3 }).run(), isActive: () => e.isActive('heading', { level: 3 }) },
-    { label: 'Bullet List', icon: '•', action: () => e.chain().focus().toggleBulletList().run(), isActive: () => e.isActive('bulletList') },
-    { label: 'Numbered List', icon: '1.', action: () => e.chain().focus().toggleOrderedList().run(), isActive: () => e.isActive('orderedList') },
-    { label: 'Blockquote', icon: '"', action: () => e.chain().focus().toggleBlockquote().run(), isActive: () => e.isActive('blockquote') },
-    { label: 'Code', icon: '&lt;/&gt;', action: () => e.chain().focus().toggleCode().run(), isActive: () => e.isActive('code') },
-    { label: 'Code Block', icon: '{ }', action: () => e.chain().focus().toggleCodeBlock().run(), isActive: () => e.isActive('codeBlock') },
+    {
+      label: 'Bold',
+      icon: '<b>B</b>',
+      action: () => e.chain().focus().toggleBold().run(),
+      isActive: () => e.isActive('bold'),
+    },
+    {
+      label: 'Italic',
+      icon: '<i>I</i>',
+      action: () => e.chain().focus().toggleItalic().run(),
+      isActive: () => e.isActive('italic'),
+    },
+    {
+      label: 'Underline',
+      icon: '<u>U</u>',
+      action: () => e.chain().focus().toggleUnderline().run(),
+      isActive: () => e.isActive('underline'),
+    },
+    {
+      label: 'Strikethrough',
+      icon: '<s>S</s>',
+      action: () => e.chain().focus().toggleStrike().run(),
+      isActive: () => e.isActive('strike'),
+    },
+    {
+      label: 'Heading 1',
+      icon: 'H1',
+      action: () => e.chain().focus().toggleHeading({ level: 1 }).run(),
+      isActive: () => e.isActive('heading', { level: 1 }),
+    },
+    {
+      label: 'Heading 2',
+      icon: 'H2',
+      action: () => e.chain().focus().toggleHeading({ level: 2 }).run(),
+      isActive: () => e.isActive('heading', { level: 2 }),
+    },
+    {
+      label: 'Heading 3',
+      icon: 'H3',
+      action: () => e.chain().focus().toggleHeading({ level: 3 }).run(),
+      isActive: () => e.isActive('heading', { level: 3 }),
+    },
+    {
+      label: 'Bullet List',
+      icon: '•',
+      action: () => e.chain().focus().toggleBulletList().run(),
+      isActive: () => e.isActive('bulletList'),
+    },
+    {
+      label: 'Numbered List',
+      icon: '1.',
+      action: () => e.chain().focus().toggleOrderedList().run(),
+      isActive: () => e.isActive('orderedList'),
+    },
+    {
+      label: 'Blockquote',
+      icon: '"',
+      action: () => e.chain().focus().toggleBlockquote().run(),
+      isActive: () => e.isActive('blockquote'),
+    },
+    {
+      label: 'Code',
+      icon: '&lt;/&gt;',
+      action: () => e.chain().focus().toggleCode().run(),
+      isActive: () => e.isActive('code'),
+    },
+    {
+      label: 'Code Block',
+      icon: '{ }',
+      action: () => e.chain().focus().toggleCodeBlock().run(),
+      isActive: () => e.isActive('codeBlock'),
+    },
   ];
 });
 
@@ -401,7 +470,10 @@ async function saveDraft() {
   try {
     await api.put(`/api/procedures/${props.procedureId}/draft`, form);
     hasDraft.value = true;
-  } catch {} finally { saving.value = false; }
+  } catch {
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function publishOrCreate() {
@@ -419,11 +491,19 @@ async function publishOrCreate() {
       const res = await api.post('/api/procedures', form);
       emit('saved', res.data.id);
     }
-  } catch {} finally { saving.value = false; }
+  } catch {
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function deleteProcedure() {
-  const ok = await confirm({ title: 'Delete Procedure', message: 'Delete this procedure permanently? This cannot be undone.', confirmLabel: 'Delete', danger: true });
+  const ok = await confirm({
+    title: 'Delete Procedure',
+    message: 'Delete this procedure permanently? This cannot be undone.',
+    confirmLabel: 'Delete',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/procedures/${props.procedureId}`);
@@ -432,7 +512,12 @@ async function deleteProcedure() {
 }
 
 async function discardDraft() {
-  const ok = await confirm({ title: 'Discard Draft', message: 'Discard all draft changes? This cannot be undone.', confirmLabel: 'Discard', danger: true });
+  const ok = await confirm({
+    title: 'Discard Draft',
+    message: 'Discard all draft changes? This cannot be undone.',
+    confirmLabel: 'Discard',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/procedures/${props.procedureId}/draft`);
@@ -461,7 +546,7 @@ async function submitFeedbackReview(fb) {
 function loadFromResponse(data) {
   originalVersion.value = data.version;
   hasDraft.value = data.has_draft;
-  allFeedbacks.value = (data.feedbacks || []).map(fb => ({
+  allFeedbacks.value = (data.feedbacks || []).map((fb) => ({
     ...fb,
     _comment: fb.owner_comment || '',
   }));
@@ -474,7 +559,7 @@ function loadFromResponse(data) {
       requirements: data.draft_requirements ?? data.requirements ?? '',
       content: data.draft_content ?? data.content ?? '',
       owner_id: data.owner_id,
-      tag_ids: (data.tags || []).map(t => t.id),
+      tag_ids: (data.tags || []).map((t) => t.id),
     });
   } else {
     Object.assign(form, {
@@ -484,14 +569,22 @@ function loadFromResponse(data) {
       requirements: data.requirements || '',
       content: data.content || '',
       owner_id: data.owner_id,
-      tag_ids: (data.tags || []).map(t => t.id),
+      tag_ids: (data.tags || []).map((t) => t.id),
     });
   }
   editor.value?.commands.setContent(form.content);
 }
 
 function resetForm() {
-  Object.assign(form, { identifier: '', title: '', purpose: '', requirements: '', content: '', owner_id: '', tag_ids: [] });
+  Object.assign(form, {
+    identifier: '',
+    title: '',
+    purpose: '',
+    requirements: '',
+    content: '',
+    owner_id: '',
+    tag_ids: [],
+  });
   touchedTitle.value = false;
   touchedOwner.value = false;
   hasDraft.value = false;
@@ -506,7 +599,10 @@ function resetForm() {
 async function loadData() {
   if (loaded.value) return;
   try {
-    const [usersRes, tagsRes] = await Promise.all([api.get('/api/users'), api.get('/api/procedure-tags')]);
+    const [usersRes, tagsRes] = await Promise.all([
+      api.get('/api/users'),
+      api.get('/api/procedure-tags'),
+    ]);
     users.value = usersRes.data;
     allTags.value = tagsRes.data;
   } catch {}
@@ -520,7 +616,9 @@ async function loadData() {
         return;
       }
       loadFromResponse(res.data);
-    } catch { emit('close'); }
+    } catch {
+      emit('close');
+    }
   } else {
     form.owner_id = authUser.value?.id || '';
   }
@@ -528,14 +626,19 @@ async function loadData() {
 }
 
 // Watch show prop to load data when modal opens and reset when it closes
-watch(() => props.show, async (newVal) => {
-  if (newVal) {
-    resetForm();
-    await loadData();
-  }
-});
+watch(
+  () => props.show,
+  async (newVal) => {
+    if (newVal) {
+      resetForm();
+      await loadData();
+    }
+  },
+);
 
-onBeforeUnmount(() => { editor.value?.destroy(); });
+onBeforeUnmount(() => {
+  editor.value?.destroy();
+});
 </script>
 
 <style>

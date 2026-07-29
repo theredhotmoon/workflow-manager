@@ -293,44 +293,71 @@ const logsData = reactive({});
 const logsLoading = reactive({});
 
 const form = ref({
-  name: '', destination: '', description: '', start_datetime: '', end_datetime: '', registration_open: true,
+  name: '',
+  destination: '',
+  description: '',
+  start_datetime: '',
+  end_datetime: '',
+  registration_open: true,
 });
 
-const touched = reactive({ name: false, destination: false, start_datetime: false, end_datetime: false });
+const touched = reactive({
+  name: false,
+  destination: false,
+  start_datetime: false,
+  end_datetime: false,
+});
 
 const formErrors = computed(() => ({
-  name: touched.name && !form.value.name.trim()
-    ? 'Name is required.' : '',
-  destination: touched.destination && !form.value.destination.trim()
-    ? 'Destination is required.' : '',
-  start_datetime: touched.start_datetime && !form.value.start_datetime
-    ? 'Start date is required.' : '',
-  end_datetime: touched.end_datetime && !form.value.end_datetime
-    ? 'End date is required.'
-    : touched.end_datetime && form.value.start_datetime && form.value.end_datetime < form.value.start_datetime
-      ? 'End date must be on or after start date.' : '',
+  name: touched.name && !form.value.name.trim() ? 'Name is required.' : '',
+  destination:
+    touched.destination && !form.value.destination.trim() ? 'Destination is required.' : '',
+  start_datetime:
+    touched.start_datetime && !form.value.start_datetime ? 'Start date is required.' : '',
+  end_datetime:
+    touched.end_datetime && !form.value.end_datetime
+      ? 'End date is required.'
+      : touched.end_datetime &&
+          form.value.start_datetime &&
+          form.value.end_datetime < form.value.start_datetime
+        ? 'End date must be on or after start date.'
+        : '',
 }));
 
 function getInitials(name) {
-  return (name || '').split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2);
+  return (name || '')
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
 }
 
 function formatDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function formatDateTime(d) {
   if (!d) return '';
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function pendingCount(del) {
-  return (del.users || []).filter(u => u.pivot?.status === 'pending').length;
+  return (del.users || []).filter((u) => u.pivot?.status === 'pending').length;
 }
 
 function approvedCount(del) {
-  return (del.users || []).filter(u => u.pivot?.status === 'approved').length;
+  return (del.users || []).filter((u) => u.pivot?.status === 'approved').length;
 }
 
 function logColor(action) {
@@ -351,7 +378,9 @@ function toggleExpand(id) {
   }
 }
 
-function getSubTab(id) { return subTabs[id] || 'people'; }
+function getSubTab(id) {
+  return subTabs[id] || 'people';
+}
 
 function setSubTab(id, tab) {
   subTabs[id] = tab;
@@ -359,14 +388,26 @@ function setSubTab(id, tab) {
 }
 
 function availableUsers(del) {
-  const assignedIds = new Set((del.users || []).map(u => u.id));
-  return allUsers.value.filter(u => !assignedIds.has(u.id));
+  const assignedIds = new Set((del.users || []).map((u) => u.id));
+  return allUsers.value.filter((u) => !assignedIds.has(u.id));
 }
 
 function openCreateModal() {
   editingId.value = null;
-  form.value = { name: '', destination: '', description: '', start_datetime: '', end_datetime: '', registration_open: true };
-  Object.assign(touched, { name: false, destination: false, start_datetime: false, end_datetime: false });
+  form.value = {
+    name: '',
+    destination: '',
+    description: '',
+    start_datetime: '',
+    end_datetime: '',
+    registration_open: true,
+  };
+  Object.assign(touched, {
+    name: false,
+    destination: false,
+    start_datetime: false,
+    end_datetime: false,
+  });
   showModal.value = true;
 }
 
@@ -380,7 +421,12 @@ function editDelegation(del) {
     end_datetime: del.end_datetime?.substring(0, 10) || '',
     registration_open: del.registration_open,
   };
-  Object.assign(touched, { name: false, destination: false, start_datetime: false, end_datetime: false });
+  Object.assign(touched, {
+    name: false,
+    destination: false,
+    start_datetime: false,
+    end_datetime: false,
+  });
   showModal.value = true;
 }
 
@@ -394,24 +440,36 @@ async function saveModal() {
     }
     showModal.value = false;
     await fetchData();
-  } catch (e) { console.error(e); }
-  finally { saving.value = false; }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function toggleRegistration(del) {
   try {
     await api.put(`/api/delegations/${del.id}`, { registration_open: !del.registration_open });
     await fetchData();
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function deleteDelegation(del) {
-  const ok = await confirm({ title: 'Delete Delegation', message: `Delete delegation "${del.name}"? This cannot be undone.`, confirmLabel: 'Delete', danger: true });
+  const ok = await confirm({
+    title: 'Delete Delegation',
+    message: `Delete delegation "${del.name}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/delegations/${del.id}`);
     await fetchData();
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function archiveDelegation(del) {
@@ -419,18 +477,30 @@ async function archiveDelegation(del) {
   const endDate = new Date(del.end_datetime);
   const isPast = endDate < now;
 
-  const ok = await confirm({ title: 'Archive Delegation', message: `Move delegation "${del.name}" to archive?`, confirmLabel: 'Archive', danger: false });
+  const ok = await confirm({
+    title: 'Archive Delegation',
+    message: `Move delegation "${del.name}" to archive?`,
+    confirmLabel: 'Archive',
+    danger: false,
+  });
   if (!ok) return;
 
   if (!isPast) {
-    const ok2 = await confirm({ title: 'Delegation Still Active', message: 'This delegation has not ended yet. Archive it anyway?', confirmLabel: 'Archive Anyway', danger: true });
+    const ok2 = await confirm({
+      title: 'Delegation Still Active',
+      message: 'This delegation has not ended yet. Archive it anyway?',
+      confirmLabel: 'Archive Anyway',
+      danger: true,
+    });
     if (!ok2) return;
   }
 
   try {
     await api.post(`/api/delegations/${del.id}/archive`);
     await fetchData();
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function addPerson(del) {
@@ -441,7 +511,9 @@ async function addPerson(del) {
     addUserForm[del.id] = '';
     await fetchData();
     refreshLogs(del.id);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function removePerson(del, user) {
@@ -449,7 +521,9 @@ async function removePerson(del, user) {
     await api.post(`/api/delegations/${del.id}/remove-user`, { user_id: user.id });
     await fetchData();
     refreshLogs(del.id);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function approveUser(del, user) {
@@ -457,7 +531,9 @@ async function approveUser(del, user) {
     await api.post(`/api/delegations/${del.id}/approve-user`, { user_id: user.id });
     await fetchData();
     refreshLogs(del.id);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function rejectUser(del, user) {
@@ -465,19 +541,23 @@ async function rejectUser(del, user) {
     await api.post(`/api/delegations/${del.id}/reject-user`, { user_id: user.id });
     await fetchData();
     refreshLogs(del.id);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function updateDates(del, user, field, value) {
   try {
     await api.put(`/api/delegations/${del.id}/user-dates`, {
       user_id: user.id,
-      custom_start: field === 'custom_start' ? (value || null) : (user.pivot?.custom_start || null),
-      custom_end: field === 'custom_end' ? (value || null) : (user.pivot?.custom_end || null),
+      custom_start: field === 'custom_start' ? value || null : user.pivot?.custom_start || null,
+      custom_end: field === 'custom_end' ? value || null : user.pivot?.custom_end || null,
     });
     await fetchData();
     refreshLogs(del.id);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function fetchLogs(delId) {
@@ -485,8 +565,11 @@ async function fetchLogs(delId) {
   try {
     const res = await api.get(`/api/delegations/${delId}/logs`);
     logsData[delId] = res.data;
-  } catch (e) { console.error(e); }
-  finally { logsLoading[delId] = false; }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    logsLoading[delId] = false;
+  }
 }
 
 function refreshLogs(delId) {
@@ -502,8 +585,11 @@ async function fetchData() {
     ]);
     delegations.value = delRes.data;
     allUsers.value = usersRes.data;
-  } catch (e) { console.error(e); }
-  finally { loading.value = false; }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loading.value = false;
+  }
 }
 
 onMounted(fetchData);

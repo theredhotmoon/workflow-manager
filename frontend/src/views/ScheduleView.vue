@@ -1208,7 +1208,9 @@ const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth()); // 0-indexed
 const schedule = ref({});
 const sideAccordion = ref({ employees: true, autoFill: false, overlays: false });
-const hasScheduleShifts = computed(() => Object.values(schedule.value).some(shifts => shifts.length > 0));
+const hasScheduleShifts = computed(() =>
+  Object.values(schedule.value).some((shifts) => shifts.length > 0),
+);
 const employees = ref([]);
 const activeShiftId = ref(null);
 const empSort = ref('name');
@@ -1250,10 +1252,12 @@ async function fetchShiftGroups() {
     shiftGroups.value = res.data;
     // Set active group to first (default) if not set
     if (!activeGroupId.value && shiftGroups.value.length > 0) {
-      const defaultGroup = shiftGroups.value.find(g => g.is_default);
+      const defaultGroup = shiftGroups.value.find((g) => g.is_default);
       activeGroupId.value = defaultGroup?.id || shiftGroups.value[0].id;
     }
-  } catch { shiftGroups.value = []; }
+  } catch {
+    shiftGroups.value = [];
+  }
 }
 
 function switchGroup(groupId) {
@@ -1283,13 +1287,18 @@ async function createShiftGroup() {
 }
 
 async function deleteShiftGroup(group) {
-  const ok = await confirm({ title: 'Delete Shift Group', message: `Delete group "${group.name}"? This will remove all shifts and assignments in this group.`, confirmLabel: 'Delete', danger: true });
+  const ok = await confirm({
+    title: 'Delete Shift Group',
+    message: `Delete group "${group.name}"? This will remove all shifts and assignments in this group.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/shift-groups/${group.id}`);
-    shiftGroups.value = shiftGroups.value.filter(g => g.id !== group.id);
+    shiftGroups.value = shiftGroups.value.filter((g) => g.id !== group.id);
     // Switch to default group
-    const defaultGroup = shiftGroups.value.find(g => g.is_default);
+    const defaultGroup = shiftGroups.value.find((g) => g.is_default);
     activeGroupId.value = defaultGroup?.id || shiftGroups.value[0]?.id;
     fetchSchedule();
     showToast(`Group "${group.name}" deleted.`);
@@ -1306,10 +1315,13 @@ function startGroupRename(group) {
 async function saveGroupRename() {
   if (!editingGroupId.value) return;
   const name = editingGroupName.value.trim();
-  if (!name) { editingGroupId.value = null; return; }
+  if (!name) {
+    editingGroupId.value = null;
+    return;
+  }
   try {
     await api.put(`/api/shift-groups/${editingGroupId.value}`, { name });
-    const group = shiftGroups.value.find(g => g.id === editingGroupId.value);
+    const group = shiftGroups.value.find((g) => g.id === editingGroupId.value);
     if (group) group.name = name;
     editingGroupId.value = null;
   } catch (err) {
@@ -1341,13 +1353,17 @@ async function fetchShiftColors() {
   try {
     const res = await api.get('/api/shift-colors');
     shiftColors.value = res.data;
-  } catch { shiftColors.value = []; }
+  } catch {
+    shiftColors.value = [];
+  }
 }
 
 async function clearMonth() {
   deleting.value = true;
   try {
-    const res = await api.delete('/api/schedule/clear-month', { data: { month: monthKey.value, shift_group_id: activeGroupId.value } });
+    const res = await api.delete('/api/schedule/clear-month', {
+      data: { month: monthKey.value, shift_group_id: activeGroupId.value },
+    });
     showToast(res.data.message, 'success');
     deleteStep.value = 0;
     await fetchSchedule();
@@ -1363,24 +1379,28 @@ async function fetchDelegations() {
   try {
     const res = await api.get('/api/delegations/month', { params: { month: monthKey.value } });
     monthDelegations.value = res.data;
-  } catch { monthDelegations.value = []; }
+  } catch {
+    monthDelegations.value = [];
+  }
 }
 
 function getDayDelegations(dateStr) {
   if (!dateStr) return [];
-  return monthDelegations.value.filter(d => {
+  return monthDelegations.value.filter((d) => {
     const start = d.start_datetime.substring(0, 10);
     const end = d.end_datetime.substring(0, 10);
     if (dateStr < start || dateStr > end) return false;
     // If an employee is selected, show only their delegations
     if (selectedEmployee.value) {
-      return d.users.some(u => u.id === selectedEmployee.value.id);
+      return d.users.some((u) => u.id === selectedEmployee.value.id);
     }
     return true;
   });
 }
 
-watch(showDelegations, (val) => { if (val) fetchDelegations(); });
+watch(showDelegations, (val) => {
+  if (val) fetchDelegations();
+});
 
 // Newbies overlay
 const showNewbies = ref(false);
@@ -1390,12 +1410,14 @@ async function fetchNewbies() {
   try {
     const res = await api.get('/api/newbie-periods/month', { params: { month: monthKey.value } });
     monthNewbies.value = res.data;
-  } catch { monthNewbies.value = []; }
+  } catch {
+    monthNewbies.value = [];
+  }
 }
 
 function getDayNewbies(dateStr) {
   if (!dateStr) return [];
-  return monthNewbies.value.filter(np => {
+  return monthNewbies.value.filter((np) => {
     const start = np.start_date?.substring(0, 10);
     const end = np.end_date?.substring(0, 10);
     if (dateStr < start || dateStr > end) return false;
@@ -1406,27 +1428,33 @@ function getDayNewbies(dateStr) {
   });
 }
 
-watch(showNewbies, (val) => { if (val) fetchNewbies(); });
+watch(showNewbies, (val) => {
+  if (val) fetchNewbies();
+});
 
 // Office closures fetch + helpers
 async function fetchClosures() {
   try {
     const res = await api.get('/api/office-closures', { params: { month: monthKey.value } });
     monthClosures.value = res.data;
-  } catch { monthClosures.value = []; }
+  } catch {
+    monthClosures.value = [];
+  }
 }
 
 function getClosureForDate(dateStr) {
   if (!dateStr) return null;
-  return monthClosures.value.find(c => (c.date?.substring?.(0, 10) || c.date) === dateStr);
+  return monthClosures.value.find((c) => (c.date?.substring?.(0, 10) || c.date) === dateStr);
 }
 
-watch(showClosures, (val) => { if (val) fetchClosures(); });
+watch(showClosures, (val) => {
+  if (val) fetchClosures();
+});
 
 // Newbie helpers
 function isCurrentNewbie(userId) {
   const today = new Date().toISOString().split('T')[0];
-  return monthNewbies.value.some(np => {
+  return monthNewbies.value.some((np) => {
     const start = np.start_date?.substring(0, 10);
     const end = np.end_date?.substring(0, 10);
     return np.user_id === userId && today >= start && today <= end;
@@ -1461,8 +1489,13 @@ const adjacentConfirm = ref({
 
 // Delegation conflict confirmation
 const delegConfirm = ref({
-  show: false, shift: null, item: null, itemIndex: null,
-  userName: '', dateStr: '', delegations: [],
+  show: false,
+  shift: null,
+  item: null,
+  itemIndex: null,
+  userName: '',
+  dateStr: '',
+  delegations: [],
 });
 
 // Office closure conflict
@@ -1490,7 +1523,8 @@ function buildDefaultShifts(count) {
       { start_time: '22:00', end_time: '06:00', checklists: [], color: null, color_label: '' },
     ],
   };
-  if (presets[count]) return presets[count].map(p => ({ ...p, checklists: [], color: null, color_label: '' }));
+  if (presets[count])
+    return presets[count].map((p) => ({ ...p, checklists: [], color: null, color_label: '' }));
   const hoursPerShift = Math.floor(24 / count);
   const shifts = [];
   let startMin = 6 * 60;
@@ -1527,7 +1561,18 @@ function syncNextShiftStart(currentIdx) {
 }
 
 // Donut chart computed data
-const defaultDonutColors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#14b8a6'];
+const defaultDonutColors = [
+  '#6366f1',
+  '#8b5cf6',
+  '#ec4899',
+  '#f43f5e',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#06b6d4',
+  '#3b82f6',
+  '#14b8a6',
+];
 
 function timeToMinutes(t) {
   if (!t) return 0;
@@ -1540,7 +1585,7 @@ function minutesToAngle(minutes) {
 }
 
 function polarToCart(cx, cy, r, angleDeg) {
-  const rad = (angleDeg - 90) * Math.PI / 180;
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
@@ -1548,7 +1593,7 @@ function describeArc(cx, cy, r, startAngle, endAngle) {
   if (endAngle - startAngle >= 360) endAngle = startAngle + 359.99;
   const start = polarToCart(cx, cy, r, startAngle);
   const end = polarToCart(cx, cy, r, endAngle);
-  const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
+  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
   return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
 }
 
@@ -1618,7 +1663,12 @@ const timeForm = ref({
 const { showToast } = useToast();
 
 // Computed
-const canManageSchedule = computed(() => currentUser.value?.is_admin || currentUser.value?.role === 'admin' || currentUser.value?.role === 'schedule_maintainer');
+const canManageSchedule = computed(
+  () =>
+    currentUser.value?.is_admin ||
+    currentUser.value?.role === 'admin' ||
+    currentUser.value?.role === 'schedule_maintainer',
+);
 
 const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -1641,7 +1691,7 @@ function getEmployeeShiftCount(userId) {
     const dayShifts = schedule.value[dateStr];
     if (!dayShifts) continue;
     for (const shift of dayShifts) {
-      if (shift.assignments && shift.assignments.some(a => a.user_id === userId)) {
+      if (shift.assignments && shift.assignments.some((a) => a.user_id === userId)) {
         count++;
       }
     }
@@ -1657,10 +1707,10 @@ function getEmployeeTotalHours(userId) {
     if (!dayShifts) continue;
     for (const shift of dayShifts) {
       if (!shift.assignments || !shift.start_time || !shift.end_time) continue;
-      if (!shift.assignments.some(a => a.user_id === userId)) continue;
+      if (!shift.assignments.some((a) => a.user_id === userId)) continue;
       const [sh, sm] = shift.start_time.split(':').map(Number);
       const [eh, em] = shift.end_time.split(':').map(Number);
-      let dur = (eh * 60 + em) - (sh * 60 + sm);
+      let dur = eh * 60 + em - (sh * 60 + sm);
       if (dur <= 0) dur += 24 * 60; // overnight shift
       totalMinutes += dur;
     }
@@ -1675,7 +1725,7 @@ function getOvernightFromPrevDay(dateStr) {
   prevDate.setDate(prevDate.getDate() - 1);
   const prevDateStr = formatLocalDate(prevDate);
   const prevDayShifts = schedule.value[prevDateStr] || [];
-  return prevDayShifts.filter(s => s.start_time && s.end_time && s.end_time < s.start_time);
+  return prevDayShifts.filter((s) => s.start_time && s.end_time && s.end_time < s.start_time);
 }
 
 function formatLocalDate(d) {
@@ -1790,9 +1840,14 @@ async function fetchSchedule() {
     const response = await api.get('/api/schedule', { params });
     schedule.value = response.data.schedule;
     employees.value = response.data.employees;
-    employeePool.value = response.data.employees.map(e => ({ ...e, user_id: e.id, user_name: e.name }));
+    employeePool.value = response.data.employees.map((e) => ({
+      ...e,
+      user_id: e.id,
+      user_name: e.name,
+    }));
     // Update activeGroupId from server response if available (but not when in all-groups mode)
-    if (response.data.shift_group_id && !isAllGroupsMode.value) activeGroupId.value = response.data.shift_group_id;
+    if (response.data.shift_group_id && !isAllGroupsMode.value)
+      activeGroupId.value = response.data.shift_group_id;
     fetchDelegations(); // Always fetch for conflict checks
     fetchNewbies(); // Always fetch for newbie star display
     fetchShiftColors(); // Load global color definitions
@@ -1815,7 +1870,7 @@ async function fetchTemplates() {
 function openChecklistConfig(shift, dateStr) {
   checklistConfigShift.value = shift;
   checklistConfigDate.value = dateStr;
-  checklistForm.value = (shift.shift_checklists || []).map(sc => ({
+  checklistForm.value = (shift.shift_checklists || []).map((sc) => ({
     checklist_template_id: sc.checklist_template_id,
     is_required: sc.is_required || false,
     deadline_minutes: sc.deadline_minutes || null,
@@ -1829,7 +1884,7 @@ async function saveChecklistConfig() {
   if (!shift) return;
 
   // Filter out items without a template selected
-  const checklists = checklistForm.value.filter(i => i.checklist_template_id);
+  const checklists = checklistForm.value.filter((i) => i.checklist_template_id);
 
   savingChecklist.value = true;
   try {
@@ -1902,10 +1957,12 @@ async function generateMonth() {
 
   if (hasOfficeWeekday || hasOfficeWeekend) {
     try {
-      const res = await api.get('/api/office-closures/conflicts', { params: { month: monthKey.value } });
+      const res = await api.get('/api/office-closures/conflicts', {
+        params: { month: monthKey.value },
+      });
       const allClosures = res.data || [];
       // Filter: which closed dates conflict with office-mode days?
-      const conflicts = allClosures.filter(c => {
+      const conflicts = allClosures.filter((c) => {
         const d = new Date((c.date?.substring?.(0, 10) || c.date) + 'T12:00:00');
         const dow = d.getDay(); // 0=Sun, 6=Sat
         const isWeekend = dow === 0 || dow === 6;
@@ -1916,7 +1973,9 @@ async function generateMonth() {
         showGenerateModal.value = false;
         return; // Wait for confirmation
       }
-    } catch { /* proceed if check fails */ }
+    } catch {
+      /* proceed if check fails */
+    }
   }
 
   await doGenerateMonth();
@@ -1932,7 +1991,9 @@ async function proceedGenerate() {
 }
 
 async function proceedGenerateAsRemote() {
-  const closedDates = closureConflict.value.closures.map(c => (c.date?.substring?.(0, 10) || c.date));
+  const closedDates = closureConflict.value.closures.map(
+    (c) => c.date?.substring?.(0, 10) || c.date,
+  );
   closureConflict.value = { show: false, closures: [] };
   await doGenerateMonth();
   // Now switch all shifts on closed dates to remote
@@ -1945,12 +2006,15 @@ async function proceedGenerateAsRemote() {
             await api.put(`/api/schedule/shifts/${shift.id}/work-mode`, { work_mode: 'remote' });
             shift.work_mode = 'remote';
             switched++;
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }
       }
     }
   }
-  if (switched > 0) showToast(`Switched ${switched} shift${switched > 1 ? 's' : ''} to remote on closed dates.`);
+  if (switched > 0)
+    showToast(`Switched ${switched} shift${switched > 1 ? 's' : ''} to remote on closed dates.`);
 }
 
 function formatClosureDate(dateStr) {
@@ -1962,17 +2026,19 @@ async function doGenerateMonth() {
   generating.value = true;
   showGenerateModal.value = false;
   try {
-    const shiftTimes = genConfig.value.shifts.map(s => ({
+    const shiftTimes = genConfig.value.shifts.map((s) => ({
       start_time: s.start_time,
       end_time: s.end_time,
       color: s.color || null,
       color_label: s.color_label || null,
-      checklists: (s.checklists || []).filter(c => c.checklist_template_id).map(c => ({
-        checklist_template_id: c.checklist_template_id,
-        is_required: c.is_required || false,
-        deadline_minutes: c.deadline_minutes || null,
-        deadline_reference: c.deadline_reference || 'shift_start',
-      })),
+      checklists: (s.checklists || [])
+        .filter((c) => c.checklist_template_id)
+        .map((c) => ({
+          checklist_template_id: c.checklist_template_id,
+          is_required: c.is_required || false,
+          deadline_minutes: c.deadline_minutes || null,
+          deadline_reference: c.deadline_reference || 'shift_start',
+        })),
     }));
     const response = await api.post('/api/schedule/generate', {
       month: monthKey.value,
@@ -2038,7 +2104,9 @@ function onDragStart(evt) {
 
 function onDragEnd() {
   // Clear the flag after a small delay so the click event (which fires after mouseup) sees it
-  setTimeout(() => { wasDragging.value = false; }, 50);
+  setTimeout(() => {
+    wasDragging.value = false;
+  }, 50);
 }
 
 function handleEmployeeClick(emp) {
@@ -2051,19 +2119,21 @@ function handleEmployeeClick(emp) {
 function getAdjacentConflicts(userId, targetShift, dateStr) {
   const conflicts = [];
   const dayShifts = schedule.value[dateStr] || [];
-  const shiftIdx = dayShifts.findIndex(s => s.id === targetShift.id);
+  const shiftIdx = dayShifts.findIndex((s) => s.id === targetShift.id);
 
   // Check previous shift on same day
   if (shiftIdx > 0) {
     const prevShift = dayShifts[shiftIdx - 1];
-    const isAssigned = prevShift.assignments.some(a => a.user_id === userId);
+    const isAssigned = prevShift.assignments.some((a) => a.user_id === userId);
     if (isAssigned) {
       conflicts.push({
         date: dateStr,
         shiftNumber: prevShift.shift_number,
         startTime: prevShift.start_time ? prevShift.start_time.substring(0, 5) : null,
         endTime: prevShift.end_time ? prevShift.end_time.substring(0, 5) : null,
-        position: isOvernightShift(prevShift) ? 'overnight shift before (spills into next day)' : 'shift before',
+        position: isOvernightShift(prevShift)
+          ? 'overnight shift before (spills into next day)'
+          : 'shift before',
       });
     }
   }
@@ -2071,7 +2141,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
   // Check next shift on same day
   if (shiftIdx >= 0 && shiftIdx < dayShifts.length - 1) {
     const nextShift = dayShifts[shiftIdx + 1];
-    const isAssigned = nextShift.assignments.some(a => a.user_id === userId);
+    const isAssigned = nextShift.assignments.some((a) => a.user_id === userId);
     if (isAssigned) {
       conflicts.push({
         date: dateStr,
@@ -2091,14 +2161,16 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
     const prevDayShifts = schedule.value[prevDateStr] || [];
     if (prevDayShifts.length > 0) {
       const lastShift = prevDayShifts[prevDayShifts.length - 1];
-      const isAssigned = lastShift.assignments.some(a => a.user_id === userId);
+      const isAssigned = lastShift.assignments.some((a) => a.user_id === userId);
       if (isAssigned) {
         conflicts.push({
           date: prevDateStr,
           shiftNumber: lastShift.shift_number,
           startTime: lastShift.start_time ? lastShift.start_time.substring(0, 5) : null,
           endTime: lastShift.end_time ? lastShift.end_time.substring(0, 5) : null,
-          position: isOvernightShift(lastShift) ? 'overnight shift from previous day (ends ' + lastShift.end_time?.substring(0, 5) + ')' : 'last shift previous day',
+          position: isOvernightShift(lastShift)
+            ? 'overnight shift from previous day (ends ' + lastShift.end_time?.substring(0, 5) + ')'
+            : 'last shift previous day',
         });
       }
     }
@@ -2113,7 +2185,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
     const nextDayShifts = schedule.value[nextDateStr] || [];
     if (nextDayShifts.length > 0) {
       const firstShift = nextDayShifts[0];
-      const isAssigned = firstShift.assignments.some(a => a.user_id === userId);
+      const isAssigned = firstShift.assignments.some((a) => a.user_id === userId);
       if (isAssigned) {
         conflicts.push({
           date: nextDateStr,
@@ -2134,7 +2206,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
     const nextDayShifts = schedule.value[nextDateStr] || [];
     if (nextDayShifts.length > 0) {
       const firstShift = nextDayShifts[0];
-      const isAssigned = firstShift.assignments.some(a => a.user_id === userId);
+      const isAssigned = firstShift.assignments.some((a) => a.user_id === userId);
       if (isAssigned) {
         conflicts.push({
           date: nextDateStr,
@@ -2183,9 +2255,12 @@ async function onDrop(evt, shift, dateStr) {
   }
 
   try {
-    const res = await api.get(`/api/user-availabilities/${userId}/month`, { params: { month: monthKey.value } });
+    const res = await api.get(`/api/user-availabilities/${userId}/month`, {
+      params: { month: monthKey.value },
+    });
     const unavailEntries = (res.data || []).filter(
-      e => e.type === 'unavailable' && datesToCheck.some(d => d >= e.start_date && d <= e.end_date)
+      (e) =>
+        e.type === 'unavailable' && datesToCheck.some((d) => d >= e.start_date && d <= e.end_date),
     );
 
     if (unavailEntries.length > 0) {
@@ -2229,7 +2304,15 @@ function cancelAvailConfirm() {
   if (shift && itemIndex !== null) {
     shift.assignments.splice(itemIndex, 1);
   }
-  availConfirm.value = { show: false, shift: null, item: null, itemIndex: null, userName: '', dateStr: '', entries: [] };
+  availConfirm.value = {
+    show: false,
+    shift: null,
+    item: null,
+    itemIndex: null,
+    userName: '',
+    dateStr: '',
+    entries: [],
+  };
 }
 
 async function confirmAvailAssign() {
@@ -2239,27 +2322,41 @@ async function confirmAvailAssign() {
     // After confirming unavailability, check delegation conflict
     await proceedWithDelegationCheck(shift, item, itemIndex, dateStr);
   }
-  availConfirm.value = { show: false, shift: null, item: null, itemIndex: null, userName: '', dateStr: '', entries: [] };
+  availConfirm.value = {
+    show: false,
+    shift: null,
+    item: null,
+    itemIndex: null,
+    userName: '',
+    dateStr: '',
+    entries: [],
+  };
 }
 
 async function proceedWithDelegationCheck(shift, item, itemIndex, dateStr) {
   // Check delegation conflict
   try {
-    const matchingDelegations = monthDelegations.value.filter(d => {
+    const matchingDelegations = monthDelegations.value.filter((d) => {
       const start = d.start_datetime.substring(0, 10);
       const end = d.end_datetime.substring(0, 10);
       if (dateStr < start || dateStr > end) return false;
-      return d.users.some(u => u.id === item.user_id);
+      return d.users.some((u) => u.id === item.user_id);
     });
     if (matchingDelegations.length > 0) {
       delegConfirm.value = {
-        show: true, shift, item, itemIndex,
+        show: true,
+        shift,
+        item,
+        itemIndex,
         userName: item.user_name || item.name || 'User',
-        dateStr, delegations: matchingDelegations,
+        dateStr,
+        delegations: matchingDelegations,
       };
       return;
     }
-  } catch { /* proceed */ }
+  } catch {
+    /* proceed */
+  }
 
   await proceedWithAdjacentCheck(shift, item, itemIndex, dateStr);
 }
@@ -2269,7 +2366,15 @@ function cancelDelegConfirm() {
   if (shift && itemIndex !== null) {
     shift.assignments.splice(itemIndex, 1);
   }
-  delegConfirm.value = { show: false, shift: null, item: null, itemIndex: null, userName: '', dateStr: '', delegations: [] };
+  delegConfirm.value = {
+    show: false,
+    shift: null,
+    item: null,
+    itemIndex: null,
+    userName: '',
+    dateStr: '',
+    delegations: [],
+  };
 }
 
 async function confirmDelegAssign() {
@@ -2278,7 +2383,15 @@ async function confirmDelegAssign() {
   if (shift && item) {
     await proceedWithAdjacentCheck(shift, item, itemIndex, dateStr);
   }
-  delegConfirm.value = { show: false, shift: null, item: null, itemIndex: null, userName: '', dateStr: '', delegations: [] };
+  delegConfirm.value = {
+    show: false,
+    shift: null,
+    item: null,
+    itemIndex: null,
+    userName: '',
+    dateStr: '',
+    delegations: [],
+  };
 }
 
 function cancelAdjacentConfirm() {
@@ -2286,7 +2399,15 @@ function cancelAdjacentConfirm() {
   if (shift && itemIndex !== null) {
     shift.assignments.splice(itemIndex, 1);
   }
-  adjacentConfirm.value = { show: false, shift: null, item: null, itemIndex: null, userName: '', dateStr: '', conflicts: [] };
+  adjacentConfirm.value = {
+    show: false,
+    shift: null,
+    item: null,
+    itemIndex: null,
+    userName: '',
+    dateStr: '',
+    conflicts: [],
+  };
 }
 
 async function confirmAdjacentAssign() {
@@ -2296,7 +2417,15 @@ async function confirmAdjacentAssign() {
     await doAssign(shift, item, itemIndex);
     showToast('Assigned to back-to-back shift.', 'success');
   }
-  adjacentConfirm.value = { show: false, shift: null, item: null, itemIndex: null, userName: '', dateStr: '', conflicts: [] };
+  adjacentConfirm.value = {
+    show: false,
+    shift: null,
+    item: null,
+    itemIndex: null,
+    userName: '',
+    dateStr: '',
+    conflicts: [],
+  };
 }
 
 const pendingRemoveAssignmentId = ref(null);
@@ -2324,13 +2453,13 @@ async function onRemove(evt, shift) {
 async function removeAssignment(assignment, shift) {
   if (!assignment.id) {
     // Not yet saved, just remove from UI
-    const idx = shift.assignments.findIndex(a => a === assignment);
+    const idx = shift.assignments.findIndex((a) => a === assignment);
     if (idx !== -1) shift.assignments.splice(idx, 1);
     return;
   }
   try {
     await api.delete(`/api/schedule/unassign/${assignment.id}`);
-    const idx = shift.assignments.findIndex(a => a.id === assignment.id);
+    const idx = shift.assignments.findIndex((a) => a.id === assignment.id);
     if (idx !== -1) shift.assignments.splice(idx, 1);
   } catch {
     showToast('Failed to remove assignment.', 'error');
@@ -2339,7 +2468,12 @@ async function removeAssignment(assignment, shift) {
 
 function getInitials(name) {
   if (!name) return '';
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 // Watch month changes
@@ -2378,7 +2512,7 @@ onMounted(async () => {
   // Auto-select highlighted employee after data loads
   if (highlightUserId) {
     const empId = parseInt(highlightUserId);
-    const emp = employeePool.value.find(e => e.id === empId);
+    const emp = employeePool.value.find((e) => e.id === empId);
     if (emp) {
       selectedEmployee.value = emp;
       fetchAvailability(emp.id);
@@ -2393,7 +2527,9 @@ onMounted(async () => {
       cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
       cell.style.transition = 'box-shadow 0.3s';
       cell.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.5) inset';
-      setTimeout(() => { cell.style.boxShadow = ''; }, 3000);
+      setTimeout(() => {
+        cell.style.boxShadow = '';
+      }, 3000);
     }
   }
 
@@ -2422,7 +2558,9 @@ function deselectEmployee() {
 
 async function fetchAvailability(userId) {
   try {
-    const res = await api.get(`/api/user-availabilities/${userId}/month`, { params: { month: monthKey.value } });
+    const res = await api.get(`/api/user-availabilities/${userId}/month`, {
+      params: { month: monthKey.value },
+    });
     selectedAvailability.value = res.data;
   } catch {
     selectedAvailability.value = [];
@@ -2431,26 +2569,48 @@ async function fetchAvailability(userId) {
 
 function getDayAvailStyle(dateStr) {
   if (!selectedEmployee.value || !dateStr) return {};
-  const entries = selectedAvailability.value.filter(e => dateStr >= e.start_date && dateStr <= e.end_date);
+  const entries = selectedAvailability.value.filter(
+    (e) => dateStr >= e.start_date && dateStr <= e.end_date,
+  );
   if (entries.length === 0) return {};
 
-  const hasUnavailableFullDay = entries.some(e => e.type === 'unavailable' && !e.start_time);
-  const hasUnavailableHours = entries.some(e => e.type === 'unavailable' && e.start_time);
-  const hasPreferredFullDay = entries.some(e => e.type === 'preferred' && !e.start_time);
-  const hasPreferredHours = entries.some(e => e.type === 'preferred' && e.start_time);
+  const hasUnavailableFullDay = entries.some((e) => e.type === 'unavailable' && !e.start_time);
+  const hasUnavailableHours = entries.some((e) => e.type === 'unavailable' && e.start_time);
+  const hasPreferredFullDay = entries.some((e) => e.type === 'preferred' && !e.start_time);
+  const hasPreferredHours = entries.some((e) => e.type === 'preferred' && e.start_time);
 
-  if (hasUnavailableFullDay) return { backgroundColor: 'rgba(239, 68, 68, 0.18)', boxShadow: 'inset 0 0 0 2px rgba(239, 68, 68, 0.3)' };
-  if (hasPreferredFullDay) return { backgroundColor: 'rgba(16, 185, 129, 0.18)', boxShadow: 'inset 0 0 0 2px rgba(16, 185, 129, 0.3)' };
-  if (hasUnavailableHours && hasPreferredHours) return { backgroundColor: 'rgba(245, 158, 11, 0.12)', boxShadow: 'inset 0 0 0 1px rgba(245, 158, 11, 0.25)' };
-  if (hasUnavailableHours) return { backgroundColor: 'rgba(239, 68, 68, 0.1)', boxShadow: 'inset 0 0 0 1px rgba(239, 68, 68, 0.2)' };
-  if (hasPreferredHours) return { backgroundColor: 'rgba(16, 185, 129, 0.1)', boxShadow: 'inset 0 0 0 1px rgba(16, 185, 129, 0.2)' };
+  if (hasUnavailableFullDay)
+    return {
+      backgroundColor: 'rgba(239, 68, 68, 0.18)',
+      boxShadow: 'inset 0 0 0 2px rgba(239, 68, 68, 0.3)',
+    };
+  if (hasPreferredFullDay)
+    return {
+      backgroundColor: 'rgba(16, 185, 129, 0.18)',
+      boxShadow: 'inset 0 0 0 2px rgba(16, 185, 129, 0.3)',
+    };
+  if (hasUnavailableHours && hasPreferredHours)
+    return {
+      backgroundColor: 'rgba(245, 158, 11, 0.12)',
+      boxShadow: 'inset 0 0 0 1px rgba(245, 158, 11, 0.25)',
+    };
+  if (hasUnavailableHours)
+    return {
+      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+      boxShadow: 'inset 0 0 0 1px rgba(239, 68, 68, 0.2)',
+    };
+  if (hasPreferredHours)
+    return {
+      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+      boxShadow: 'inset 0 0 0 1px rgba(16, 185, 129, 0.2)',
+    };
   return {};
 }
 
 // Check if the selected employee is assigned to a specific shift
 function isSelectedEmployeeAssigned(shift) {
   if (!selectedEmployee.value || !shift.assignments) return false;
-  return shift.assignments.some(a => a.user_id === selectedEmployee.value.id);
+  return shift.assignments.some((a) => a.user_id === selectedEmployee.value.id);
 }
 
 // Get highlight style for shifts the selected employee is assigned to
@@ -2458,7 +2618,7 @@ function getShiftAssignedStyle(shift) {
   if (!isSelectedEmployeeAssigned(shift)) return {};
   return {
     backgroundColor: 'rgba(14, 165, 233, 0.12)',
-    boxShadow: 'inset 0 0 0 1px rgba(14, 165, 233, 0.25)'
+    boxShadow: 'inset 0 0 0 1px rgba(14, 165, 233, 0.25)',
   };
 }
 
@@ -2481,8 +2641,13 @@ function getShiftCellStyle(shift) {
 
 // Shift change requests
 const changeRequestModal = ref({
-  show: false, assignmentId: null, shiftNumber: null, dateLabel: '', reason: '',
-  error: '', submitting: false,
+  show: false,
+  assignmentId: null,
+  shiftNumber: null,
+  dateLabel: '',
+  reason: '',
+  error: '',
+  submitting: false,
 });
 
 function isShiftFuture(shift, dateStr) {
@@ -2499,7 +2664,12 @@ function openChangeRequestModal(assignment, shift, dateStr) {
     show: true,
     assignmentId: assignment.id,
     shiftNumber: shift.shift_number,
-    dateLabel: d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+    dateLabel: d.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }),
     reason: '',
     error: '',
     submitting: false,
@@ -2524,7 +2694,7 @@ async function submitChangeRequest() {
     // Update locally instead of refreshing entire schedule
     for (const dateStr in schedule.value) {
       for (const shift of schedule.value[dateStr]) {
-        const a = shift.assignments.find(a => a.id === modal.assignmentId);
+        const a = shift.assignments.find((a) => a.id === modal.assignmentId);
         if (a) {
           a.has_change_request = true;
           a.change_request_reason = modal.reason.trim();
@@ -2539,6 +2709,5 @@ async function submitChangeRequest() {
     modal.submitting = false;
   }
 }
-
 </script>
 

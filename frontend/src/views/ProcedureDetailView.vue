@@ -193,7 +193,9 @@ const versionCache = {};
 
 const currentUserId = computed(() => authUser.value?.id);
 const isAdmin = computed(() => authUser.value?.is_admin);
-const isViewingOldVersion = computed(() => procedure.value && viewingVersion.value < procedure.value.version);
+const isViewingOldVersion = computed(
+  () => procedure.value && viewingVersion.value < procedure.value.version,
+);
 
 // The data to display — either from versionData (historical) or procedure (latest)
 const displayData = computed(() => {
@@ -238,7 +240,11 @@ const templateForm = reactive({ id: null, title: '', body: '', language: 'en' })
 
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 async function fetchProcedure() {
@@ -275,8 +281,11 @@ async function fetchProcedure() {
         published_at: null,
       };
     }
-  } catch { router.push('/procedures'); }
-  finally { loading.value = false; }
+  } catch {
+    router.push('/procedures');
+  } finally {
+    loading.value = false;
+  }
 }
 
 function goToVersion(v) {
@@ -312,7 +321,12 @@ async function openDiffModal() {
   // Get new version data
   let newData;
   if (newV === procedure.value.version) {
-    newData = { title: procedure.value.title, purpose: procedure.value.purpose, requirements: procedure.value.requirements, content: procedure.value.content };
+    newData = {
+      title: procedure.value.title,
+      purpose: procedure.value.purpose,
+      requirements: procedure.value.requirements,
+      content: procedure.value.content,
+    };
   } else if (versionCache[newV]) {
     newData = versionCache[newV];
   } else {
@@ -321,7 +335,12 @@ async function openDiffModal() {
       versionCache[newV] = r.data;
       newData = r.data;
     } catch {
-      newData = { title: procedure.value.title, purpose: procedure.value.purpose, requirements: procedure.value.requirements, content: procedure.value.content };
+      newData = {
+        title: procedure.value.title,
+        purpose: procedure.value.purpose,
+        requirements: procedure.value.requirements,
+        content: procedure.value.content,
+      };
     }
   }
 
@@ -349,22 +368,30 @@ async function openDiffModal() {
 }
 
 // Watch for route version changes (when navigating via URL)
-watch(() => route.params.version, async (newVer) => {
-  if (!procedure.value) return;
-  const v = newVer ? parseInt(newVer) : procedure.value.version;
-  if (v === viewingVersion.value) return;
-  viewingVersion.value = v;
-  if (v < procedure.value.version) {
-    await loadVersionData(v);
-  } else {
-    versionData.value = null;
-  }
-});
+watch(
+  () => route.params.version,
+  async (newVer) => {
+    if (!procedure.value) return;
+    const v = newVer ? parseInt(newVer) : procedure.value.version;
+    if (v === viewingVersion.value) return;
+    viewingVersion.value = v;
+    if (v < procedure.value.version) {
+      await loadVersionData(v);
+    } else {
+      versionData.value = null;
+    }
+  },
+);
 
 // Templates
 function openTemplateModal(tmpl) {
   if (tmpl) {
-    Object.assign(templateForm, { id: tmpl.id, title: tmpl.title, body: tmpl.body, language: tmpl.language });
+    Object.assign(templateForm, {
+      id: tmpl.id,
+      title: tmpl.title,
+      body: tmpl.body,
+      language: tmpl.language,
+    });
   } else {
     Object.assign(templateForm, { id: null, title: '', body: '', language: 'en' });
   }
@@ -374,11 +401,19 @@ function openTemplateModal(tmpl) {
 async function saveTemplate() {
   try {
     if (templateForm.id) {
-      const res = await api.put(`/api/procedure-templates/${templateForm.id}`, { title: templateForm.title, body: templateForm.body, language: templateForm.language });
-      const idx = procedure.value.response_templates.findIndex(t => t.id === templateForm.id);
+      const res = await api.put(`/api/procedure-templates/${templateForm.id}`, {
+        title: templateForm.title,
+        body: templateForm.body,
+        language: templateForm.language,
+      });
+      const idx = procedure.value.response_templates.findIndex((t) => t.id === templateForm.id);
       if (idx >= 0) procedure.value.response_templates[idx] = res.data;
     } else {
-      const res = await api.post(`/api/procedures/${procedure.value.id}/templates`, { title: templateForm.title, body: templateForm.body, language: templateForm.language });
+      const res = await api.post(`/api/procedures/${procedure.value.id}/templates`, {
+        title: templateForm.title,
+        body: templateForm.body,
+        language: templateForm.language,
+      });
       procedure.value.response_templates.push(res.data);
     }
     showTemplateModal.value = false;
@@ -386,13 +421,20 @@ async function saveTemplate() {
 }
 
 async function deleteTemplate(tmpl) {
-  try { await api.delete(`/api/procedure-templates/${tmpl.id}`); procedure.value.response_templates = procedure.value.response_templates.filter(t => t.id !== tmpl.id); } catch {}
+  try {
+    await api.delete(`/api/procedure-templates/${tmpl.id}`);
+    procedure.value.response_templates = procedure.value.response_templates.filter(
+      (t) => t.id !== tmpl.id,
+    );
+  } catch {}
 }
 
 // Feedback
 async function submitFeedback() {
   try {
-    const res = await api.post(`/api/procedures/${procedure.value.id}/feedback`, { ...feedbackForm });
+    const res = await api.post(`/api/procedures/${procedure.value.id}/feedback`, {
+      ...feedbackForm,
+    });
     procedure.value.feedbacks.unshift(res.data);
     showFeedbackModal.value = false;
     Object.assign(feedbackForm, { type: 'error', description: '', proposed_changes: '' });
@@ -404,7 +446,9 @@ function copyLink() {
   navigator.clipboard.writeText(url).then(() => {
     linkCopied.value = true;
     clearTimeout(linkCopiedTimer);
-    linkCopiedTimer = setTimeout(() => { linkCopied.value = false; }, 2000);
+    linkCopiedTimer = setTimeout(() => {
+      linkCopied.value = false;
+    }, 2000);
   });
 }
 

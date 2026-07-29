@@ -71,13 +71,18 @@ const filters = reactive({
   date_to: '',
 });
 
-const hasActiveFilters = computed(() =>
-  filters.user_id || filters.version || filters.date_from || filters.date_to
+const hasActiveFilters = computed(
+  () => filters.user_id || filters.version || filters.date_from || filters.date_to,
 );
 
 function fmtDateTime(d) {
   if (!d) return '';
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 async function fetchLogs() {
@@ -88,9 +93,13 @@ async function fetchLogs() {
     if (filters.version) params.version = filters.version;
     if (filters.date_from) params.date_from = filters.date_from;
     if (filters.date_to) params.date_to = filters.date_to;
-    logs.value = (await api.get(`/api/procedures/${props.procedureId}/access-log`, { params })).data;
-  } catch {}
-  finally { loading.value = false; }
+    logs.value = (
+      await api.get(`/api/procedures/${props.procedureId}/access-log`, { params })
+    ).data;
+  } catch {
+  } finally {
+    loading.value = false;
+  }
 }
 
 function clearFilters() {
@@ -110,13 +119,15 @@ onMounted(async () => {
     // Extract unique users and versions for dropdowns
     const userMap = {};
     const versionSet = new Set();
-    data.forEach(log => {
+    data.forEach((log) => {
       if (log.user) userMap[log.user.id] = log.user;
       if (log.version_read) versionSet.add(log.version_read);
     });
     uniqueUsers.value = Object.values(userMap).sort((a, b) => a.name.localeCompare(b.name));
     uniqueVersions.value = [...versionSet].sort((a, b) => b - a);
-  } catch {}
-  finally { loading.value = false; }
+  } catch {
+  } finally {
+    loading.value = false;
+  }
 });
 </script>

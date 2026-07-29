@@ -94,13 +94,19 @@ function canManage(item) {
 
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 async function submitQuestion() {
   if (!newQuestion.value.trim()) return;
   try {
-    const res = await api.post(`/api/procedures/${props.procedureId}/faq`, { question: newQuestion.value });
+    const res = await api.post(`/api/procedures/${props.procedureId}/faq`, {
+      question: newQuestion.value,
+    });
     emit('update:items', [{ ...res.data, replies: [] }, ...props.items]);
     newQuestion.value = '';
   } catch {}
@@ -133,14 +139,17 @@ async function toggleOutdatedReply(reply) {
 async function deleteFaqItem(item) {
   try {
     await api.delete(`/api/procedure-faq/${item.id}`);
-    emit('update:items', props.items.filter(i => i.id !== item.id));
+    emit(
+      'update:items',
+      props.items.filter((i) => i.id !== item.id),
+    );
   } catch {}
 }
 
 async function deleteFaqReply(reply, item) {
   try {
     await api.delete(`/api/procedure-faq-replies/${reply.id}`);
-    item.replies = item.replies.filter(r => r.id !== reply.id);
+    item.replies = item.replies.filter((r) => r.id !== reply.id);
   } catch {}
 }
 </script>

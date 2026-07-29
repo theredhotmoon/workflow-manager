@@ -176,7 +176,7 @@ function computeContentDiff(oldHtml, newHtml) {
     const part = lineDiff[i];
     if (!part.added && !part.removed) {
       // Unchanged lines
-      const lines = part.value.split('\n').filter(l => l.trim());
+      const lines = part.value.split('\n').filter((l) => l.trim());
       for (const line of lines) {
         result.push({ type: 'equal', value: line });
       }
@@ -206,13 +206,13 @@ function computeContentDiff(oldHtml, newHtml) {
       });
       i += 2;
     } else if (part.removed) {
-      const lines = part.value.split('\n').filter(l => l.trim());
+      const lines = part.value.split('\n').filter((l) => l.trim());
       for (const line of lines) {
         result.push({ type: 'removed', value: line });
       }
       i++;
     } else if (part.added) {
-      const lines = part.value.split('\n').filter(l => l.trim());
+      const lines = part.value.split('\n').filter((l) => l.trim());
       for (const line of lines) {
         result.push({ type: 'added', value: line });
       }
@@ -226,16 +226,24 @@ function computeContentDiff(oldHtml, newHtml) {
 
 const titleDiff = computed(() => computeWordDiff(props.oldData.title, props.newData.title));
 const purposeDiff = computed(() => computeWordDiff(props.oldData.purpose, props.newData.purpose));
-const requirementsDiff = computed(() => computeWordDiff(props.oldData.requirements, props.newData.requirements));
-const contentDiffResult = computed(() => computeContentDiff(props.oldData.content, props.newData.content));
+const requirementsDiff = computed(() =>
+  computeWordDiff(props.oldData.requirements, props.newData.requirements),
+);
+const contentDiffResult = computed(() =>
+  computeContentDiff(props.oldData.content, props.newData.content),
+);
 
-const hasChanges = computed(() =>
-  titleDiff.value.length > 0 || purposeDiff.value.length > 0 ||
-  requirementsDiff.value.length > 0 || contentDiffResult.value.length > 0
+const hasChanges = computed(
+  () =>
+    titleDiff.value.length > 0 ||
+    purposeDiff.value.length > 0 ||
+    requirementsDiff.value.length > 0 ||
+    contentDiffResult.value.length > 0,
 );
 
 const stats = computed(() => {
-  let added = 0, removed = 0;
+  let added = 0,
+    removed = 0;
   for (const p of [...titleDiff.value, ...purposeDiff.value, ...requirementsDiff.value]) {
     if (p.added) added += (p.value.match(/\S+/g) || []).length;
     if (p.removed) removed += (p.value.match(/\S+/g) || []).length;
@@ -244,8 +252,12 @@ const stats = computed(() => {
     if (g.type === 'added') added += (g.value.match(/\S+/g) || []).length;
     if (g.type === 'removed') removed += (g.value.match(/\S+/g) || []).length;
     if (g.type === 'changed') {
-      for (const w of g.removed.flatMap(r => r.words)) { if (w.highlight) removed += (w.value.match(/\S+/g) || []).length; }
-      for (const w of g.added.flatMap(a => a.words)) { if (w.highlight) added += (w.value.match(/\S+/g) || []).length; }
+      for (const w of g.removed.flatMap((r) => r.words)) {
+        if (w.highlight) removed += (w.value.match(/\S+/g) || []).length;
+      }
+      for (const w of g.added.flatMap((a) => a.words)) {
+        if (w.highlight) added += (w.value.match(/\S+/g) || []).length;
+      }
     }
   }
   return { added, removed };

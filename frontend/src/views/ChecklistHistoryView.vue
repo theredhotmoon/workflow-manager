@@ -494,9 +494,9 @@ const stats = computed(() => {
   const all = submissions.value;
   return {
     total: all.length,
-    completed: all.filter(s => s.status === 'completed').length,
-    pending: all.filter(s => s.status === 'pending_confirmation').length,
-    draft: all.filter(s => s.status === 'draft').length,
+    completed: all.filter((s) => s.status === 'completed').length,
+    pending: all.filter((s) => s.status === 'pending_confirmation').length,
+    draft: all.filter((s) => s.status === 'draft').length,
   };
 });
 
@@ -507,10 +507,11 @@ const filteredSubmissions = computed(() => {
   // Search
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.toLowerCase();
-    result = result.filter(s =>
-      (s.template?.name || '').toLowerCase().includes(q) ||
-      (s.outgoing_user?.name || '').toLowerCase().includes(q) ||
-      (s.incoming_user?.name || '').toLowerCase().includes(q)
+    result = result.filter(
+      (s) =>
+        (s.template?.name || '').toLowerCase().includes(q) ||
+        (s.outgoing_user?.name || '').toLowerCase().includes(q) ||
+        (s.incoming_user?.name || '').toLowerCase().includes(q),
     );
   }
 
@@ -518,13 +519,32 @@ const filteredSubmissions = computed(() => {
   result.sort((a, b) => {
     let aVal, bVal;
     switch (sortColumn.value) {
-      case 'date': aVal = a.date; bVal = b.date; break;
-      case 'template': aVal = a.template?.name || ''; bVal = b.template?.name || ''; break;
-      case 'outgoing': aVal = a.outgoing_user?.name || ''; bVal = b.outgoing_user?.name || ''; break;
-      case 'incoming': aVal = a.incoming_user?.name || ''; bVal = b.incoming_user?.name || ''; break;
-      case 'status': aVal = a.status; bVal = b.status; break;
-      case 'submitted_at': aVal = a.submitted_at || ''; bVal = b.submitted_at || ''; break;
-      default: return 0;
+      case 'date':
+        aVal = a.date;
+        bVal = b.date;
+        break;
+      case 'template':
+        aVal = a.template?.name || '';
+        bVal = b.template?.name || '';
+        break;
+      case 'outgoing':
+        aVal = a.outgoing_user?.name || '';
+        bVal = b.outgoing_user?.name || '';
+        break;
+      case 'incoming':
+        aVal = a.incoming_user?.name || '';
+        bVal = b.incoming_user?.name || '';
+        break;
+      case 'status':
+        aVal = a.status;
+        bVal = b.status;
+        break;
+      case 'submitted_at':
+        aVal = a.submitted_at || '';
+        bVal = b.submitted_at || '';
+        break;
+      default:
+        return 0;
     }
     if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1;
     if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1;
@@ -535,7 +555,9 @@ const filteredSubmissions = computed(() => {
 });
 
 // Pagination
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredSubmissions.value.length / perPage.value)));
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredSubmissions.value.length / perPage.value)),
+);
 
 const paginatedSubmissions = computed(() => {
   const start = (currentPage.value - 1) * perPage.value;
@@ -558,7 +580,9 @@ const visiblePages = computed(() => {
 });
 
 // Reset page when filters/search change
-watch([searchQuery, perPage], () => { currentPage.value = 1; });
+watch([searchQuery, perPage], () => {
+  currentPage.value = 1;
+});
 
 // Sorting
 function toggleSort(key) {
@@ -623,7 +647,12 @@ async function viewDetail(id) {
 // Helpers
 function getInitials(name) {
   if (!name) return '?';
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2);
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
 }
 
 function formatDate(dateStr) {
@@ -641,8 +670,11 @@ function getDayOfWeek(dateStr) {
 function formatDateTime(dt) {
   if (!dt) return '—';
   const d = new Date(dt);
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' +
-    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  return (
+    d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) +
+    ' ' +
+    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  );
 }
 
 function statusLabel(status) {
@@ -662,7 +694,7 @@ function statusBadgeClass(status) {
 
 // Detail helpers
 function getDetailResponse(item) {
-  return detailData.value?.responses?.find(r => r.checklist_item_id === item.id);
+  return detailData.value?.responses?.find((r) => r.checklist_item_id === item.id);
 }
 
 function getDetailValue(item) {
@@ -688,7 +720,9 @@ function getDetailGroupComment(group) {
 
 // CSV Export
 function exportCSV() {
-  const rows = [['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Submitted At']];
+  const rows = [
+    ['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Submitted At'],
+  ];
   for (const s of filteredSubmissions.value) {
     rows.push([
       s.date,
@@ -699,7 +733,9 @@ function exportCSV() {
       s.submitted_at || '',
     ]);
   }
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv = rows
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -721,5 +757,4 @@ async function openProcedureModal(procedureId) {
     showProcedureModal.value = false;
   }
 }
-
 </script>

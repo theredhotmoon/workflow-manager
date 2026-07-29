@@ -345,7 +345,10 @@ const lastPage = ref(1);
 const perPage = ref(30);
 
 const viewMode = ref(localStorage.getItem('procedures_view_mode') || 'tiles');
-function setViewMode(mode) { viewMode.value = mode; localStorage.setItem('procedures_view_mode', mode); }
+function setViewMode(mode) {
+  viewMode.value = mode;
+  localStorage.setItem('procedures_view_mode', mode);
+}
 const allTags = ref([]);
 const treeData = ref([]);
 const loading = ref(true);
@@ -382,7 +385,12 @@ const sortOptions = [
   { key: 'created_at', label: 'Creation Date' },
   { key: 'updated_at', label: 'Update Date' },
 ];
-const sortLabels = { title: 'Title', identifier: 'ID', created_at: 'Created', updated_at: 'Updated' };
+const sortLabels = {
+  title: 'Title',
+  identifier: 'ID',
+  created_at: 'Created',
+  updated_at: 'Updated',
+};
 
 function toggleSort(key) {
   if (sortBy.value === key) {
@@ -432,7 +440,10 @@ function collectIds(nodes, targetId) {
   for (const n of nodes) {
     if (n.id === targetId) {
       const ids = [];
-      const gather = (node) => { ids.push(node.id); (node.children || []).forEach(gather); };
+      const gather = (node) => {
+        ids.push(node.id);
+        (node.children || []).forEach(gather);
+      };
       gather(n);
       return ids;
     }
@@ -461,11 +472,17 @@ function selectNode(id) {
 
 function formatDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 async function fetchTree() {
-  try { treeData.value = (await api.get('/api/procedures-tree')).data; } catch {}
+  try {
+    treeData.value = (await api.get('/api/procedures-tree')).data;
+  } catch {}
 }
 
 let fetchTimeout = null;
@@ -500,7 +517,8 @@ async function fetchProcedures() {
     totalProcedures.value = res.data.total;
     currentPage.value = res.data.current_page;
     lastPage.value = res.data.last_page;
-  } catch {} finally {
+  } catch {
+  } finally {
     loading.value = false;
     filtering.value = false;
   }
@@ -513,7 +531,10 @@ async function fetchInitial() {
     allTags.value = tagRes.data;
     await fetchTree();
     await fetchProcedures();
-  } catch {} finally { loading.value = false; }
+  } catch {
+  } finally {
+    loading.value = false;
+  }
 }
 
 // Watch reactive filters — reset to page 1 and refetch with debounce for search
@@ -525,10 +546,23 @@ watch(searchQuery, () => {
   }, 300);
 });
 
-watch([selectedTags, createdAfter, createdBefore, updatedAfter, updatedBefore, sortBy, sortDir, selectedNodeId], () => {
-  currentPage.value = 1;
-  fetchProcedures();
-}, { deep: true });
+watch(
+  [
+    selectedTags,
+    createdAfter,
+    createdBefore,
+    updatedAfter,
+    updatedBefore,
+    sortBy,
+    sortDir,
+    selectedNodeId,
+  ],
+  () => {
+    currentPage.value = 1;
+    fetchProcedures();
+  },
+  { deep: true },
+);
 
 onMounted(fetchInitial);
 </script>

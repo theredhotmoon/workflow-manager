@@ -52,10 +52,16 @@ defineProps({
 
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 async function updateStatus(fb) {
-  try { await api.put(`/api/procedure-feedbacks/${fb.id}`, { status: fb.status }); } catch {}
+  try {
+    await api.put(`/api/procedure-feedbacks/${fb.id}`, { status: fb.status });
+  } catch {}
 }
 </script>

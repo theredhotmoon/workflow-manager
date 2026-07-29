@@ -171,34 +171,33 @@ const modeOptions = [
 // Computed
 const activeGroupMemberIds = computed(() => {
   if (selectedGroupId.value === null) return null;
-  const group = groups.value.find(g => g.id === selectedGroupId.value);
-  return new Set(group?.users?.map(u => u.id) ?? []);
+  const group = groups.value.find((g) => g.id === selectedGroupId.value);
+  return new Set(group?.users?.map((u) => u.id) ?? []);
 });
 
 const filteredEmployees = computed(() => {
   let list = allEmployees.value;
   if (activeGroupMemberIds.value !== null) {
-    list = list.filter(e => activeGroupMemberIds.value.has(e.id));
+    list = list.filter((e) => activeGroupMemberIds.value.has(e.id));
   }
   const q = search.value.toLowerCase().trim();
   if (!q) return list;
-  return list.filter(e => e.name.toLowerCase().includes(q));
+  return list.filter((e) => e.name.toLowerCase().includes(q));
 });
 
-const allNewbiesSelected = computed(() =>
-  newbieIds.value.length > 0 && newbieIds.value.every(id => selectedIds.value.has(id))
+const allNewbiesSelected = computed(
+  () => newbieIds.value.length > 0 && newbieIds.value.every((id) => selectedIds.value.has(id)),
 );
 
-const allDelegatedSelected = computed(() =>
-  delegatedIds.value.length > 0 && delegatedIds.value.every(id => selectedIds.value.has(id))
+const allDelegatedSelected = computed(
+  () =>
+    delegatedIds.value.length > 0 && delegatedIds.value.every((id) => selectedIds.value.has(id)),
 );
 
 const summaryLabel = computed(() => {
   if (selectionMode.value === 'all') return 'All players';
   const count = selectedIds.value.size;
-  return selectionMode.value === 'include'
-    ? `${count} included`
-    : `${count} excluded`;
+  return selectionMode.value === 'include' ? `${count} included` : `${count} excluded`;
 });
 
 // Methods
@@ -224,9 +223,9 @@ function toggleNewbies() {
   if (newbieIds.value.length === 0) return;
   const next = new Set(selectedIds.value);
   if (allNewbiesSelected.value) {
-    newbieIds.value.forEach(id => next.delete(id));
+    newbieIds.value.forEach((id) => next.delete(id));
   } else {
-    newbieIds.value.forEach(id => next.add(id));
+    newbieIds.value.forEach((id) => next.add(id));
   }
   selectedIds.value = next;
 }
@@ -235,32 +234,36 @@ function toggleDelegated() {
   if (delegatedIds.value.length === 0) return;
   const next = new Set(selectedIds.value);
   if (allDelegatedSelected.value) {
-    delegatedIds.value.forEach(id => next.delete(id));
+    delegatedIds.value.forEach((id) => next.delete(id));
   } else {
-    delegatedIds.value.forEach(id => next.add(id));
+    delegatedIds.value.forEach((id) => next.add(id));
   }
   selectedIds.value = next;
 }
 
 function selectAll() {
   const next = new Set(selectedIds.value);
-  filteredEmployees.value.forEach(e => next.add(e.id));
+  filteredEmployees.value.forEach((e) => next.add(e.id));
   selectedIds.value = next;
 }
 
 function selectNone() {
   const next = new Set(selectedIds.value);
-  filteredEmployees.value.forEach(e => next.delete(e.id));
+  filteredEmployees.value.forEach((e) => next.delete(e.id));
   selectedIds.value = next;
 }
 
 // Emit model updates
-watch([selectionMode, selectedIds], () => {
-  emit('update:modelValue', {
-    mode: selectionMode.value,
-    userIds: Array.from(selectedIds.value),
-  });
-}, { deep: true });
+watch(
+  [selectionMode, selectedIds],
+  () => {
+    emit('update:modelValue', {
+      mode: selectionMode.value,
+      userIds: Array.from(selectedIds.value),
+    });
+  },
+  { deep: true },
+);
 
 // Reset group filter when switching to 'all' mode
 watch(selectionMode, (mode) => {
@@ -277,16 +280,16 @@ async function fetchData() {
       api.get('/api/user-groups').catch(() => ({ data: [] })),
     ]);
 
-    allEmployees.value = empRes.data.filter(e => !e.is_admin);
-    selectedIds.value = new Set(allEmployees.value.map(e => e.id));
+    allEmployees.value = empRes.data.filter((e) => !e.is_admin);
+    selectedIds.value = new Set(allEmployees.value.map((e) => e.id));
 
     const nbIds = new Set();
-    (newbieRes.data || []).forEach(np => nbIds.add(np.user_id));
+    (newbieRes.data || []).forEach((np) => nbIds.add(np.user_id));
     newbieIds.value = Array.from(nbIds);
 
     const delIds = new Set();
-    (delegRes.data || []).forEach(del => {
-      (del.users || []).forEach(u => delIds.add(u.id));
+    (delegRes.data || []).forEach((del) => {
+      (del.users || []).forEach((u) => delIds.add(u.id));
     });
     delegatedIds.value = Array.from(delIds);
 
@@ -296,9 +299,12 @@ async function fetchData() {
   }
 }
 
-watch(() => props.monthKey, () => {
-  fetchData();
-});
+watch(
+  () => props.monthKey,
+  () => {
+    fetchData();
+  },
+);
 
 onMounted(() => {
   fetchData();

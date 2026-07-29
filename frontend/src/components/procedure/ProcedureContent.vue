@@ -142,7 +142,14 @@ const props = defineProps({
   maxVersion: { type: Number, default: 1 },
 });
 
-const emit = defineEmits(['add-template', 'edit-template', 'delete-template', 'owner-changed', 'open-diff', 'go-to-version']);
+const emit = defineEmits([
+  'add-template',
+  'edit-template',
+  'delete-template',
+  'owner-changed',
+  'open-diff',
+  'go-to-version',
+]);
 const { showToast } = useToast();
 
 const activeTab = ref('content');
@@ -163,10 +170,19 @@ watch(activeTab, (val) => {
 
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
-defineExpose({ resetTab: () => { activeTab.value = 'content'; accessLogLoaded.value = false; } });
+defineExpose({
+  resetTab: () => {
+    activeTab.value = 'content';
+    accessLogLoaded.value = false;
+  },
+});
 </script>
 
 <style>

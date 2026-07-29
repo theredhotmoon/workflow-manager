@@ -26,172 +26,176 @@ import api from '../axios.js';
 export const currentUser = ref(null);
 
 const routes = [
-    {
-        path: '/',
-        redirect: '/login',
-    },
-    {
-        path: '/login',
-        name: 'login',
-        component: LoginView,
-        meta: { guest: true },
-    },
-    {
-        path: '/dashboard',
-        name: 'dashboard',
-        component: DashboardView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/users',
-        name: 'users',
-        component: UsersView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/schedule/:month?',
-        name: 'schedule',
-        component: ScheduleView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/alarms',
-        name: 'alarms',
-        component: AlarmsView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/checklists',
-        name: 'checklists',
-        component: ChecklistBuilderView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/checklist/fill',
-        name: 'checklist-fill',
-        component: ChecklistFillView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/checklist/history',
-        name: 'checklist-history',
-        component: ChecklistHistoryView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/my-availability',
-        name: 'my-availability',
-        component: MyAvailabilityView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/my-shifts',
-        name: 'my-shifts',
-        component: MyShiftsView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/office-availability',
-        name: 'office-availability',
-        component: OfficeAvailabilityView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/procedure-tags',
-        name: 'procedure-tags',
-        component: ProcedureTagsView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/procedures',
-        name: 'procedures',
-        component: ProceduresListView,
-        meta: { requiresAuth: true },
-    },
+  {
+    path: '/',
+    redirect: '/login',
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: LoginView,
+    meta: { guest: true },
+  },
+  {
+    path: '/dashboard',
+    name: 'dashboard',
+    component: DashboardView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/users',
+    name: 'users',
+    component: UsersView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/schedule/:month?',
+    name: 'schedule',
+    component: ScheduleView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/alarms',
+    name: 'alarms',
+    component: AlarmsView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/checklists',
+    name: 'checklists',
+    component: ChecklistBuilderView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/checklist/fill',
+    name: 'checklist-fill',
+    component: ChecklistFillView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/checklist/history',
+    name: 'checklist-history',
+    component: ChecklistHistoryView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/my-availability',
+    name: 'my-availability',
+    component: MyAvailabilityView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/my-shifts',
+    name: 'my-shifts',
+    component: MyShiftsView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/office-availability',
+    name: 'office-availability',
+    component: OfficeAvailabilityView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/procedure-tags',
+    name: 'procedure-tags',
+    component: ProcedureTagsView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/procedures',
+    name: 'procedures',
+    component: ProceduresListView,
+    meta: { requiresAuth: true },
+  },
 
-    {
-        path: '/procedures/tree-editor',
-        name: 'procedure-tree-editor',
-        component: ProcedureTreeEditorView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/procedures/:id',
-        name: 'procedure-detail',
-        component: ProcedureDetailView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/procedures/:id/version/:version',
-        name: 'procedure-version',
-        component: ProcedureDetailView,
-        meta: { requiresAuth: true },
-    },
+  {
+    path: '/procedures/tree-editor',
+    name: 'procedure-tree-editor',
+    component: ProcedureTreeEditorView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/procedures/:id',
+    name: 'procedure-detail',
+    component: ProcedureDetailView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/procedures/:id/version/:version',
+    name: 'procedure-version',
+    component: ProcedureDetailView,
+    meta: { requiresAuth: true },
+  },
 
-    {
-        path: '/procedures-to-learn',
-        name: 'procedures-to-learn',
-        component: ProceduresToLearnView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/delegations',
-        name: 'delegations',
-        component: DelegationsView,
-        meta: { requiresAuth: true },
-    },
-    {
-        path: '/delegations-manage',
-        name: 'delegations-manage',
-        component: DelegationsManageView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/delegation-archive',
-        name: 'delegation-archive',
-        component: DelegationArchiveView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
-    {
-        path: '/shift-settings',
-        name: 'shift-settings',
-        component: ShiftSettingsView,
-        meta: { requiresAuth: true, requiresAdmin: true },
-    },
+  {
+    path: '/procedures-to-learn',
+    name: 'procedures-to-learn',
+    component: ProceduresToLearnView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/delegations',
+    name: 'delegations',
+    component: DelegationsView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/delegations-manage',
+    name: 'delegations-manage',
+    component: DelegationsManageView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/delegation-archive',
+    name: 'delegation-archive',
+    component: DelegationArchiveView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
+    path: '/shift-settings',
+    name: 'shift-settings',
+    component: ShiftSettingsView,
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
 ];
 
 const router = createRouter({
-    history: createWebHistory(),
-    routes,
+  history: createWebHistory(),
+  routes,
 });
 
 router.beforeEach(async (to, from, next) => {
-    if (to.meta.requiresAuth) {
-        try {
-            const response = await api.get('/api/user');
-            currentUser.value = response.data;
+  if (to.meta.requiresAuth) {
+    try {
+      const response = await api.get('/api/user');
+      currentUser.value = response.data;
 
-            if (to.meta.requiresAdmin && !currentUser.value.is_admin && currentUser.value.role !== 'admin') {
-                next({ name: 'dashboard' });
-            } else {
-                next();
-            }
-        } catch {
-            currentUser.value = null;
-            next({ name: 'login' });
-        }
-    } else if (to.meta.guest) {
-        try {
-            const response = await api.get('/api/user');
-            currentUser.value = response.data;
-            next({ name: 'dashboard' });
-        } catch {
-            currentUser.value = null;
-            next();
-        }
-    } else {
+      if (
+        to.meta.requiresAdmin &&
+        !currentUser.value.is_admin &&
+        currentUser.value.role !== 'admin'
+      ) {
+        next({ name: 'dashboard' });
+      } else {
         next();
+      }
+    } catch {
+      currentUser.value = null;
+      next({ name: 'login' });
     }
+  } else if (to.meta.guest) {
+    try {
+      const response = await api.get('/api/user');
+      currentUser.value = response.data;
+      next({ name: 'dashboard' });
+    } catch {
+      currentUser.value = null;
+      next();
+    }
+  } else {
+    next();
+  }
 });
 
 export default router;

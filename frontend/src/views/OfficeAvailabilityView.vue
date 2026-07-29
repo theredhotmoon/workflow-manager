@@ -169,14 +169,30 @@ const highlightDate = ref(null);
 
 const form = ref({ date: '', end_date: '', title: '', description: '' });
 
-const monthKey = computed(() => `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`);
+const monthKey = computed(
+  () => `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`,
+);
 const monthLabel = computed(() => {
   const d = new Date(currentYear.value, currentMonth.value, 1);
   return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 });
 
-function prevMonth() { if (currentMonth.value === 0) { currentMonth.value = 11; currentYear.value--; } else { currentMonth.value--; } }
-function nextMonth() { if (currentMonth.value === 11) { currentMonth.value = 0; currentYear.value++; } else { currentMonth.value++; } }
+function prevMonth() {
+  if (currentMonth.value === 0) {
+    currentMonth.value = 11;
+    currentYear.value--;
+  } else {
+    currentMonth.value--;
+  }
+}
+function nextMonth() {
+  if (currentMonth.value === 11) {
+    currentMonth.value = 0;
+    currentYear.value++;
+  } else {
+    currentMonth.value++;
+  }
+}
 
 const calendarWeeks = computed(() => {
   const first = new Date(currentYear.value, currentMonth.value, 1);
@@ -191,17 +207,21 @@ const calendarWeeks = computed(() => {
     d.setDate(startDate.getDate() + i);
     const dateStr = d.toISOString().split('T')[0];
     week.push({
-      dateStr, dayNumber: d.getDate(),
+      dateStr,
+      dayNumber: d.getDate(),
       isCurrentMonth: d.getMonth() === currentMonth.value && d.getFullYear() === currentYear.value,
       isToday: dateStr === today,
     });
-    if (week.length === 7) { weeks.push(week); week = []; }
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
   }
-  return weeks.filter(w => w.some(d => d.isCurrentMonth));
+  return weeks.filter((w) => w.some((d) => d.isCurrentMonth));
 });
 
 function getClosureForDate(dateStr) {
-  return closures.value.find(c => c.date === dateStr || c.date?.substring(0, 10) === dateStr);
+  return closures.value.find((c) => c.date === dateStr || c.date?.substring(0, 10) === dateStr);
 }
 
 function getDateStr(c) {
@@ -210,7 +230,12 @@ function getDateStr(c) {
 
 function formatDate(dateStr) {
   const d = new Date((dateStr?.substring?.(0, 10) || dateStr) + 'T12:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function openModal(dateStr) {
@@ -226,7 +251,12 @@ function openModal(dateStr) {
 
 function editClosure(c) {
   editingId.value = c.id;
-  form.value = { date: c.date?.substring?.(0, 10) || c.date, end_date: c.date?.substring?.(0, 10) || c.date, title: c.title, description: c.description || '' };
+  form.value = {
+    date: c.date?.substring?.(0, 10) || c.date,
+    end_date: c.date?.substring?.(0, 10) || c.date,
+    title: c.title,
+    description: c.description || '',
+  };
   showModal.value = true;
 }
 
@@ -234,13 +264,18 @@ async function fetchClosures() {
   try {
     const res = await api.get('/api/office-closures', { params: { month: monthKey.value } });
     closures.value = res.data;
-  } catch { closures.value = []; }
+  } catch {
+    closures.value = [];
+  }
 }
 
 async function saveClosure() {
   saving.value = true;
   const trimmedTitle = form.value.title.trim();
-  if (!trimmedTitle) { saving.value = false; return; }
+  if (!trimmedTitle) {
+    saving.value = false;
+    return;
+  }
   try {
     if (editingId.value) {
       await api.put(`/api/office-closures/${editingId.value}`, {
@@ -262,17 +297,26 @@ async function saveClosure() {
     await fetchClosures();
   } catch (err) {
     showToast(err.response?.data?.message || 'Failed to save.', 'error');
-  } finally { saving.value = false; }
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function deleteClosure(c) {
-  const ok = await confirm({ title: 'Remove Closure', message: `Remove the office closure "${c.title}"?`, confirmLabel: 'Remove', danger: true });
+  const ok = await confirm({
+    title: 'Remove Closure',
+    message: `Remove the office closure "${c.title}"?`,
+    confirmLabel: 'Remove',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/office-closures/${c.id}`);
     showToast('Closure removed.');
     await fetchClosures();
-  } catch { showToast('Failed to remove.', 'error'); }
+  } catch {
+    showToast('Failed to remove.', 'error');
+  }
 }
 
 const { showToast } = useToast();

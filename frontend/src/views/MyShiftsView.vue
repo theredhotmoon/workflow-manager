@@ -234,7 +234,7 @@ const delegationDates = computed(() => {
     let cur = new Date(start + 'T12:00:00');
     const last = new Date(end + 'T12:00:00');
     while (cur <= last) {
-      const ds = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+      const ds = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
       // Only include dates in current month
       if (ds.startsWith(monthKey.value)) dates.add(ds);
       cur.setDate(cur.getDate() + 1);
@@ -261,7 +261,7 @@ const totalHours = computed(() => {
       if (!s.start_time || !s.end_time) continue;
       const [sh, sm] = s.start_time.split(':').map(Number);
       const [eh, em] = s.end_time.split(':').map(Number);
-      let dur = (eh * 60 + em) - (sh * 60 + sm);
+      let dur = eh * 60 + em - (sh * 60 + sm);
       if (dur <= 0) dur += 24 * 60;
       mins += dur;
     }
@@ -270,13 +270,17 @@ const totalHours = computed(() => {
 });
 
 function prevMonth() {
-  if (currentMonth.value === 0) { currentYear.value--; currentMonth.value = 11; }
-  else currentMonth.value--;
+  if (currentMonth.value === 0) {
+    currentYear.value--;
+    currentMonth.value = 11;
+  } else currentMonth.value--;
 }
 
 function nextMonth() {
-  if (currentMonth.value === 11) { currentYear.value++; currentMonth.value = 0; }
-  else currentMonth.value++;
+  if (currentMonth.value === 11) {
+    currentYear.value++;
+    currentMonth.value = 0;
+  } else currentMonth.value++;
 }
 
 const todayStr = computed(() => {
@@ -284,20 +288,31 @@ const todayStr = computed(() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 });
 
-function isToday(dateStr) { return dateStr === todayStr.value; }
+function isToday(dateStr) {
+  return dateStr === todayStr.value;
+}
 
 function formatDayName(dateStr) {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' });
 }
 
 function formatFullDate(dateStr) {
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function formatTime(isoStr) {
   if (!isoStr) return '';
   const d = new Date(isoStr);
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 async function fetchMyShifts() {
@@ -318,7 +333,7 @@ async function fetchMyShifts() {
 }
 
 function getDayDelegations(dateStr) {
-  return delegations.value.filter(d => {
+  return delegations.value.filter((d) => {
     const start = d.start_datetime.substring(0, 10);
     const end = d.end_datetime.substring(0, 10);
     return dateStr >= start && dateStr <= end;
@@ -328,7 +343,11 @@ function getDayDelegations(dateStr) {
 function formatDelegationTime(dt) {
   if (!dt) return '';
   const d = new Date(dt);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return (
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' ' +
+    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  );
 }
 
 watch(monthKey, fetchMyShifts);
@@ -339,8 +358,13 @@ const { showToast } = useToast();
 
 // Change request
 const changeRequestModal = ref({
-  show: false, assignmentId: null, shiftNumber: null, dateLabel: '', reason: '',
-  error: '', submitting: false,
+  show: false,
+  assignmentId: null,
+  shiftNumber: null,
+  dateLabel: '',
+  reason: '',
+  error: '',
+  submitting: false,
 });
 
 function isShiftFuture(dateStr) {
@@ -356,14 +380,24 @@ function openChangeRequestModal(shift, dateStr) {
     show: true,
     assignmentId: shift.assignment_id,
     shiftNumber: shift.shift_number,
-    dateLabel: d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-    reason: '', error: '', submitting: false,
+    dateLabel: d.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }),
+    reason: '',
+    error: '',
+    submitting: false,
   };
 }
 
 async function submitChangeRequest() {
   const modal = changeRequestModal.value;
-  if (!modal.reason.trim()) { modal.error = 'Please provide a reason.'; return; }
+  if (!modal.reason.trim()) {
+    modal.error = 'Please provide a reason.';
+    return;
+  }
   modal.submitting = true;
   modal.error = '';
   try {
@@ -375,7 +409,7 @@ async function submitChangeRequest() {
     showToast('Day-off request submitted successfully.');
     // Update locally
     for (const dateStr in shifts.value) {
-      const s = shifts.value[dateStr].find(s => s.assignment_id === modal.assignmentId);
+      const s = shifts.value[dateStr].find((s) => s.assignment_id === modal.assignmentId);
       if (s) {
         s.has_change_request = true;
         s.change_request_reason = modal.reason.trim();

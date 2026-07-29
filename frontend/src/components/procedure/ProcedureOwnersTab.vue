@@ -78,7 +78,7 @@ const saving = ref(false);
 const error = ref('');
 const success = ref('');
 
-const availableUsers = ref(props.users.filter(u => u.id !== props.ownerId));
+const availableUsers = ref(props.users.filter((u) => u.id !== props.ownerId));
 
 async function changeOwner() {
   if (!newOwnerId.value || !reason.value.trim()) return;
@@ -94,7 +94,9 @@ async function changeOwner() {
     emit('owner-changed');
     newOwnerId.value = '';
     reason.value = '';
-    setTimeout(() => { success.value = ''; }, 2000);
+    setTimeout(() => {
+      success.value = '';
+    }, 2000);
   } catch (err) {
     error.value = err.response?.data?.message || 'Failed to change owner.';
   } finally {
@@ -104,6 +106,12 @@ async function changeOwner() {
 
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 </script>

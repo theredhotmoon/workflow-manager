@@ -108,7 +108,11 @@ const currentUserId = computed(() => currentUser.value?.id);
 
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 async function openProcedure(p) {
@@ -153,9 +157,12 @@ async function checkHash() {
 }
 
 onMounted(async () => {
-  try { procedures.value = (await api.get('/api/procedures-to-learn')).data; }
-  catch {}
-  finally { loading.value = false; }
+  try {
+    procedures.value = (await api.get('/api/procedures-to-learn')).data;
+  } catch {
+  } finally {
+    loading.value = false;
+  }
   await checkHash();
 });
 

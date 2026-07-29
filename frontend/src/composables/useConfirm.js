@@ -34,7 +34,7 @@ export function confirm(opts = {}) {
   confirmLabel.value = opts.confirmLabel ?? 'Confirm';
   danger.value = opts.danger ?? true;
   isOpen.value = true;
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     resolveFn = resolve;
   });
 }

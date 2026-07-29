@@ -9,13 +9,19 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check": "biome check .",
-    "check:fix": "biome check --write ."
+    "check:fix": "biome check --write .",
+    "prepare": "cd .. && husky frontend/.husky"
+  },
+  "lint-staged": {
+    "*.{js,vue}": "biome check --write"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
     "@tailwindcss/vite": "^4.2.0",
     "axios": "^1.13.5",
+    "husky": "^9.1.7",
     "laravel-vite-plugin": "^2.1.0",
+    "lint-staged": "^17.2.0",
     "lodash": "^4.17.19",
     "postcss": "^8.1.14",
     "tailwindcss": "^4.2.0",

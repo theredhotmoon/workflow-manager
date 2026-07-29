@@ -165,16 +165,39 @@ const saving = ref(false);
 const useHours = ref(false);
 const { showToast } = useToast();
 
-const form = ref({ type: 'unavailable', start_date: '', end_date: '', start_time: '06:00', end_time: '14:00', note: '' });
+const form = ref({
+  type: 'unavailable',
+  start_date: '',
+  end_date: '',
+  start_time: '06:00',
+  end_time: '14:00',
+  note: '',
+});
 
-const monthKey = computed(() => `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`);
+const monthKey = computed(
+  () => `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`,
+);
 const monthLabel = computed(() => {
   const d = new Date(currentYear.value, currentMonth.value, 1);
   return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 });
 
-function prevMonth() { if (currentMonth.value === 0) { currentMonth.value = 11; currentYear.value--; } else { currentMonth.value--; } }
-function nextMonth() { if (currentMonth.value === 11) { currentMonth.value = 0; currentYear.value++; } else { currentMonth.value++; } }
+function prevMonth() {
+  if (currentMonth.value === 0) {
+    currentMonth.value = 11;
+    currentYear.value--;
+  } else {
+    currentMonth.value--;
+  }
+}
+function nextMonth() {
+  if (currentMonth.value === 11) {
+    currentMonth.value = 0;
+    currentYear.value++;
+  } else {
+    currentMonth.value++;
+  }
+}
 
 const calendarWeeks = computed(() => {
   const first = new Date(currentYear.value, currentMonth.value, 1);
@@ -190,17 +213,21 @@ const calendarWeeks = computed(() => {
     d.setDate(startDate.getDate() + i);
     const dateStr = localDateStr(d);
     week.push({
-      dateStr, dayNumber: d.getDate(),
+      dateStr,
+      dayNumber: d.getDate(),
       isCurrentMonth: d.getMonth() === currentMonth.value && d.getFullYear() === currentYear.value,
       isToday: dateStr === today,
     });
-    if (week.length === 7) { weeks.push(week); week = []; }
+    if (week.length === 7) {
+      weeks.push(week);
+      week = [];
+    }
   }
-  return weeks.filter(w => w.some(d => d.isCurrentMonth));
+  return weeks.filter((w) => w.some((d) => d.isCurrentMonth));
 });
 
 function getEntriesForDate(dateStr) {
-  return entries.value.filter(e => dateStr >= e.start_date && dateStr <= e.end_date);
+  return entries.value.filter((e) => dateStr >= e.start_date && dateStr <= e.end_date);
 }
 
 function localDateStr(d) {
@@ -211,7 +238,14 @@ function localDateStr(d) {
 }
 
 function openAddModal(dateStr) {
-  form.value = { type: 'unavailable', start_date: dateStr, end_date: dateStr, start_time: '06:00', end_time: '14:00', note: '' };
+  form.value = {
+    type: 'unavailable',
+    start_date: dateStr,
+    end_date: dateStr,
+    start_time: '06:00',
+    end_time: '14:00',
+    note: '',
+  };
   useHours.value = false;
   showModal.value = true;
 }
@@ -220,7 +254,9 @@ async function fetchEntries() {
   try {
     const res = await api.get('/api/user-availabilities');
     entries.value = res.data;
-  } catch { showToast('Failed to load availability.', 'error'); }
+  } catch {
+    showToast('Failed to load availability.', 'error');
+  }
 }
 
 async function saveEntry() {
@@ -240,19 +276,27 @@ async function saveEntry() {
     showToast('Availability saved.');
   } catch (err) {
     showToast(err.response?.data?.message || 'Failed to save.', 'error');
-  } finally { saving.value = false; }
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function deleteEntry(entry) {
-  const ok = await confirm({ title: 'Remove Entry', message: 'Remove this availability entry?', confirmLabel: 'Remove', danger: true });
+  const ok = await confirm({
+    title: 'Remove Entry',
+    message: 'Remove this availability entry?',
+    confirmLabel: 'Remove',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/user-availabilities/${entry.id}`);
-    entries.value = entries.value.filter(e => e.id !== entry.id);
+    entries.value = entries.value.filter((e) => e.id !== entry.id);
     showToast('Entry removed.');
-  } catch { showToast('Failed to remove.', 'error'); }
+  } catch {
+    showToast('Failed to remove.', 'error');
+  }
 }
-
 
 onMounted(() => {
   fetchEntries();
@@ -263,16 +307,21 @@ async function fetchDelegations() {
   try {
     const res = await api.get('/api/my-delegations', { params: { month: monthKey.value } });
     delegations.value = res.data;
-  } catch { delegations.value = []; }
+  } catch {
+    delegations.value = [];
+  }
 }
 
 function getDayDelegations(dateStr) {
-  return delegations.value.filter(d => {
+  return delegations.value.filter((d) => {
     const start = d.start_datetime.substring(0, 10);
     const end = d.end_datetime.substring(0, 10);
     return dateStr >= start && dateStr <= end;
   });
 }
 
-watch(monthKey, () => { fetchEntries(); fetchDelegations(); });
+watch(monthKey, () => {
+  fetchEntries();
+  fetchDelegations();
+});
 </script>

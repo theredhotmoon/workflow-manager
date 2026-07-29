@@ -254,9 +254,21 @@ const running = ref(false);
 const randomModalRef = ref(null);
 const rotatingModalRef = ref(null);
 const polishLawModalRef = ref(null);
-useFocusTrap(randomModalRef, showRandomModal, { onEscape: () => { showRandomModal.value = false; } });
-useFocusTrap(rotatingModalRef, showRotatingModal, { onEscape: () => { showRotatingModal.value = false; } });
-useFocusTrap(polishLawModalRef, showPolishLawModal, { onEscape: () => { showPolishLawModal.value = false; } });
+useFocusTrap(randomModalRef, showRandomModal, {
+  onEscape: () => {
+    showRandomModal.value = false;
+  },
+});
+useFocusTrap(rotatingModalRef, showRotatingModal, {
+  onEscape: () => {
+    showRotatingModal.value = false;
+  },
+});
+useFocusTrap(polishLawModalRef, showPolishLawModal, {
+  onEscape: () => {
+    showPolishLawModal.value = false;
+  },
+});
 
 const config = ref({
   users_per_shift_weekday: 1,

@@ -100,8 +100,12 @@ const form = ref({ name: '', color: '#6366f1' });
 
 async function fetchTags() {
   loading.value = true;
-  try { tags.value = (await api.get('/api/procedure-tags')).data; }
-  catch {} finally { loading.value = false; }
+  try {
+    tags.value = (await api.get('/api/procedure-tags')).data;
+  } catch {
+  } finally {
+    loading.value = false;
+  }
 }
 
 function openCreate() {
@@ -126,13 +130,24 @@ async function saveTag() {
     }
     showModal.value = false;
     await fetchTags();
-  } catch {} finally { saving.value = false; }
+  } catch {
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function deleteTag(tag) {
-  const ok = await confirm({ title: 'Delete Tag', message: `Delete tag "${tag.name}"? Procedures using this tag will be unaffected.`, confirmLabel: 'Delete', danger: true });
+  const ok = await confirm({
+    title: 'Delete Tag',
+    message: `Delete tag "${tag.name}"? Procedures using this tag will be unaffected.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  });
   if (!ok) return;
-  try { await api.delete(`/api/procedure-tags/${tag.id}`); await fetchTags(); } catch {}
+  try {
+    await api.delete(`/api/procedure-tags/${tag.id}`);
+    await fetchTags();
+  } catch {}
 }
 
 onMounted(fetchTags);

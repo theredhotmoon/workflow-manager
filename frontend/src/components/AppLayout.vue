@@ -293,7 +293,9 @@ const pwSuccess = ref('');
 const pw = ref({ current: '', password: '', confirm: '' });
 
 const isAdmin = computed(() => currentUser.value?.is_admin || currentUser.value?.role === 'admin');
-const canManageSchedule = computed(() => isAdmin.value || currentUser.value?.role === 'schedule_maintainer');
+const canManageSchedule = computed(
+  () => isAdmin.value || currentUser.value?.role === 'schedule_maintainer',
+);
 
 // Focus trap for the Change Password modal
 const passwordModalRef = ref(null);
@@ -330,7 +332,9 @@ async function markAlarmRead(alarm) {
 async function markAllAlarmsRead() {
   try {
     await api.put('/api/alarms/read-all');
-    latestAlarms.value.forEach(a => { a.read_at = a.read_at || new Date().toISOString(); });
+    latestAlarms.value.forEach((a) => {
+      a.read_at = a.read_at || new Date().toISOString();
+    });
     unreadAlarmCount.value = 0;
   } catch {}
 }
@@ -372,7 +376,12 @@ function formatAlarmTime(isoStr) {
 
 const userInitials = computed(() => {
   const name = currentUser.value?.name || '';
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2);
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2);
 });
 
 // Top navbar links (visible to all users)
@@ -385,7 +394,7 @@ const topLinks = computed(() => {
     { to: '/procedures-to-learn', label: 'To Learn' },
     { to: '/delegations', label: 'Delegations' },
   ];
-  return links.filter(l => !l.adminOnly || isAdmin.value);
+  return links.filter((l) => !l.adminOnly || isAdmin.value);
 });
 
 // Sidebar links (admin only, with SVG icons)
@@ -434,7 +443,9 @@ const sidebarLinks = [
 
 async function logout() {
   userMenuOpen.value = false;
-  try { await api.post('/api/logout'); } catch {}
+  try {
+    await api.post('/api/logout');
+  } catch {}
   router.push({ name: 'login' });
 }
 

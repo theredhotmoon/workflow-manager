@@ -67,22 +67,29 @@ let triggerElement = null;
 
 function getFocusable() {
   if (!modalRef.value) return [];
-  return Array.from(modalRef.value.querySelectorAll(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-  )).filter(el => !el.disabled);
+  return Array.from(
+    modalRef.value.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => !el.disabled);
 }
 
 function handleKeydown(e) {
-  if (e.key === 'Escape') { onCancel(); return; }
+  if (e.key === 'Escape') {
+    onCancel();
+    return;
+  }
   if (e.key === 'Tab') {
     const focusable = getFocusable();
     if (!focusable.length) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault(); last.focus();
+      e.preventDefault();
+      last.focus();
     } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault(); first.focus();
+      e.preventDefault();
+      first.focus();
     }
   }
 }

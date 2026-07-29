@@ -279,7 +279,12 @@ const todayShiftsLoading = ref(true);
 
 const todayFormatted = computed(() => {
   const d = new Date();
-  return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 });
 
 const todayDateStr = computed(() => {
@@ -294,13 +299,18 @@ const todayMonthKey = computed(() => {
 
 function getInitials(name) {
   if (!name) return '';
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 // Merge current + overdue alerts into one sorted list (newest date first)
 const allChecklistAlerts = computed(() => {
-  const current = (currentShiftAlerts.value || []).map(a => ({ ...a, _isOverdue: false }));
-  const overdue = (overdueAlerts.value || []).map(a => ({ ...a, _isOverdue: true }));
+  const current = (currentShiftAlerts.value || []).map((a) => ({ ...a, _isOverdue: false }));
+  const overdue = (overdueAlerts.value || []).map((a) => ({ ...a, _isOverdue: true }));
   return [...current, ...overdue].sort((a, b) => b.date.localeCompare(a.date));
 });
 
@@ -308,8 +318,6 @@ function formatAlertDate(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
-
-
 
 const stats = ref([
   {
@@ -383,5 +391,4 @@ onMounted(async () => {
     todayShiftsLoading.value = false;
   }
 });
-
 </script>

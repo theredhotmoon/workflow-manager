@@ -543,9 +543,9 @@ const shiftColleagues = computed(() => {
   if (!shiftInfo.value?.assignments) return [];
   const currentIds = [setup.outgoingUserId, setup.incomingUserId].filter(Boolean);
   return shiftInfo.value.assignments
-    .map(a => a.user)
-    .filter(u => u && !currentIds.includes(u.id))
-    .map(u => u.name);
+    .map((a) => a.user)
+    .filter((u) => u && !currentIds.includes(u.id))
+    .map((u) => u.name);
 });
 
 // Progress tracking
@@ -651,14 +651,14 @@ async function fetchShiftsForDate(preserveShiftId = null) {
     const res = await api.get('/api/shifts-by-date', { params: { date: setup.date } });
     availableShifts.value = res.data;
     // Restore shiftId if preserved from query params
-    if (preserveShiftId && res.data.some(s => s.id === preserveShiftId)) {
+    if (preserveShiftId && res.data.some((s) => s.id === preserveShiftId)) {
       setup.shiftId = preserveShiftId;
     }
   } catch {}
 }
 
 function onShiftSelected() {
-  const shift = availableShifts.value.find(s => s.id === setup.shiftId);
+  const shift = availableShifts.value.find((s) => s.id === setup.shiftId);
   if (!shift) return;
   // Auto-select the first checklist's template if shift has checklists
   const checklists = shift.shift_checklists || [];
@@ -666,25 +666,25 @@ function onShiftSelected() {
     setup.templateId = checklists[0].checklist_template_id;
   }
   // Auto-select current user as outgoing if they're on this shift
-  const myAssignment = shift.assignments?.find(a => a.user_id === currentUser.value?.id);
+  const myAssignment = shift.assignments?.find((a) => a.user_id === currentUser.value?.id);
   if (myAssignment) {
     setup.outgoingUserId = currentUser.value.id;
   }
 }
 
 const selectedShiftChecklists = computed(() => {
-  const shift = availableShifts.value.find(s => s.id === setup.shiftId);
+  const shift = availableShifts.value.find((s) => s.id === setup.shiftId);
   if (!shift) return [];
   return shift.shift_checklists || [];
 });
 
 function getUserName(id) {
-  const u = users.value.find(u => u.id === id);
+  const u = users.value.find((u) => u.id === id);
   return u?.name || 'Unknown';
 }
 
 async function startFilling() {
-  const tpl = activeTemplates.value.find(t => t.id === Number(setup.templateId));
+  const tpl = activeTemplates.value.find((t) => t.id === Number(setup.templateId));
   if (!tpl) return;
   selectedTemplate.value = tpl;
 
@@ -713,7 +713,9 @@ async function startFilling() {
   if (setup.shiftId) {
     try {
       shiftInfo.value = (await api.get(`/api/shifts/${setup.shiftId}`)).data;
-    } catch { shiftInfo.value = null; }
+    } catch {
+      shiftInfo.value = null;
+    }
   } else {
     shiftInfo.value = null;
   }
@@ -741,7 +743,7 @@ async function checkProcedureReads(tpl) {
 }
 
 function isProcedureUnread(procedureId) {
-  return unreadProcedures.value.some(p => p.id === procedureId);
+  return unreadProcedures.value.some((p) => p.id === procedureId);
 }
 
 async function recheckProcedures() {
@@ -768,7 +770,10 @@ function validateNumberRange(item) {
     return;
   }
   const val = parseFloat(raw);
-  if (isNaN(val)) { delete rangeErrors.value[item.id]; return; }
+  if (isNaN(val)) {
+    delete rangeErrors.value[item.id];
+    return;
+  }
 
   const hasMin = item.min_value !== null && item.min_value !== undefined;
   const hasMax = item.max_value !== null && item.max_value !== undefined;
@@ -787,7 +792,10 @@ function validateNumberRange(item) {
 async function submitChecklist() {
   const errorCount = Object.keys(rangeErrors.value).length;
   if (errorCount > 0) {
-    showToast(`${errorCount} item${errorCount > 1 ? 's have' : ' has'} an out-of-range value. Please correct before submitting.`, 'error');
+    showToast(
+      `${errorCount} item${errorCount > 1 ? 's have' : ' has'} an out-of-range value. Please correct before submitting.`,
+      'error',
+    );
     return;
   }
   submitting.value = true;
@@ -843,7 +851,9 @@ async function openConfirmation(sub) {
     const response = await api.get(`/api/checklist-submissions/${sub.id}`);
     confirmSubmission.value = response.data;
     confirmIds.value = new Set();
-    Object.keys(confirmValues).forEach(k => delete confirmValues[k]);
+    Object.keys(confirmValues).forEach((k) => {
+      delete confirmValues[k];
+    });
     step.value = 'confirm-detail';
   } catch {
     showToast('Failed to load submission.', 'error');
@@ -851,7 +861,7 @@ async function openConfirmation(sub) {
 }
 
 function getResponseForItem(itemId) {
-  return confirmSubmission.value?.responses?.find(r => r.checklist_item_id === itemId);
+  return confirmSubmission.value?.responses?.find((r) => r.checklist_item_id === itemId);
 }
 
 function getResponseDisplay(item) {
@@ -868,7 +878,7 @@ function getResponseId(itemId) {
 
 function getGroupComment(groupId) {
   // Find first item in this group
-  const group = confirmSubmission.value?.template?.groups?.find(g => g.id === groupId);
+  const group = confirmSubmission.value?.template?.groups?.find((g) => g.id === groupId);
   if (!group || !group.items.length) return null;
   const r = getResponseForItem(group.items[0].id);
   return r?.group_comment || null;
@@ -936,5 +946,4 @@ function copyProcedureLink() {
   navigator.clipboard.writeText(url);
   showToast('Procedure link copied!');
 }
-
 </script>

@@ -141,7 +141,7 @@ const alarmTypes = [
   { value: 'PROCEDURE_ISSUE_SORTED', label: '✅ Issue Resolved' },
 ];
 
-const hasUnread = computed(() => alarms.value.some(a => !a.read_at));
+const hasUnread = computed(() => alarms.value.some((a) => !a.read_at));
 
 async function fetchAlarms() {
   loading.value = true;
@@ -173,7 +173,9 @@ async function handleAlarmClick(alarm) {
 async function markAllRead() {
   try {
     await api.put('/api/alarms/read-all');
-    alarms.value.forEach(a => { a.read_at = a.read_at || new Date().toISOString(); });
+    alarms.value.forEach((a) => {
+      a.read_at = a.read_at || new Date().toISOString();
+    });
   } catch {}
 }
 
@@ -242,7 +244,10 @@ function formatDate(isoStr) {
 }
 
 // Re-fetch when filters or page change
-watch([filterType, filterStatus, filterDateFrom, filterDateTo], () => { page.value = 1; fetchAlarms(); });
+watch([filterType, filterStatus, filterDateFrom, filterDateTo], () => {
+  page.value = 1;
+  fetchAlarms();
+});
 watch(page, fetchAlarms);
 onMounted(fetchAlarms);
 </script>

@@ -723,7 +723,11 @@ const editingUser = ref(null);
 const saving = ref(false);
 const formError = ref('');
 const userForm = reactive({
-  name: '', email: '', password: '', password_confirmation: '', is_admin: false,
+  name: '',
+  email: '',
+  password: '',
+  password_confirmation: '',
+  is_admin: false,
 });
 
 const showPasswordModal = ref(false);
@@ -776,13 +780,15 @@ const allNewbiePeriods = ref([]);
 const filteredGroupUsers = computed(() => {
   if (!selectedGroup.value) return [];
   const q = memberSearch.value.toLowerCase();
-  const memberIds = new Set(selectedGroup.value.users?.map(u => u.id) ?? []);
+  const memberIds = new Set(selectedGroup.value.users?.map((u) => u.id) ?? []);
   const list = q
-    ? users.value.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+    ? users.value.filter(
+        (u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+      )
     : users.value;
   return [...list]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map(u => ({ ...u, _isMember: memberIds.has(u.id) }));
+    .map((u) => ({ ...u, _isMember: memberIds.has(u.id) }));
 });
 
 // ── Fetch ──────────────────────────────────────────────
@@ -804,7 +810,7 @@ async function fetchGroups() {
     const res = await api.get('/api/user-groups');
     groups.value = res.data;
     if (selectedGroup.value) {
-      selectedGroup.value = groups.value.find(g => g.id === selectedGroup.value.id) ?? null;
+      selectedGroup.value = groups.value.find((g) => g.id === selectedGroup.value.id) ?? null;
     }
   } catch {
     showToast('Failed to load groups. Please refresh.', 'error');
@@ -836,22 +842,35 @@ watch(currentTab, (tab) => {
 
 // ── Helpers ────────────────────────────────────────────
 function getInitials(name) {
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function formatDT(dt) {
   if (!dt) return '';
   const d = new Date(dt);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return (
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+    ' ' +
+    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+  );
 }
 
 function isCurrentNewbie(userId) {
   const today = new Date().toISOString().split('T')[0];
-  return allNewbiePeriods.value.some(np => {
+  return allNewbiePeriods.value.some((np) => {
     const start = np.start_date?.substring(0, 10);
     const end = np.end_date?.substring(0, 10);
     return np.user_id === userId && today >= start && today <= end;
@@ -859,7 +878,7 @@ function isCurrentNewbie(userId) {
 }
 
 function hasAnyNewbiePeriod(userId) {
-  return allNewbiePeriods.value.some(np => np.user_id === userId);
+  return allNewbiePeriods.value.some((np) => np.user_id === userId);
 }
 
 // ── User CRUD ──────────────────────────────────────────
@@ -896,13 +915,17 @@ async function saveUser() {
   try {
     if (editingUser.value) {
       await api.put(`/api/users/${editingUser.value.id}`, {
-        name: userForm.name, email: userForm.email, is_admin: userForm.is_admin,
+        name: userForm.name,
+        email: userForm.email,
+        is_admin: userForm.is_admin,
       });
       showToast(`User "${userForm.name}" updated successfully.`);
     } else {
       await api.post('/api/users', {
-        name: userForm.name, email: userForm.email,
-        password: userForm.password, password_confirmation: userForm.password_confirmation,
+        name: userForm.name,
+        email: userForm.email,
+        password: userForm.password,
+        password_confirmation: userForm.password_confirmation,
         is_admin: userForm.is_admin,
       });
       showToast(`User "${userForm.name}" created successfully.`);
@@ -913,7 +936,7 @@ async function saveUser() {
     const data = err.response?.data;
     formError.value = data?.errors
       ? Object.values(data.errors).flat().join(' ')
-      : (data?.message || 'An error occurred.');
+      : data?.message || 'An error occurred.';
   } finally {
     saving.value = false;
   }
@@ -937,7 +960,8 @@ async function changePassword() {
   passwordError.value = '';
   try {
     await api.put(`/api/users/${passwordUser.value.id}/password`, {
-      password: passwordForm.password, password_confirmation: passwordForm.password_confirmation,
+      password: passwordForm.password,
+      password_confirmation: passwordForm.password_confirmation,
     });
     showToast(`Password for "${passwordUser.value.name}" changed successfully.`);
     closePasswordModal();
@@ -945,7 +969,7 @@ async function changePassword() {
     const data = err.response?.data;
     passwordError.value = data?.errors
       ? Object.values(data.errors).flat().join(' ')
-      : (data?.message || 'An error occurred.');
+      : data?.message || 'An error occurred.';
   } finally {
     savingPassword.value = false;
   }
@@ -1010,7 +1034,7 @@ async function saveGroup() {
   try {
     if (editingGroup.value) {
       const res = await api.put(`/api/user-groups/${editingGroup.value.id}`, groupForm);
-      const idx = groups.value.findIndex(g => g.id === editingGroup.value.id);
+      const idx = groups.value.findIndex((g) => g.id === editingGroup.value.id);
       if (idx !== -1) groups.value[idx] = res.data;
       if (selectedGroup.value?.id === editingGroup.value.id) selectedGroup.value = res.data;
       showToast(`Group "${groupForm.name}" updated.`);
@@ -1025,7 +1049,7 @@ async function saveGroup() {
     const data = err.response?.data;
     groupFormError.value = data?.errors
       ? Object.values(data.errors).flat().join(' ')
-      : (data?.message || 'An error occurred.');
+      : data?.message || 'An error occurred.';
   } finally {
     savingGroup.value = false;
   }
@@ -1040,7 +1064,7 @@ async function deleteGroupConfirmed() {
   deletingGroupLoading.value = true;
   try {
     await api.delete(`/api/user-groups/${deletingGroup.value.id}`);
-    groups.value = groups.value.filter(g => g.id !== deletingGroup.value.id);
+    groups.value = groups.value.filter((g) => g.id !== deletingGroup.value.id);
     if (selectedGroup.value?.id === deletingGroup.value.id) selectedGroup.value = null;
     showToast(`Group "${deletingGroup.value.name}" deleted.`);
     showGroupDeleteModal.value = false;
@@ -1055,19 +1079,21 @@ async function deleteGroupConfirmed() {
 async function toggleMember(userId) {
   if (!selectedGroup.value) return;
   togglingUserId.value = userId;
-  const currentIds = selectedGroup.value.users?.map(u => u.id) ?? [];
+  const currentIds = selectedGroup.value.users?.map((u) => u.id) ?? [];
   const newIds = currentIds.includes(userId)
-    ? currentIds.filter(id => id !== userId)
+    ? currentIds.filter((id) => id !== userId)
     : [...currentIds, userId];
   try {
-    const res = await api.put(`/api/user-groups/${selectedGroup.value.id}/users`, { user_ids: newIds });
+    const res = await api.put(`/api/user-groups/${selectedGroup.value.id}/users`, {
+      user_ids: newIds,
+    });
     selectedGroup.value = res.data;
-    const idx = groups.value.findIndex(g => g.id === res.data.id);
+    const idx = groups.value.findIndex((g) => g.id === res.data.id);
     if (idx !== -1) groups.value[idx] = res.data;
     const groupSnap = { id: res.data.id, name: res.data.name, enum: res.data.enum };
-    users.value = users.value.map(u => {
-      const inGroup = res.data.users?.some(gu => gu.id === u.id);
-      const filteredGroups = (u.groups ?? []).filter(g => g.id !== groupSnap.id);
+    users.value = users.value.map((u) => {
+      const inGroup = res.data.users?.some((gu) => gu.id === u.id);
+      const filteredGroups = (u.groups ?? []).filter((g) => g.id !== groupSnap.id);
       return { ...u, groups: inGroup ? [...filteredGroups, groupSnap] : filteredGroups };
     });
   } catch {
@@ -1164,7 +1190,7 @@ async function createNewbiePeriod() {
 async function deleteNewbiePeriod(period) {
   try {
     await api.delete(`/api/newbie-periods/${period.id}`);
-    userNewbiePeriods.value = userNewbiePeriods.value.filter(p => p.id !== period.id);
+    userNewbiePeriods.value = userNewbiePeriods.value.filter((p) => p.id !== period.id);
     showToast('Newbie period removed.');
   } catch {
     showToast('Failed to remove.', 'error');

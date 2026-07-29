@@ -113,19 +113,27 @@ async function fetchColors() {
   try {
     const res = await api.get('/api/shift-colors');
     colors.value = res.data;
-  } catch { showToast('Failed to load colors.', 'error'); }
-  finally { loading.value = false; }
+  } catch {
+    showToast('Failed to load colors.', 'error');
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function addColor() {
   if (!newName.value.trim() || !newHex.value) return;
   try {
-    const res = await api.post('/api/shift-colors', { name: newName.value.trim(), hex: newHex.value });
+    const res = await api.post('/api/shift-colors', {
+      name: newName.value.trim(),
+      hex: newHex.value,
+    });
     colors.value.push(res.data);
     newName.value = '';
     newHex.value = '#3b82f6';
     showToast('Color added.');
-  } catch (e) { showToast(e.response?.data?.message || 'Failed to add color.', 'error'); }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Failed to add color.', 'error');
+  }
 }
 
 function startEdit(color) {
@@ -137,22 +145,34 @@ function startEdit(color) {
 async function saveEdit() {
   if (!editId.value) return;
   try {
-    const res = await api.put(`/api/shift-colors/${editId.value}`, { name: editName.value.trim(), hex: editHex.value });
-    const idx = colors.value.findIndex(c => c.id === editId.value);
+    const res = await api.put(`/api/shift-colors/${editId.value}`, {
+      name: editName.value.trim(),
+      hex: editHex.value,
+    });
+    const idx = colors.value.findIndex((c) => c.id === editId.value);
     if (idx >= 0) colors.value[idx] = res.data;
     editId.value = null;
     showToast('Color updated.');
-  } catch (e) { showToast(e.response?.data?.message || 'Failed to update.', 'error'); }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Failed to update.', 'error');
+  }
 }
 
 async function deleteColor(color) {
-  const ok = await confirm({ title: 'Delete Color', message: `Delete color "${color.name}"?`, confirmLabel: 'Delete', danger: true });
+  const ok = await confirm({
+    title: 'Delete Color',
+    message: `Delete color "${color.name}"?`,
+    confirmLabel: 'Delete',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/shift-colors/${color.id}`);
-    colors.value = colors.value.filter(c => c.id !== color.id);
+    colors.value = colors.value.filter((c) => c.id !== color.id);
     showToast('Color deleted.');
-  } catch (e) { showToast(e.response?.data?.message || 'Failed to delete.', 'error'); }
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Failed to delete.', 'error');
+  }
 }
 
 onMounted(fetchColors);

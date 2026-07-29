@@ -53,9 +53,9 @@
 </template>
 
 <script setup>
-import { useToast } from '@/composables/useToast'
+import { useToast } from '@/composables/useToast';
 
-const { toast, dismissToast } = useToast()
+const { toast, dismissToast } = useToast();
 
 const colorMap = {
   success: {
@@ -73,5 +73,5 @@ const colorMap = {
     icon: 'bg-amber-500/15',
     text: 'text-amber-300',
   },
-}
+};
 </script>

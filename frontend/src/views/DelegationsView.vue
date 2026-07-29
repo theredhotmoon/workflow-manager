@@ -156,11 +156,15 @@ const currentUserId = ref(null);
 
 function formatDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function approvedUsers(del) {
-  return (del.users || []).filter(u => u.pivot?.status === 'approved');
+  return (del.users || []).filter((u) => u.pivot?.status === 'approved');
 }
 
 function isPast(del) {
@@ -176,14 +180,18 @@ async function requestJoin(del) {
   try {
     await api.post(`/api/delegations/${del.id}/self-register`);
     await fetchData();
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function withdraw(del) {
   try {
     await api.delete(`/api/delegations/${del.id}/self-unregister`);
     await fetchData();
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 async function fetchData() {
@@ -196,8 +204,11 @@ async function fetchData() {
     openDelegations.value = openRes.data;
     myDelegations.value = myRes.data;
     currentUserId.value = currentUser.value?.id;
-  } catch (e) { console.error(e); }
-  finally { loading.value = false; }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    loading.value = false;
+  }
 }
 
 onMounted(fetchData);

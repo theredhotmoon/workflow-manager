@@ -299,11 +299,27 @@ const editingTemplate = ref(null);
 
 // Focus trap for the Create/Edit Template modal
 const templateModalRef = ref(null);
-useFocusTrap(templateModalRef, showModal, { onEscape: () => { showModal.value = false; } });
+useFocusTrap(templateModalRef, showModal, {
+  onEscape: () => {
+    showModal.value = false;
+  },
+});
 
-const defaultItem = () => ({ label: '', type: 'checkbox', requires_confirmation: false, procedure_id: null, min_value: null, max_value: null });
+const defaultItem = () => ({
+  label: '',
+  type: 'checkbox',
+  requires_confirmation: false,
+  procedure_id: null,
+  min_value: null,
+  max_value: null,
+});
 const defaultGroup = () => ({ name: '', items: [defaultItem()] });
-const defaultForm = () => ({ name: '', description: '', is_active: true, groups: [defaultGroup()] });
+const defaultForm = () => ({
+  name: '',
+  description: '',
+  is_active: true,
+  groups: [defaultGroup()],
+});
 
 const form = ref(defaultForm());
 const procedures = ref([]);
@@ -313,7 +329,7 @@ const collapsedGroups = reactive(new Set());
 // Validation
 const touchedName = ref(false);
 const nameError = computed(() =>
-  touchedName.value && !form.value.name.trim() ? 'Template name is required.' : ''
+  touchedName.value && !form.value.name.trim() ? 'Template name is required.' : '',
 );
 
 // Toast
@@ -352,9 +368,9 @@ async function editTemplate(tpl) {
       name: data.name,
       description: data.description || '',
       is_active: data.is_active,
-      groups: data.groups.map(g => ({
+      groups: data.groups.map((g) => ({
         name: g.name,
-      items: g.items.map(i => ({
+        items: g.items.map((i) => ({
           label: i.label,
           type: i.type,
           requires_confirmation: i.requires_confirmation,
@@ -454,9 +470,9 @@ async function saveTemplate() {
       name: form.value.name,
       description: form.value.description,
       is_active: form.value.is_active,
-      groups: form.value.groups.map(g => ({
+      groups: form.value.groups.map((g) => ({
         name: g.name,
-        items: g.items.map(i => ({
+        items: g.items.map((i) => ({
           label: i.label,
           type: i.type,
           requires_confirmation: i.requires_confirmation,
@@ -485,7 +501,12 @@ async function saveTemplate() {
 
 // Delete
 async function deleteTemplate(tpl) {
-  const ok = await confirm({ title: 'Delete Template', message: `Delete template "${tpl.name}"? This cannot be undone.`, confirmLabel: 'Delete', danger: true });
+  const ok = await confirm({
+    title: 'Delete Template',
+    message: `Delete template "${tpl.name}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  });
   if (!ok) return;
   try {
     await api.delete(`/api/checklist-templates/${tpl.id}`);
@@ -503,5 +524,4 @@ onMounted(async () => {
     procedures.value = procResponse.data?.data ?? procResponse.data ?? [];
   } catch {}
 });
-
 </script>

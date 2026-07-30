@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
 
 it('logs in with valid credentials and establishes a session', function () {
     $user = User::factory()->create();

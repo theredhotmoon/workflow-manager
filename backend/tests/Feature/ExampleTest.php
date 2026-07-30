@@ -1,5 +1,7 @@
 <?php
 
-it('returns a successful response', function () {
-    $this->get('/')->assertStatus(200);
+use Illuminate\Support\Facades\Schema;
+
+it('migrates the full schema into the test database', function () {
+    expect(Schema::hasTable('users'))->toBeTrue();
 });

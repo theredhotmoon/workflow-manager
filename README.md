@@ -91,6 +91,39 @@ docker compose exec backend php artisan <command>
 
 ---
 
+## Running Tests
+
+The backend test suite uses [Pest](https://pestphp.com/) and runs against a dedicated Postgres database (`shift_changer_test`), kept separate from your dev database.
+
+### 1. Create the test database (one-time)
+
+Connect to whichever Postgres instance your `backend/.env` points at (`DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`) and create a second database:
+
+```sql
+CREATE DATABASE shift_changer_test;
+```
+
+For example, with `psql` against a locally-installed Postgres:
+
+```bash
+psql -h $DB_HOST -p $DB_PORT -U $DB_USERNAME -c "CREATE DATABASE shift_changer_test;"
+```
+
+If you're running the fully-Dockerized stack instead, note that the `db` service in `docker-compose.yml` doesn't publish its port to the host, so connect to it via the container's own network instead:
+
+```bash
+docker compose exec db psql -U postgres -c "CREATE DATABASE shift_changer_test;"
+```
+
+### 2. Run the suite
+
+```bash
+cd backend
+composer test
+```
+
+---
+
 ## Hybrid dev mode (db + backend in Docker, frontend local)
 
 Runs the database and Laravel API in containers, while the Vue SPA runs on your

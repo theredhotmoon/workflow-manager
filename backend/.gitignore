@@ -15,10 +15,6 @@
 # Storage (user uploads, logs, cache, sessions)
 /storage/*.key
 /storage/app/public/
-/storage/framework/cache/
-/storage/framework/sessions/
-/storage/framework/testing/
-/storage/framework/views/
 /storage/logs/
 
 # Composer auth

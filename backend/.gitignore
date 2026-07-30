@@ -21,9 +21,6 @@
 /storage/framework/views/
 /storage/logs/
 
-# Bootstrap cache
-/bootstrap/cache/
-
 # Composer auth
 auth.json
 

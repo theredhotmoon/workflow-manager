@@ -1,0 +1,42 @@
+name: Frontend Tests
+
+on:
+  push:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-tests.yml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test suite
+        run: npm run test
+        env:
+          # laravel-vite-plugin refuses to boot the Vite dev server when it
+          # detects a CI environment (it assumes you meant to run a build).
+          # vitest reuses the same vite.config.js, so it hits this check too.
+          # Bypass it here since we genuinely want the Vite/Vitest pipeline
+          # to run in CI for testing, not production asset building.
+          LARAVEL_BYPASS_ENV_CHECK: "1"

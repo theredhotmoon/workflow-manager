@@ -39,4 +39,4 @@ jobs:
           # vitest reuses the same vite.config.js, so it hits this check too.
           # Bypass it here since we genuinely want the Vite/Vitest pipeline
           # to run in CI for testing, not production asset building.
-          LARAVEL_BYPASS_ENV_CHECK: 1
+          LARAVEL_BYPASS_ENV_CHECK: "1"

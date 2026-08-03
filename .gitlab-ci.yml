@@ -8,7 +8,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH
 
 include:
-  - component: $CI_SERVER_FQDN/devooops/gitlab/pipeline-catalog/templates/docker-buildx-push@main
+  - component: $CI_SERVER_FQDN/devooops/gitlab/pipeline-catalog/docker-buildx-push@main
     inputs:
       job_name: 🛠️ docker build backend
       image_name: workflow-manager-backend
@@ -17,7 +17,7 @@ include:
       docker_repository_url: $DOCKER_REGISTRY_URL
       docker_repository_project: $DOCKER_REGISTRY_PROJECT
 
-  - component: $CI_SERVER_FQDN/devooops/gitlab/pipeline-catalog/templates/docker-buildx-push@main
+  - component: $CI_SERVER_FQDN/devooops/gitlab/pipeline-catalog/docker-buildx-push@main
     inputs:
       job_name: 🛠️ docker build frontend
       image_name: workflow-manager-frontend

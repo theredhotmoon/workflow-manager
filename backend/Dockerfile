@@ -12,6 +12,7 @@ RUN composer install \
     --ignore-platform-reqs
 
 COPY . .
+RUN mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/logs
 RUN composer dump-autoload --optimize --classmap-authoritative
 
 

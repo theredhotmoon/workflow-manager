@@ -25,6 +25,8 @@
 
       <div v-if="loading" class="p-10 text-center text-slate-400">Loading…</div>
 
+      <div v-else-if="!report" class="p-10 text-center text-slate-500">Unable to load the report — check the selected group's settlement configuration, or that you have access to it.</div>
+
       <div v-else-if="report" class="bg-white/5 border border-white/10 rounded-2xl overflow-x-auto">
         <table class="w-full text-sm text-left">
           <thead class="text-slate-400 border-b border-white/10">
@@ -79,7 +81,10 @@ async function fetchGroups() {
 }
 
 async function fetchReport() {
-  if (!selectedGroupId.value) return;
+  if (!selectedGroupId.value) {
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   try {
     const res = await api.get('/api/settlement-periods', {

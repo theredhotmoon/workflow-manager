@@ -241,7 +241,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/user-groups/{userGroup}/users', [UserGroupController::class, 'syncUsers']);
 
         // Shift group management
-        Route::get('/shift-groups', [ShiftGroupController::class, 'index']);
         Route::post('/shift-groups', [ShiftGroupController::class, 'store']);
         Route::put('/shift-groups/{shiftGroup}', [ShiftGroupController::class, 'update']);
         Route::delete('/shift-groups/{shiftGroup}', [ShiftGroupController::class, 'destroy']);
@@ -318,6 +317,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Schedule management (admin or schedule_maintainer)
     Route::middleware('admin:schedule')->group(function () {
+        Route::get('/shift-groups', [ShiftGroupController::class, 'index']);
         Route::post('/schedule/generate', [ScheduleController::class, 'generate']);
         Route::put('/schedule/day-shifts', [ScheduleController::class, 'updateDayShifts']);
         Route::post('/schedule/assign', [ScheduleController::class, 'assign']);

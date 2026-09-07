@@ -277,11 +277,11 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { currentUser } from '../router/index.js';
 import api from '../axios.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
+import { currentUser } from '../router/index.js';
 
 const router = useRouter();
 const userMenuOpen = ref(false);
@@ -393,8 +393,11 @@ const topLinks = computed(() => {
     { to: '/procedures', label: 'Procedures' },
     { to: '/procedures-to-learn', label: 'To Learn' },
     { to: '/delegations', label: 'Delegations' },
+    { to: '/settlement-periods', label: 'Settlement Periods', scheduleOnly: true },
   ];
-  return links.filter((l) => !l.adminOnly || isAdmin.value);
+  return links.filter(
+    (l) => (!l.adminOnly || isAdmin.value) && (!l.scheduleOnly || canManageSchedule.value),
+  );
 });
 
 // Sidebar links (admin only, with SVG icons)

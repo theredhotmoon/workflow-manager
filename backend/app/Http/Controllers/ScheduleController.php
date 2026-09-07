@@ -418,6 +418,23 @@ class ScheduleController extends Controller
     }
 
     /**
+     * Update shift_type for a specific shift.
+     */
+    public function updateShiftType(Request $request, Shift $shift)
+    {
+        $request->validate([
+            'shift_type' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $shift->update(['shift_type' => $request->input('shift_type')]);
+
+        return response()->json([
+            'id' => $shift->id,
+            'shift_type' => $shift->shift_type,
+        ]);
+    }
+
+    /**
      * Generate default shift times by splitting 24h evenly.
      */
     private function defaultShiftTimes(int $count): array

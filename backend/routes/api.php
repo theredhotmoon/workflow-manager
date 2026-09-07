@@ -324,6 +324,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/schedule/shifts/{shift}/checklist', [ScheduleController::class, 'updateShiftChecklist']);
         Route::put('/schedule/shifts/{shift}/times', [ScheduleController::class, 'updateShiftTimes']);
         Route::put('/schedule/shifts/{shift}/color', [ScheduleController::class, 'updateShiftColor']);
+        Route::put('/schedule/shifts/{shift}/shift-type', [ScheduleController::class, 'updateShiftType']);
         Route::put('/schedule/shifts/{shift}/work-mode', [ScheduleController::class, 'updateShiftWorkMode']);
         Route::get('/shift-change-requests', [ShiftChangeRequestController::class, 'index']);
         Route::put('/shift-change-requests/{id}/acknowledge', [ShiftChangeRequestController::class, 'acknowledge']);

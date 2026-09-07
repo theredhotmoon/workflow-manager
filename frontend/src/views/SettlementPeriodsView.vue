@@ -33,7 +33,7 @@
             <tr>
               <th class="px-4 py-3">Employee</th>
               <th v-for="(week, i) in report.weeks" :key="i" class="px-4 py-3">
-                Week {{ i + 1 }}<br /><span class="text-[10px] text-slate-500">cap {{ week.cap_hours }}h</span>
+                Week {{ i + 1 }}<br /><span class="text-[10px] text-slate-500">{{ week.start }} – {{ week.end }}</span><br /><span class="text-[10px] text-slate-500">cap {{ week.cap_hours }}h</span>
               </th>
               <th class="px-4 py-3">Total</th>
             </tr>

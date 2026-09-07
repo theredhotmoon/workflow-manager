@@ -532,6 +532,8 @@ class ShiftAutoAssignController extends Controller
         $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
+        $group = ShiftGroup::findOrFail($groupId);
+        $calculator = new \App\Services\SettlementPeriodCalculator();
 
         $shifts = Shift::whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->where('shift_group_id', $groupId)
@@ -553,26 +555,37 @@ class ShiftAutoAssignController extends Controller
 
         $blockedMap = $this->buildBlockedMap($employees->pluck('id')->toArray(), $request->month);
 
+        // Pre-compute each distinct date's settlement-anchored week: a period-qualified
+        // key (so weeks from different periods never collide), the week's hour cap,
+        // and whether the date is the last day of its anchored week (used below in
+        // place of the old "is it Sunday" heuristic).
+        $weekKeyByDate = [];
+        $weekCapByDate = [];
+        $weekEndByDate = [];
+        foreach ($shifts as $shift) {
+            $dateStr = $shift->date->format('Y-m-d');
+            if (isset($weekKeyByDate[$dateStr])) {
+                continue;
+            }
+            $shiftDate = $shift->date->copy()->startOfDay();
+            $period = $calculator->periodContaining($group, $shiftDate);
+            $match = $calculator->weekFor($period, $shiftDate);
+            $weekKeyByDate[$dateStr] = "{$period['period_number']}:{$match['index']}";
+            $weekCapByDate[$dateStr] = $match['week']['cap_hours'];
+            $weekEndByDate[$dateStr] = $dateStr === $match['week']['end']->format('Y-m-d');
+        }
+
         // Build shift time info
         $shiftTimes = [];
         foreach ($shifts as $shift) {
-            $dateStr = $shift->date->format('Y-m-d');
-            $startTime = $shift->start_time ? Carbon::parse($dateStr . ' ' . $shift->start_time) : Carbon::parse($dateStr . ' 06:00');
-            $endTime = $shift->end_time ? Carbon::parse($dateStr . ' ' . $shift->end_time) : Carbon::parse($dateStr . ' 14:00');
-
-            // Handle overnight shifts
-            if ($endTime->lte($startTime)) {
-                $endTime->addDay();
-            }
-
-            $durationMinutes = $startTime->diffInMinutes($endTime);
+            $timing = $calculator->shiftTiming($shift);
 
             $shiftTimes[$shift->id] = [
-                'start' => $startTime,
-                'end' => $endTime,
-                'duration_minutes' => $durationMinutes,
-                'duration_hours' => $durationMinutes / 60,
-                'is_night' => $this->isNightShift($startTime, $endTime),
+                'start' => $timing['start'],
+                'end' => $timing['end'],
+                'duration_minutes' => $timing['duration_hours'] * 60,
+                'duration_hours' => $timing['duration_hours'],
+                'is_night' => $this->isNightShift($timing['start'], $timing['end']),
             ];
         }
 
@@ -581,8 +594,8 @@ class ShiftAutoAssignController extends Controller
         foreach ($employees as $emp) {
             $employeeState[$emp->id] = [
                 'last_shift_end' => null,        // Carbon of last shift end
-                'weekly_hours' => [],             // weekNumber => hours
-                'weekly_days' => [],              // weekNumber => [dates worked]
+                'weekly_hours' => [],             // weekKey => hours
+                'weekly_days' => [],              // weekKey => [dates worked]
                 'total_hours' => 0,
                 'total_shifts' => 0,
                 'last_rest_start' => null,        // When last rest period began (for 35h weekly check)
@@ -600,7 +613,7 @@ class ShiftAutoAssignController extends Controller
             foreach ($shift->assignments as $a) {
                 if (isset($employeeState[$a->user_id]) && isset($shiftTimes[$shift->id])) {
                     $st = $shiftTimes[$shift->id];
-                    $weekNum = Carbon::parse($dateStr)->weekOfYear;
+                    $weekNum = $weekKeyByDate[$dateStr];
                     $employeeState[$a->user_id]['last_shift_end'] = $st['end'];
                     $employeeState[$a->user_id]['total_hours'] += $st['duration_hours'];
                     $employeeState[$a->user_id]['total_shifts']++;
@@ -612,14 +625,14 @@ class ShiftAutoAssignController extends Controller
 
         $totalAssigned = 0;
         $warnings = [];
-        $totalWeeks = $start->diffInWeeks($end) + 1;
 
         foreach ($shifts as $shift) {
             $dateStr = $shift->date->format('Y-m-d');
             $dayOfWeek = $shift->date->dayOfWeekIso;
             $isWeekend = $dayOfWeek >= 6;
             $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
-            $weekNum = Carbon::parse($dateStr)->weekOfYear;
+            $weekNum = $weekKeyByDate[$dateStr];
+            $weekCap = $weekCapByDate[$dateStr];
 
             $currentKey = $dateStr . ':' . $shift->shift_number;
             $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
@@ -657,9 +670,9 @@ class ShiftAutoAssignController extends Controller
                         continue;
                 }
 
-                // Rule: max 48h this week
+                // Rule: max weekly_hour_cap this settlement-anchored week
                 $weekHours = $state['weekly_hours'][$weekNum] ?? 0;
-                if ($weekHours + $st['duration_hours'] > 48)
+                if ($weekHours + $st['duration_hours'] > $weekCap)
                     continue;
 
                 // Rule: max 5 working days this week
@@ -668,10 +681,9 @@ class ShiftAutoAssignController extends Controller
                     continue;
 
                 // Rule: 35h weekly rest — check if employee had at least 35h continuous rest this week
-                // (We enforce this by checking if Sunday is free when possible; the check below prevents
-                //  assigning 7 consecutive days without a long enough break)
-                if ($dayOfWeek == 7) {
-                    // Sunday: only assign if they haven't worked 5+ days this week already
+                // (We enforce this by checking if the last day of the anchored week is free when
+                //  possible; the check below prevents assigning every day of the week without a break.)
+                if ($weekEndByDate[$dateStr]) {
                     if (count($weekDays) >= 5)
                         continue;
                 }
@@ -713,26 +725,6 @@ class ShiftAutoAssignController extends Controller
             }
         }
 
-        // Post-assignment compliance summary
-        $complianceNotes = [];
-        foreach ($employees as $emp) {
-            $state = $employeeState[$emp->id];
-            if ($state['total_shifts'] === 0)
-                continue;
-
-            $avgWeeklyHours = $totalWeeks > 0 ? $state['total_hours'] / $totalWeeks : 0;
-
-            if ($avgWeeklyHours > 40) {
-                $complianceNotes[] = "{$emp->name}: avg {$avgWeeklyHours}h/week (exceeds 40h avg)";
-            }
-
-            foreach ($state['weekly_hours'] as $wn => $wh) {
-                if ($wh > 48) {
-                    $complianceNotes[] = "{$emp->name}: week {$wn} has {$wh}h (exceeds 48h cap)";
-                }
-            }
-        }
-
         // Count night shifts
         $nightShiftCount = 0;
         foreach ($shifts as $shift) {
@@ -745,14 +737,11 @@ class ShiftAutoAssignController extends Controller
         if (count($warnings) > 0) {
             $message .= ' ' . count($warnings) . ' shifts could not be fully filled.';
         }
-        if (count($complianceNotes) > 0) {
-            $message .= ' ' . count($complianceNotes) . ' compliance note(s).';
-        }
 
         return response()->json([
             'message' => $message,
             'total_assigned' => $totalAssigned,
-            'warnings' => array_merge($warnings, $complianceNotes),
+            'warnings' => $warnings,
         ]);
     }
 

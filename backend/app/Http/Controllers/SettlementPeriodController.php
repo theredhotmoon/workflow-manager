@@ -19,7 +19,14 @@ class SettlementPeriodController extends Controller
         $group = ShiftGroup::findOrFail($request->shift_group_id);
         $offset = (int) $request->input('offset', 0);
         $calculator = new SettlementPeriodCalculator();
-        $period = $calculator->periodByOffset($group, $offset);
+
+        try {
+            $period = $calculator->periodByOffset($group, $offset);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => "Settlement period configuration error for this group: {$e->getMessage()}",
+            ], 422);
+        }
 
         $assignments = ShiftAssignment::with(['shift', 'user:id,name'])
             ->whereHas('shift', function ($q) use ($group, $period) {

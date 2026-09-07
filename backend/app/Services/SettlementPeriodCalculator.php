@@ -64,7 +64,7 @@ class SettlementPeriodCalculator
         $mode = $group->settlement_mode ?? self::DEFAULT_MODE;
         $anchor = $group->settlement_anchor_date
             ? $group->settlement_anchor_date->copy()->startOfDay()
-            : $group->created_at->copy()->startOfDay();
+            : ($group->created_at ? $group->created_at->copy()->startOfDay() : Carbon::today()->startOfDay());
         $customLength = $group->settlement_custom_length_days;
         $weeklyCap = $group->weekly_hour_cap ?? self::DEFAULT_WEEKLY_HOUR_CAP;
 

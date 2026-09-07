@@ -101,3 +101,25 @@ it('caps at 48h/week (the fallback default) for a group with no settlement confi
 
     \Illuminate\Support\Carbon::setTestNow();
 });
+
+it('returns a 422 with a clear message instead of a 500 when the group is misconfigured (custom mode, null length)', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create(['name' => 'Broken Group', 'is_default' => true, 'sort_order' => 0]);
+    // Force the group into an invalid state that validation should normally prevent.
+    $group->forceFill(['settlement_mode' => 'custom', 'settlement_custom_length_days' => null])->save();
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    makeShiftForPolishLaw($group->id, '2026-09-01', 1, '06:00', '18:00');
+
+    $response = $this->actingAs($maintainer)->postJson('/api/schedule/auto-assign/polish-law', [
+        'month' => '2026-09',
+        'shift_group_id' => $group->id,
+        'users_per_shift_weekday' => 1,
+        'users_per_shift_weekend' => 1,
+        'rotation_days' => 7,
+        'player_mode' => 'include',
+        'player_ids' => [$employee->id],
+    ]);
+
+    $response->assertStatus(422);
+    expect($response->json('message'))->toContain('Settlement period configuration error');
+});

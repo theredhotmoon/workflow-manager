@@ -562,17 +562,23 @@ class ShiftAutoAssignController extends Controller
         $weekKeyByDate = [];
         $weekCapByDate = [];
         $weekEndByDate = [];
-        foreach ($shifts as $shift) {
-            $dateStr = $shift->date->format('Y-m-d');
-            if (isset($weekKeyByDate[$dateStr])) {
-                continue;
+        try {
+            foreach ($shifts as $shift) {
+                $dateStr = $shift->date->format('Y-m-d');
+                if (isset($weekKeyByDate[$dateStr])) {
+                    continue;
+                }
+                $shiftDate = $shift->date->copy()->startOfDay();
+                $period = $calculator->periodContaining($group, $shiftDate);
+                $match = $calculator->weekFor($period, $shiftDate);
+                $weekKeyByDate[$dateStr] = "{$period['period_number']}:{$match['index']}";
+                $weekCapByDate[$dateStr] = $match['week']['cap_hours'];
+                $weekEndByDate[$dateStr] = $dateStr === $match['week']['end']->format('Y-m-d');
             }
-            $shiftDate = $shift->date->copy()->startOfDay();
-            $period = $calculator->periodContaining($group, $shiftDate);
-            $match = $calculator->weekFor($period, $shiftDate);
-            $weekKeyByDate[$dateStr] = "{$period['period_number']}:{$match['index']}";
-            $weekCapByDate[$dateStr] = $match['week']['cap_hours'];
-            $weekEndByDate[$dateStr] = $dateStr === $match['week']['end']->format('Y-m-d');
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => "Settlement period configuration error for group \"{$group->name}\": {$e->getMessage()}",
+            ], 422);
         }
 
         // Build shift time info

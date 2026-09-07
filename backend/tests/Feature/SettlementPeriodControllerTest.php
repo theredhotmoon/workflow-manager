@@ -58,3 +58,15 @@ it('returns an empty employees list for a period with no assignments yet', funct
     $response->assertOk();
     expect($response->json('employees'))->toBe([]);
 });
+
+it('returns a 422 with a clear message instead of a 500 when the group is misconfigured (custom mode, null length)', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create(['name' => 'Broken Group', 'is_default' => true, 'sort_order' => 0]);
+    // Force the group into an invalid state that validation should normally prevent.
+    $group->forceFill(['settlement_mode' => 'custom', 'settlement_custom_length_days' => null])->save();
+
+    $response = $this->actingAs($maintainer)->getJson("/api/settlement-periods?shift_group_id={$group->id}");
+
+    $response->assertStatus(422);
+    expect($response->json('message'))->toContain('Settlement period configuration error');
+});

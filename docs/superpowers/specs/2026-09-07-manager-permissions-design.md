@@ -64,7 +64,7 @@ New `UserAvailabilityPolicy`:
 
 ## Frontend
 
-- `OfficeAvailabilityView.vue` (currently read-only overview): add an edit affordance, visible only for employees within a `UserGroup` the logged-in manager manages. Reuses the same form component `MyAvailabilityView.vue` uses for creating/editing entries, parameterized with a target `user_id`.
+- Correction from initial research: `OfficeAvailabilityView.vue` turned out to be the office-closures page (holidays/closures), not a per-employee availability overview — there is no existing admin view of individual employees' availability. This design adds a new `TeamAvailabilityView.vue` instead: an employee picker scoped to the manager's managed teams, next to the same editor `MyAvailabilityView.vue` uses for creating/editing entries, parameterized with a target `user_id`.
 - `MyAvailabilityView.vue`: when rendering an entry where `created_by_user_id !== user_id`, show a small badge — "Set by {manager name}" — sourced from an eager-loaded `createdBy` relation on the API response.
 - Preference form (shared component): add a shift-type selector, shown only when `type='preferred'` is selected — mutually exclusive with the existing date-range-only "prefer to work" option (UI clarifies these are two different kinds of "preferred": general availability vs. shift-type preference within a range).
 

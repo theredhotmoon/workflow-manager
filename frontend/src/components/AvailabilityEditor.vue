@@ -38,6 +38,7 @@
               ]">
               {{ entry.type === 'unavailable' ? '🔴' : '🟢' }}
               {{ entry.shift_type ? entry.shift_type : (entry.start_time ? entry.start_time + '–' + entry.end_time : 'All day') }}
+              <span v-if="entry.note" class="opacity-70">· {{ entry.note }}</span>
               <span v-if="entry.created_by_user_id !== entry.user_id && entry.created_by_name" class="opacity-70">· set by {{ entry.created_by_name }}</span>
             </div>
           </div>

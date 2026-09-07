@@ -1,0 +1,83 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\ShiftAssignment;
+use App\Models\ShiftGroup;
+use App\Services\SettlementPeriodCalculator;
+use Illuminate\Http\Request;
+
+class SettlementPeriodController extends Controller
+{
+    public function show(Request $request)
+    {
+        $request->validate([
+            'shift_group_id' => ['required', 'integer', 'exists:shift_groups,id'],
+            'offset' => ['sometimes', 'integer'],
+        ]);
+
+        $group = ShiftGroup::findOrFail($request->shift_group_id);
+        $offset = (int) $request->input('offset', 0);
+        $calculator = new SettlementPeriodCalculator();
+        $period = $calculator->periodByOffset($group, $offset);
+
+        $assignments = ShiftAssignment::with(['shift', 'user:id,name'])
+            ->whereHas('shift', function ($q) use ($group, $period) {
+                $q->where('shift_group_id', $group->id)
+                    ->whereBetween('date', [$period['start']->toDateString(), $period['end']->toDateString()]);
+            })
+            ->get();
+
+        $employeeWeekHours = [];
+        $employeeNames = [];
+
+        foreach ($assignments as $assignment) {
+            $shift = $assignment->shift;
+            $timing = $calculator->shiftTiming($shift);
+            $match = $calculator->weekFor($period, $shift->date->copy()->startOfDay());
+
+            $userId = $assignment->user_id;
+            $employeeNames[$userId] = $assignment->user->name;
+            $employeeWeekHours[$userId][$match['index']] =
+                ($employeeWeekHours[$userId][$match['index']] ?? 0) + $timing['duration_hours'];
+        }
+
+        $weeks = array_map(fn($w) => [
+            'start' => $w['start']->toDateString(),
+            'end' => $w['end']->toDateString(),
+            'cap_hours' => $w['cap_hours'],
+        ], $period['weeks']);
+
+        $employees = [];
+        foreach ($employeeNames as $userId => $name) {
+            $weeklyHours = [];
+            $overCapWeeks = [];
+            foreach ($period['weeks'] as $index => $week) {
+                $hours = round($employeeWeekHours[$userId][$index] ?? 0, 2);
+                $weeklyHours[] = $hours;
+                if ($hours > $week['cap_hours']) {
+                    $overCapWeeks[] = $index;
+                }
+            }
+            $employees[] = [
+                'id' => $userId,
+                'name' => $name,
+                'weekly_hours' => $weeklyHours,
+                'total_hours' => round(array_sum($weeklyHours), 2),
+                'over_cap_weeks' => $overCapWeeks,
+            ];
+        }
+
+        usort($employees, fn($a, $b) => strcmp($a['name'], $b['name']));
+
+        return response()->json([
+            'period' => [
+                'period_number' => $period['period_number'],
+                'start' => $period['start']->toDateString(),
+                'end' => $period['end']->toDateString(),
+            ],
+            'weeks' => $weeks,
+            'employees' => array_values($employees),
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+}

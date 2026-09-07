@@ -66,6 +66,7 @@ class ScheduleController extends Controller
                 'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
                 'color' => $shift->color,
                 'color_label' => $shift->color_label,
+                'shift_type' => $shift->shift_type,
                 'shift_checklists' => $shift->shiftChecklists->map(fn($sc) => [
                     'id' => $sc->id,
                     'checklist_template_id' => $sc->checklist_template_id,
@@ -254,6 +255,7 @@ class ScheduleController extends Controller
                 'end_time' => $s->end_time ? substr($s->end_time, 0, 5) : null,
                 'color' => $s->color,
                 'color_label' => $s->color_label,
+                'shift_type' => $s->shift_type,
                 'shift_checklists' => $s->shiftChecklists->map(fn($sc) => [
                     'id' => $sc->id,
                     'checklist_template_id' => $sc->checklist_template_id,

@@ -91,6 +91,14 @@
               title="Delete group">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
+
+            <!-- Group settlement settings (admin/schedule_maintainer) -->
+            <button v-if="canManageSchedule && activeGroupId === group.id"
+              @click.stop="openGroupSettings(group)"
+              class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-indigo-400 transition-colors ml-1"
+              title="Settlement period settings">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </button>
           </button>
 
           <!-- New Group button (admin) -->
@@ -691,6 +699,57 @@
       </div>
     </Transition>
 
+    <!-- Group Settlement Settings Modal -->
+    <Transition
+      enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
+      enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
+      <div v-if="showGroupSettingsModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showGroupSettingsModal = false">
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showGroupSettingsModal = false"></div>
+        <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
+          <h3 class="text-white font-bold text-lg mb-1">Settlement Period Settings</h3>
+          <p class="text-slate-400 text-sm mb-5">{{ groupSettingsTarget?.name }}</p>
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Mode</label>
+            <select v-model="groupSettingsForm.settlement_mode"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Anchor Date</label>
+            <input v-model="groupSettingsForm.settlement_anchor_date" type="date"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+          </div>
+
+          <div v-if="groupSettingsForm.settlement_mode === 'custom'" class="mb-4">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Custom Length (days)</label>
+            <input v-model.number="groupSettingsForm.settlement_custom_length_days" type="number" min="1"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+          </div>
+
+          <div class="mb-5">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Weekly Hour Cap</label>
+            <input v-model.number="groupSettingsForm.weekly_hour_cap" type="number" min="0" step="0.5"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+          </div>
+
+          <div class="flex items-center justify-end gap-3">
+            <button @click="showGroupSettingsModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
+            <button @click="saveGroupSettings" :disabled="savingGroupSettings"
+              class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+              <svg v-if="savingGroupSettings" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Unavailable Assignment Confirmation Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
@@ -1187,15 +1246,15 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { VueDraggable } from 'vue-draggable-plus';
-import { confirm } from '../composables/useConfirm.js';
-import { useToast } from '../composables/useToast.js';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import AutoFillPanel from '../components/AutoFillPanel.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
 import { currentUser } from '../router/index.js';
 
 const router = useRouter();
@@ -1327,6 +1386,52 @@ async function saveGroupRename() {
   } catch (err) {
     showToast(err.response?.data?.message || 'Failed to rename group.', 'error');
     editingGroupId.value = null;
+  }
+}
+
+const showGroupSettingsModal = ref(false);
+const savingGroupSettings = ref(false);
+const groupSettingsTarget = ref(null);
+const groupSettingsForm = ref({
+  settlement_mode: 'monthly',
+  settlement_anchor_date: '',
+  settlement_custom_length_days: null,
+  weekly_hour_cap: 48,
+});
+
+function openGroupSettings(group) {
+  groupSettingsTarget.value = group;
+  groupSettingsForm.value = {
+    settlement_mode: group.settlement_mode || 'monthly',
+    settlement_anchor_date: group.settlement_anchor_date || '',
+    settlement_custom_length_days: group.settlement_custom_length_days ?? null,
+    weekly_hour_cap: group.weekly_hour_cap ?? 48,
+  };
+  showGroupSettingsModal.value = true;
+}
+
+async function saveGroupSettings() {
+  if (!groupSettingsTarget.value) return;
+  savingGroupSettings.value = true;
+  try {
+    const payload = {
+      settlement_mode: groupSettingsForm.value.settlement_mode,
+      settlement_anchor_date: groupSettingsForm.value.settlement_anchor_date,
+      settlement_custom_length_days:
+        groupSettingsForm.value.settlement_mode === 'custom'
+          ? groupSettingsForm.value.settlement_custom_length_days
+          : null,
+      weekly_hour_cap: groupSettingsForm.value.weekly_hour_cap,
+    };
+    const res = await api.put(`/api/shift-groups/${groupSettingsTarget.value.id}`, payload);
+    const idx = shiftGroups.value.findIndex((g) => g.id === res.data.id);
+    if (idx !== -1) shiftGroups.value[idx] = res.data;
+    showGroupSettingsModal.value = false;
+    showToast('Settlement settings saved.');
+  } catch (err) {
+    showToast(err.response?.data?.message || 'Failed to save settlement settings.', 'error');
+  } finally {
+    savingGroupSettings.value = false;
   }
 }
 

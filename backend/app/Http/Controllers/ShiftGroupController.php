@@ -26,6 +26,10 @@ class ShiftGroupController extends Controller
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
             'color' => ['nullable', 'string', 'max:7'],
+            'settlement_mode' => ['sometimes', 'nullable', 'in:weekly,monthly,quarterly,custom'],
+            'settlement_anchor_date' => ['sometimes', 'nullable', 'date'],
+            'settlement_custom_length_days' => ['required_if:settlement_mode,custom', 'nullable', 'integer', 'min:1'],
+            'weekly_hour_cap' => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ]);
 
         $maxOrder = ShiftGroup::max('sort_order') ?? 0;
@@ -35,9 +39,22 @@ class ShiftGroupController extends Controller
             'description' => $request->description,
             'color' => $request->color,
             'sort_order' => $maxOrder + 1,
+            'settlement_mode' => $request->settlement_mode,
+            'settlement_anchor_date' => $request->settlement_anchor_date,
+            'settlement_custom_length_days' => $request->settlement_custom_length_days,
+            'weekly_hour_cap' => $request->weekly_hour_cap,
         ]);
 
-        return response()->json($group, 201);
+        $group = $group->fresh();
+        $data = $group->toArray();
+
+        $json = json_encode($data);
+        // Ensure whole number floats include .0 in JSON for proper type preservation
+        $json = preg_replace('/"weekly_hour_cap":(\d+)([,}])/', '"weekly_hour_cap":$1.0$2', $json);
+
+        return response($json, 201, [
+            'Content-Type' => 'application/json',
+        ]);
     }
 
     /**
@@ -49,11 +66,27 @@ class ShiftGroupController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
             'color' => ['nullable', 'string', 'max:7'],
+            'settlement_mode' => ['sometimes', 'nullable', 'in:weekly,monthly,quarterly,custom'],
+            'settlement_anchor_date' => ['sometimes', 'nullable', 'date'],
+            'settlement_custom_length_days' => ['required_if:settlement_mode,custom', 'nullable', 'integer', 'min:1'],
+            'weekly_hour_cap' => ['sometimes', 'nullable', 'numeric', 'min:0'],
         ]);
 
-        $shiftGroup->update($request->only(['name', 'description', 'color']));
+        $shiftGroup->update($request->only([
+            'name', 'description', 'color',
+            'settlement_mode', 'settlement_anchor_date', 'settlement_custom_length_days', 'weekly_hour_cap',
+        ]));
 
-        return response()->json($shiftGroup);
+        $shiftGroup = $shiftGroup->fresh();
+        $data = $shiftGroup->toArray();
+
+        $json = json_encode($data);
+        // Ensure whole number floats include .0 in JSON for proper type preservation
+        $json = preg_replace('/"weekly_hour_cap":(\d+)([,}])/', '"weekly_hour_cap":$1.0$2', $json);
+
+        return response($json, 200, [
+            'Content-Type' => 'application/json',
+        ]);
     }
 
     /**

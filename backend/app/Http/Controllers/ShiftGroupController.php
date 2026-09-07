@@ -45,16 +45,7 @@ class ShiftGroupController extends Controller
             'weekly_hour_cap' => $request->weekly_hour_cap,
         ]);
 
-        $group = $group->fresh();
-        $data = $group->toArray();
-
-        $json = json_encode($data);
-        // Ensure whole number floats include .0 in JSON for proper type preservation
-        $json = preg_replace('/"weekly_hour_cap":(\d+)([,}])/', '"weekly_hour_cap":$1.0$2', $json);
-
-        return response($json, 201, [
-            'Content-Type' => 'application/json',
-        ]);
+        return response()->json($group, 201, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     /**
@@ -77,16 +68,7 @@ class ShiftGroupController extends Controller
             'settlement_mode', 'settlement_anchor_date', 'settlement_custom_length_days', 'weekly_hour_cap',
         ]));
 
-        $shiftGroup = $shiftGroup->fresh();
-        $data = $shiftGroup->toArray();
-
-        $json = json_encode($data);
-        // Ensure whole number floats include .0 in JSON for proper type preservation
-        $json = preg_replace('/"weekly_hour_cap":(\d+)([,}])/', '"weekly_hour_cap":$1.0$2', $json);
-
-        return response($json, 200, [
-            'Content-Type' => 'application/json',
-        ]);
+        return response()->json($shiftGroup, 200, [], JSON_PRESERVE_ZERO_FRACTION);
     }
 
     /**

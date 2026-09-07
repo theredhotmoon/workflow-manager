@@ -220,6 +220,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // User groups (read-only — needed by schedule maintainers for player filtering)
     Route::get('/user-groups', [UserGroupController::class, 'index']);
 
+    // Groups the current user manages (for the team-availability view)
+    Route::get('/my-managed-teams', [UserGroupController::class, 'managedByMe']);
+
     // Alarms
     Route::get('/alarms', [AlarmController::class, 'index']);
     Route::get('/alarms/latest', [AlarmController::class, 'latest']);
@@ -238,6 +241,7 @@ Route::middleware('auth:sanctum')->group(function () {
             ->except(['show', 'index'])
             ->parameters(['user-groups' => 'userGroup']);
         Route::put('/user-groups/{userGroup}/users', [UserGroupController::class, 'syncUsers']);
+        Route::put('/user-groups/{userGroup}/managers', [UserGroupController::class, 'syncManagers']);
 
         // Shift group management
         Route::get('/shift-groups', [ShiftGroupController::class, 'index']);

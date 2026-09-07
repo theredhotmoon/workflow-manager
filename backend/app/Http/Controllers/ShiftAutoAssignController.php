@@ -509,8 +509,8 @@ class ShiftAutoAssignController extends Controller
      *
      * Rules enforced:
      * - 11h uninterrupted daily rest after each shift
-     * - 35h uninterrupted weekly rest (Sunday preferred)
-     * - Average 40h/week, max 48h/week
+     * - 35h uninterrupted weekly rest (last day of settlement-period-anchored week preferred)
+     * - Max weekly hour cap per settlement period (configurable via ShiftGroup.weekly_hour_cap)
      * - Max 13h work per day
      * - Max 5 working days per week average
      * - No same-day double shifts

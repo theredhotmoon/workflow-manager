@@ -63,3 +63,21 @@ it('rejects clearing settlement_custom_length_days on a group already in custom 
     expect($group->settlement_mode)->toBe('custom');
     expect($group->settlement_custom_length_days)->toBe(10);
 });
+
+it('rejects a weekly_hour_cap above 168 (hours in a week) on create', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+
+    $this->actingAs($admin)->postJson('/api/shift-groups', [
+        'name' => 'Overcap Group',
+        'weekly_hour_cap' => 100000,
+    ])->assertStatus(422)->assertJsonValidationErrors(['weekly_hour_cap']);
+});
+
+it('rejects a weekly_hour_cap above 168 (hours in a week) on update', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+
+    $this->actingAs($admin)->putJson("/api/shift-groups/{$group->id}", [
+        'weekly_hour_cap' => 200,
+    ])->assertStatus(422)->assertJsonValidationErrors(['weekly_hour_cap']);
+});

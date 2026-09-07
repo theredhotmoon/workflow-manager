@@ -30,7 +30,7 @@ class ShiftGroupController extends Controller
             'settlement_mode' => ['sometimes', 'nullable', 'in:weekly,monthly,quarterly,custom'],
             'settlement_anchor_date' => ['sometimes', 'nullable', 'date'],
             'settlement_custom_length_days' => ['required_if:settlement_mode,custom', 'nullable', 'integer', 'min:1'],
-            'weekly_hour_cap' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'weekly_hour_cap' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:168'],
         ]);
 
         $maxOrder = ShiftGroup::max('sort_order') ?? 0;
@@ -66,7 +66,7 @@ class ShiftGroupController extends Controller
                 Rule::requiredIf($effectiveMode === 'custom'),
                 'nullable', 'integer', 'min:1',
             ],
-            'weekly_hour_cap' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'weekly_hour_cap' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:168'],
         ]);
 
         $shiftGroup->update($request->only([

@@ -153,6 +153,17 @@
                       </svg>
                       Availability
                     </router-link>
+
+                    <router-link to="/team-availability" @click="userMenuOpen = false"
+                      :class="['flex items-center gap-3 px-4 py-2.5 text-sm transition-all',
+                        $route.path === '/team-availability'
+                          ? 'text-indigo-300 bg-indigo-500/10'
+                          : 'text-slate-300 hover:text-white hover:bg-white/5']">
+                      <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Team Availability
+                    </router-link>
                   </div>
 
                   <!-- Change Password -->
@@ -277,11 +288,11 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { currentUser } from '../router/index.js';
 import api from '../axios.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
+import { currentUser } from '../router/index.js';
 
 const router = useRouter();
 const userMenuOpen = ref(false);

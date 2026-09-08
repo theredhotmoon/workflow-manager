@@ -1,26 +1,27 @@
-import { createRouter, createWebHistory } from 'vue-router';
 import { ref } from 'vue';
-import LoginView from '../views/LoginView.vue';
-import DashboardView from '../views/DashboardView.vue';
-import UsersView from '../views/UsersView.vue';
-import ScheduleView from '../views/ScheduleView.vue';
+import { createRouter, createWebHistory } from 'vue-router';
+import api from '../axios.js';
+import AlarmsView from '../views/AlarmsView.vue';
 import ChecklistBuilderView from '../views/ChecklistBuilderView.vue';
 import ChecklistFillView from '../views/ChecklistFillView.vue';
 import ChecklistHistoryView from '../views/ChecklistHistoryView.vue';
+import DashboardView from '../views/DashboardView.vue';
+import DelegationArchiveView from '../views/DelegationArchiveView.vue';
+import DelegationsManageView from '../views/DelegationsManageView.vue';
+import DelegationsView from '../views/DelegationsView.vue';
+import LoginView from '../views/LoginView.vue';
 import MyAvailabilityView from '../views/MyAvailabilityView.vue';
 import MyShiftsView from '../views/MyShiftsView.vue';
 import OfficeAvailabilityView from '../views/OfficeAvailabilityView.vue';
-import ProcedureTagsView from '../views/ProcedureTagsView.vue';
-import ProceduresListView from '../views/ProceduresListView.vue';
 import ProcedureDetailView from '../views/ProcedureDetailView.vue';
+import ProceduresListView from '../views/ProceduresListView.vue';
 import ProceduresToLearnView from '../views/ProceduresToLearnView.vue';
+import ProcedureTagsView from '../views/ProcedureTagsView.vue';
 import ProcedureTreeEditorView from '../views/ProcedureTreeEditorView.vue';
-import DelegationsView from '../views/DelegationsView.vue';
-import DelegationsManageView from '../views/DelegationsManageView.vue';
-import DelegationArchiveView from '../views/DelegationArchiveView.vue';
+import ScheduleView from '../views/ScheduleView.vue';
 import ShiftSettingsView from '../views/ShiftSettingsView.vue';
-import AlarmsView from '../views/AlarmsView.vue';
-import api from '../axios.js';
+import TeamAvailabilityView from '../views/TeamAvailabilityView.vue';
+import UsersView from '../views/UsersView.vue';
 
 // Shared reactive user state
 export const currentUser = ref(null);
@@ -82,6 +83,12 @@ const routes = [
     path: '/my-availability',
     name: 'my-availability',
     component: MyAvailabilityView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/team-availability',
+    name: 'team-availability',
+    component: TeamAvailabilityView,
     meta: { requiresAuth: true },
   },
   {

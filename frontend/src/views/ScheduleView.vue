@@ -681,6 +681,18 @@
               class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
           </div>
 
+          <!-- Shift Type -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Shift Type <span class="text-slate-500 font-normal">(optional)</span></label>
+            <input v-model="timeForm.shift_type" type="text" list="schedule-shift-type-options" placeholder="e.g. night"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+            <datalist id="schedule-shift-type-options">
+              <option value="day" />
+              <option value="evening" />
+              <option value="night" />
+            </datalist>
+          </div>
+
           <div class="flex items-center justify-end gap-3">
             <button @click="showTimeModal = false"
               class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
@@ -1762,6 +1774,7 @@ const timeForm = ref({
   end_time: '',
   color: null,
   color_label: '',
+  shift_type: '',
 });
 
 // Toast
@@ -2020,6 +2033,7 @@ function openTimeEditor(shift, dateStr) {
     end_time: shift.end_time || '14:00',
     color: shift.color || null,
     color_label: shift.color_label || '',
+    shift_type: shift.shift_type || '',
   };
   showTimeModal.value = true;
 }
@@ -2044,6 +2058,11 @@ async function saveShiftTimes() {
     });
     shift.color = colorRes.data.color;
     shift.color_label = colorRes.data.color_label;
+
+    const shiftTypeRes = await api.put(`/api/schedule/shifts/${shift.id}/shift-type`, {
+      shift_type: timeForm.value.shift_type || null,
+    });
+    shift.shift_type = shiftTypeRes.data.shift_type;
 
     showTimeModal.value = false;
     showToast('Shift updated.');

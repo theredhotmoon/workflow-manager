@@ -66,6 +66,7 @@ class ScheduleController extends Controller
                 'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
                 'color' => $shift->color,
                 'color_label' => $shift->color_label,
+                'shift_type' => $shift->shift_type,
                 'shift_checklists' => $shift->shiftChecklists->map(fn($sc) => [
                     'id' => $sc->id,
                     'checklist_template_id' => $sc->checklist_template_id,
@@ -254,6 +255,7 @@ class ScheduleController extends Controller
                 'end_time' => $s->end_time ? substr($s->end_time, 0, 5) : null,
                 'color' => $s->color,
                 'color_label' => $s->color_label,
+                'shift_type' => $s->shift_type,
                 'shift_checklists' => $s->shiftChecklists->map(fn($sc) => [
                     'id' => $sc->id,
                     'checklist_template_id' => $sc->checklist_template_id,
@@ -414,6 +416,23 @@ class ScheduleController extends Controller
             'id' => $shift->id,
             'color' => $shift->color,
             'color_label' => $shift->color_label,
+        ]);
+    }
+
+    /**
+     * Update shift_type for a specific shift.
+     */
+    public function updateShiftType(Request $request, Shift $shift)
+    {
+        $request->validate([
+            'shift_type' => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $shift->update(['shift_type' => $request->input('shift_type')]);
+
+        return response()->json([
+            'id' => $shift->id,
+            'shift_type' => $shift->shift_type,
         ]);
     }
 

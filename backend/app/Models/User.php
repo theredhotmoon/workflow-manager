@@ -52,20 +52,4 @@ class User extends Authenticatable
     {
         return $this->belongsToMany(UserGroup::class, 'user_group_user');
     }
-
-    public function managedGroups(): BelongsToMany
-    {
-        return $this->belongsToMany(UserGroup::class, 'user_group_managers');
-    }
-
-    public function managesUser(User $target): bool
-    {
-        if ($this->id === $target->id) {
-            return false;
-        }
-
-        return $this->managedGroups()
-            ->whereHas('users', fn ($q) => $q->where('users.id', $target->id))
-            ->exists();
-    }
 }

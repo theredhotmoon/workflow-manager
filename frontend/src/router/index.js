@@ -21,7 +21,6 @@ import ProcedureTreeEditorView from '../views/ProcedureTreeEditorView.vue';
 import ScheduleView from '../views/ScheduleView.vue';
 import SettlementPeriodsView from '../views/SettlementPeriodsView.vue';
 import ShiftSettingsView from '../views/ShiftSettingsView.vue';
-import TeamAvailabilityView from '../views/TeamAvailabilityView.vue';
 import UsersView from '../views/UsersView.vue';
 
 // Shared reactive user state
@@ -84,12 +83,6 @@ const routes = [
     path: '/my-availability',
     name: 'my-availability',
     component: MyAvailabilityView,
-    meta: { requiresAuth: true },
-  },
-  {
-    path: '/team-availability',
-    name: 'team-availability',
-    component: TeamAvailabilityView,
     meta: { requiresAuth: true },
   },
   {

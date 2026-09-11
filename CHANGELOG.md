@@ -4,11 +4,31 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-09-11 — ↩️ Revert: Manager Permissions for Employee Availability
+
+Reverted the manager-editable-availability feature shipped 2026-09-07 (PR #4). Managers can no longer create/edit/delete availability entries for employees on teams they manage; each user is back to managing only their own entries. Removed the shift-type preference field, the "set by [manager]" badge, the Team Availability page, and the manager-assignment panel on the Users page.
+
+Kept as-is: the `2026_09_07_*` migrations that added this schema (already applied on `origin/main`, so deleting them would orphan the schema elsewhere) — a new migration (`2026_09_11_120000_revert_manager_permissions_schema`) drops the added table/columns instead.
+
+### Backend
+| What | Details |
+|------|---------|
+| Removed | `UserAvailabilityPolicy`, `User::managedGroups()`/`managesUser()`, `UserGroup::managers()`, `UserGroupController::syncManagers()`/`managedByMe()`, `ScheduleController::updateShiftType()` |
+| Schema | New migration drops `user_group_managers`, `user_availabilities.shift_type`/`created_by_user_id`, `shifts.shift_type` |
+
+### Frontend
+| View | Change |
+|------|--------|
+| **My Availability** | `AvailabilityEditor.vue` folded back into `MyAvailabilityView.vue` directly; manager "set by" badge and shift-type field removed |
+| **Removed** | `TeamAvailabilityView.vue`, its nav link, and the Managers sub-panel on Users |
+
+---
+
 ## 2026-09-07 23:15 — 📅 Configurable Settlement Periods
 
 Each shift group can now define its own settlement-period accounting window (weekly, monthly, quarterly, or a custom length) with its own anchor date and weekly hour cap — replacing the schedule generator's previously hardcoded 48h/calendar-week limit. Weeks within a period are 7-day blocks anchored to the period's own start date, not calendar Monday–Sunday, with the trailing partial week's cap prorated by day count. A new reporting page shows each employee's hours per anchored week against the cap.
 
-Sub-project 2 of 4 in the broader scheduling feature set (manager permissions shipped previously; shift streaks and on-call duty are next).
+Sub-project 2 of 4 in the broader scheduling feature set (manager permissions shipped previously but was later reverted — see above; shift streaks and on-call duty are next).
 
 ### Backend
 | What | Details |
@@ -24,34 +44,6 @@ Sub-project 2 of 4 in the broader scheduling feature set (manager permissions sh
 |------|--------|
 | **New: Settlement Periods** | Reporting page — pick a group, browse settlement periods, see each employee's hours per week against the cap |
 | **Schedule** | Group tabs gained a settings icon to configure a group's settlement period and weekly hour cap |
-
----
-
-## 2026-09-07 17:55 — 🧑‍💼 Manager Permissions for Employee Availability
-
-Team managers can now create, edit, and delete an employee's shift-availability preferences (date-range "unavailable"/"preferred" entries) for people on teams they manage — previously this was only possible from the employee's own account. Also introduces a **shift-type preference** ("prefer night shifts") alongside the existing date-range preferences, and a related free-form `shift_type` label for individual shifts.
-
-Sub-project 1 of 4 in a broader scheduling feature set (shift streaks, configurable settlement periods, and on-call duty are next).
-
-### Backend
-| What | Details |
-|------|---------|
-| New table | `user_group_managers` — many-to-many pivot, lets a `UserGroup` have multiple managers and a manager oversee multiple groups |
-| New columns | `user_availabilities.shift_type` (nullable, free-form), `user_availabilities.created_by_user_id` (audit trail, backfilled to `user_id` for existing rows) |
-| New column | `shifts.shift_type` (nullable, free-form — e.g. "day"/"evening"/"night") |
-| New policy | `UserAvailabilityPolicy` — an actor may manage an entry if they own it, are an admin/schedule_maintainer, or manage the target's group |
-| Updated | `UserAvailabilityController` — `store()` accepts an optional `user_id` for manager-created entries, validates `shift_type` only applies when `type=preferred`, enriches responses with `shift_type`/`created_by_user_id`/`created_by_name` |
-| Updated | `UserGroupController` — new `syncManagers()` and `managedByMe()` endpoints |
-| New endpoint | `PUT /schedule/shifts/{shift}/shift-type` (admin/schedule_maintainer) |
-
-### Frontend
-| View | Change |
-|------|--------|
-| **New: Team Availability** | Manager-facing page — pick an employee from a team you manage, edit their availability/preferences |
-| **My Availability** | Shows a "set by [manager]" badge when a manager created an entry; new shift-type preference field |
-| **Users (admin)** | New "Managers" sub-panel alongside existing group members, to assign who manages each group |
-| **Schedule** | Shift Times editor gained a free-text Shift Type field (with day/evening/night suggestions) |
-| New component | `AvailabilityEditor.vue` — shared calendar+modal extracted from My Availability, reused by both the employee's own page and the new manager view |
 
 ---
 

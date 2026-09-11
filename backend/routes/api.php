@@ -249,6 +249,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/shift-groups/{shiftGroup}', [ShiftGroupController::class, 'update']);
         Route::delete('/shift-groups/{shiftGroup}', [ShiftGroupController::class, 'destroy']);
         Route::post('/shift-groups/reorder', [ShiftGroupController::class, 'reorder']);
+        Route::put('/shift-groups/{shiftGroup}/streak-rules', [ShiftGroupController::class, 'syncStreakRules']);
 
         // Shift color definitions
         Route::get('/shift-colors', [ShiftColorController::class, 'index']);

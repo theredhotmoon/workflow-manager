@@ -12,9 +12,6 @@
 # and relaxes a few settings for local development.
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
     ports:
       - "${BACKEND_PORT:-8090}:8080"
     environment:

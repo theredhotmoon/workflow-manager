@@ -304,6 +304,15 @@ class ScheduleController extends Controller
             'user_id' => $request->user_id,
         ]);
 
+        $shift = Shift::find($request->shift_id);
+        $streakTracker = new \App\Services\ShiftStreakTracker();
+        $streakRules = $streakTracker->rulesForGroup($shift->shiftGroup);
+        if (!$streakRules->isEmpty()) {
+            $streakStates = $streakTracker->loadStates($streakRules, [(int) $request->user_id]);
+            $streakTracker->recordAssignment($streakStates, $streakRules, (int) $request->user_id, $shift->shift_type, $shift->date, advanceWatermark: true);
+            $streakTracker->persist($streakStates);
+        }
+
         $assignment->load('user:id,name');
 
         return response()->json([
@@ -319,6 +328,15 @@ class ScheduleController extends Controller
      */
     public function unassign(ShiftAssignment $assignment)
     {
+        $shift = $assignment->shift;
+        $streakTracker = new \App\Services\ShiftStreakTracker();
+        $streakRules = $streakTracker->rulesForGroup($shift->shiftGroup);
+        if (!$streakRules->isEmpty()) {
+            $streakStates = $streakTracker->loadStates($streakRules, [$assignment->user_id]);
+            $streakTracker->recordUnassignment($streakStates, $streakRules, $assignment->user_id, $shift->shift_type);
+            $streakTracker->persist($streakStates);
+        }
+
         // Auto-acknowledge any pending change requests for this assignment
         ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
             ->where('status', 'pending')

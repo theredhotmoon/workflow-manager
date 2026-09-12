@@ -59,11 +59,14 @@ it('rejects two rules for the same shift_type in the same payload', function () 
 
 it('includes streak_rules on the shift-groups index response', function () {
     $admin = User::factory()->create(['role' => 'admin']);
-    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    $group = ShiftGroup::create(['name' => 'Streak Group', 'sort_order' => 1]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
 
     $response = $this->actingAs($admin)->getJson('/api/shift-groups');
 
     $response->assertOk();
-    expect($response->json('0.streak_rules.0.shift_type'))->toBe('night');
+    $groups = collect($response->json());
+    $ourGroup = $groups->firstWhere('id', $group->id);
+    expect($ourGroup)->not->toBeNull();
+    expect($ourGroup['streak_rules'][0]['shift_type'])->toBe('night');
 });

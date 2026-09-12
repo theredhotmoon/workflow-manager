@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ShiftGroupController extends Controller
@@ -17,25 +16,7 @@ class ShiftGroupController extends Controller
     {
         $groups = ShiftGroup::with('streakRules')->orderBy('sort_order')->orderBy('id')->get();
 
-        // Convert array keys to snake_case for API consistency
-        $result = $this->recursiveKeysToSnakeCase($groups->toArray());
-
-        return response()->json($result);
-    }
-
-    private function recursiveKeysToSnakeCase($data)
-    {
-        if (!is_array($data)) {
-            return $data;
-        }
-
-        $result = [];
-        foreach ($data as $key => $value) {
-            $newKey = is_string($key) ? Str::snake($key) : $key;
-            $result[$newKey] = is_array($value) ? $this->recursiveKeysToSnakeCase($value) : $value;
-        }
-        return $result;
-    }
+        return response()->json($groups);
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ShiftGroupController extends Controller
@@ -132,16 +133,17 @@ class ShiftGroupController extends Controller
             ], 422);
         }
 
-        $shiftGroup->streakRules()->delete();
-
-        foreach ($request->rules as $rule) {
-            ShiftStreakRule::create([
-                'shift_group_id' => $shiftGroup->id,
-                'shift_type' => $rule['shift_type'],
-                'streak_length' => $rule['streak_length'],
-                'rest_days' => $rule['rest_days'],
-            ]);
-        }
+        DB::transaction(function () use ($request, $shiftGroup) {
+            $keepIds = [];
+            foreach ($request->rules as $rule) {
+                $model = ShiftStreakRule::updateOrCreate(
+                    ['shift_group_id' => $shiftGroup->id, 'shift_type' => $rule['shift_type']],
+                    ['streak_length' => $rule['streak_length'], 'rest_days' => $rule['rest_days']],
+                );
+                $keepIds[] = $model->id;
+            }
+            $shiftGroup->streakRules()->whereNotIn('id', $keepIds)->delete();
+        });
 
         $shiftGroup->load('streakRules');
 

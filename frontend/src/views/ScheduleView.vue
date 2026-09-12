@@ -750,6 +750,26 @@
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
 
+          <div class="mb-5">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Shift Streak Rules</label>
+            <div v-for="(rule, idx) in groupSettingsForm.streak_rules" :key="idx" class="flex items-center gap-2 mb-2">
+              <input v-model="rule.shift_type" type="text" placeholder="shift type (e.g. night)"
+                class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+              <input v-model.number="rule.streak_length" type="number" min="1" title="Streak length"
+                class="w-16 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              <span class="text-slate-500 text-xs whitespace-nowrap">then rest</span>
+              <input v-model.number="rule.rest_days" type="number" min="1" title="Rest days"
+                class="w-16 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              <span class="text-slate-500 text-xs whitespace-nowrap">days</span>
+              <button @click="groupSettingsForm.streak_rules.splice(idx, 1)"
+                class="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-red-400 transition-colors shrink-0" title="Remove rule">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <button @click="groupSettingsForm.streak_rules.push({ shift_type: '', streak_length: 3, rest_days: 2 })"
+              class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">+ Add streak rule</button>
+          </div>
+
           <div class="flex items-center justify-end gap-3">
             <button @click="showGroupSettingsModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
             <button @click="saveGroupSettings" :disabled="savingGroupSettings"
@@ -1409,6 +1429,7 @@ const groupSettingsForm = ref({
   settlement_anchor_date: '',
   settlement_custom_length_days: null,
   weekly_hour_cap: 48,
+  streak_rules: [],
 });
 
 function openGroupSettings(group) {
@@ -1418,6 +1439,11 @@ function openGroupSettings(group) {
     settlement_anchor_date: group.settlement_anchor_date || '',
     settlement_custom_length_days: group.settlement_custom_length_days ?? null,
     weekly_hour_cap: group.weekly_hour_cap ?? 48,
+    streak_rules: (group.streak_rules ?? []).map((r) => ({
+      shift_type: r.shift_type,
+      streak_length: r.streak_length,
+      rest_days: r.rest_days,
+    })),
   };
   showGroupSettingsModal.value = true;
 }
@@ -1436,8 +1462,17 @@ async function saveGroupSettings() {
       weekly_hour_cap: groupSettingsForm.value.weekly_hour_cap,
     };
     const res = await api.put(`/api/shift-groups/${groupSettingsTarget.value.id}`, payload);
+
+    const streakRes = await api.put(
+      `/api/shift-groups/${groupSettingsTarget.value.id}/streak-rules`,
+      {
+        rules: groupSettingsForm.value.streak_rules.filter((r) => r.shift_type),
+      },
+    );
+
     const idx = shiftGroups.value.findIndex((g) => g.id === res.data.id);
-    if (idx !== -1) shiftGroups.value[idx] = res.data;
+    if (idx !== -1)
+      shiftGroups.value[idx] = { ...res.data, streak_rules: streakRes.data.streak_rules };
     showGroupSettingsModal.value = false;
     showToast('Settlement settings saved.');
   } catch (err) {

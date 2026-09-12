@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Services\SettlementPeriodCalculator;
+use App\Services\ShiftStreakTracker;
 use Illuminate\Http\Request;
 
 class SettlementPeriodController extends Controller
@@ -55,6 +56,10 @@ class SettlementPeriodController extends Controller
             'cap_hours' => $w['cap_hours'],
         ], $period['weeks']);
 
+        $streakTracker = new ShiftStreakTracker();
+        $streakRules = $streakTracker->rulesForGroup($group);
+        $streakStates = $streakTracker->loadStates($streakRules, array_keys($employeeNames));
+
         $employees = [];
         foreach ($employeeNames as $userId => $name) {
             $weeklyHours = [];
@@ -66,12 +71,25 @@ class SettlementPeriodController extends Controller
                     $overCapWeeks[] = $index;
                 }
             }
+
+            $streakStatus = [];
+            foreach ($streakRules as $rule) {
+                $state = $streakStates["{$userId}:{$rule->id}"];
+                $streakStatus[] = [
+                    'shift_type' => $rule->shift_type,
+                    'current_count' => $state['current_count'],
+                    'streak_length' => $rule->streak_length,
+                    'resting_until' => $state['resting_until']?->toDateString(),
+                ];
+            }
+
             $employees[] = [
                 'id' => $userId,
                 'name' => $name,
                 'weekly_hours' => $weeklyHours,
                 'total_hours' => round(array_sum($weeklyHours), 2),
                 'over_cap_weeks' => $overCapWeeks,
+                'streak_status' => $streakStatus,
             ];
         }
 

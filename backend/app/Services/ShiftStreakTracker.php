@@ -6,6 +6,7 @@ use App\Models\ShiftGroup;
 use App\Models\ShiftStreakState;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class ShiftStreakTracker
 {
@@ -115,21 +116,23 @@ class ShiftStreakTracker
 
     public function persist(array $states): void
     {
-        foreach ($states as $key => $state) {
-            if (!$state['dirty']) {
-                continue;
+        DB::transaction(function () use ($states) {
+            foreach ($states as $key => $state) {
+                if (!$state['dirty']) {
+                    continue;
+                }
+
+                [$userId, $ruleId] = array_map('intval', explode(':', $key));
+
+                ShiftStreakState::updateOrCreate(
+                    ['user_id' => $userId, 'shift_streak_rule_id' => $ruleId],
+                    [
+                        'current_count' => $state['current_count'],
+                        'resting_until' => $state['resting_until'],
+                        'last_processed_date' => $state['last_processed_date'],
+                    ]
+                );
             }
-
-            [$userId, $ruleId] = array_map('intval', explode(':', $key));
-
-            ShiftStreakState::updateOrCreate(
-                ['user_id' => $userId, 'shift_streak_rule_id' => $ruleId],
-                [
-                    'current_count' => $state['current_count'],
-                    'resting_until' => $state['resting_until'],
-                    'last_processed_date' => $state['last_processed_date'],
-                ]
-            );
-        }
+        });
     }
 }

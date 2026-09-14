@@ -12,7 +12,7 @@ class UserGroupController extends Controller
     public function index(): JsonResponse
     {
         return response()->json(
-            UserGroup::with(['users:id,name,email', 'managers:id,name,email'])->orderBy('name')->get()
+            UserGroup::with('users:id,name,email')->orderBy('name')->get()
         );
     }
 
@@ -24,7 +24,7 @@ class UserGroupController extends Controller
         ]);
 
         $group = UserGroup::create($validated);
-        $group->load(['users:id,name,email', 'managers:id,name,email']);
+        $group->load('users:id,name,email');
 
         return response()->json($group, 201);
     }
@@ -37,7 +37,7 @@ class UserGroupController extends Controller
         ]);
 
         $userGroup->update($validated);
-        $userGroup->load(['users:id,name,email', 'managers:id,name,email']);
+        $userGroup->load('users:id,name,email');
 
         return response()->json($userGroup);
     }
@@ -56,32 +56,8 @@ class UserGroupController extends Controller
         ]);
 
         $userGroup->users()->sync($validated['user_ids']);
-        $userGroup->load(['users:id,name,email', 'managers:id,name,email']);
+        $userGroup->load('users:id,name,email');
 
         return response()->json($userGroup);
-    }
-
-    public function syncManagers(Request $request, UserGroup $userGroup): JsonResponse
-    {
-        $validated = $request->validate([
-            'user_ids' => ['present', 'array', 'max:500'],
-            'user_ids.*' => ['integer', 'exists:users,id'],
-        ]);
-
-        $userGroup->managers()->sync($validated['user_ids']);
-        $userGroup->load(['users:id,name,email', 'managers:id,name,email']);
-
-        return response()->json($userGroup);
-    }
-
-    public function managedByMe(Request $request): JsonResponse
-    {
-        $groups = $request->user()
-            ->managedGroups()
-            ->with('users:id,name,email')
-            ->orderBy('name')
-            ->get(['user_groups.id', 'user_groups.name', 'user_groups.enum']);
-
-        return response()->json($groups);
     }
 }

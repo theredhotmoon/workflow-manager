@@ -279,31 +279,6 @@
                 </button>
               </div>
             </div>
-
-            <!-- Managers sub-section -->
-            <div class="border-t border-white/10 px-4 py-3">
-              <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Managers</h4>
-              <div class="space-y-1 max-h-56 overflow-y-auto">
-                <div v-for="user in filteredGroupUsers" :key="'mgr-' + user.id"
-                  class="flex items-center gap-3 px-2 py-2 hover:bg-white/[0.03] rounded-lg transition-colors duration-150">
-                  <div class="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-semibold text-[10px] shrink-0">
-                    {{ getInitials(user.name) }}
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-white truncate">{{ user.name }}</p>
-                  </div>
-                  <button
-                    @click="toggleManager(user.id)"
-                    :disabled="togglingManagerId !== null"
-                    class="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    :class="user._isManager
-                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/20'
-                      : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-amber-500/15 hover:text-amber-300 hover:border-amber-500/20'">
-                    {{ user._isManager ? 'Manager' : 'Make manager' }}
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -771,7 +746,6 @@ const groups = ref([]);
 const groupsLoading = ref(false);
 const selectedGroup = ref(null);
 const togglingUserId = ref(null);
-const togglingManagerId = ref(null);
 const memberSearch = ref('');
 
 const showGroupModal = ref(false);
@@ -814,11 +788,7 @@ const filteredGroupUsers = computed(() => {
     : users.value;
   return [...list]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((u) => ({
-      ...u,
-      _isMember: memberIds.has(u.id),
-      _isManager: selectedGroup.value?.managers?.some((m) => m.id === u.id) ?? false,
-    }));
+    .map((u) => ({ ...u, _isMember: memberIds.has(u.id) }));
 });
 
 // ── Fetch ──────────────────────────────────────────────
@@ -1130,27 +1100,6 @@ async function toggleMember(userId) {
     showToast('Failed to update group members.', 'error');
   } finally {
     togglingUserId.value = null;
-  }
-}
-
-async function toggleManager(userId) {
-  if (!selectedGroup.value) return;
-  togglingManagerId.value = userId;
-  const currentIds = selectedGroup.value.managers?.map((u) => u.id) ?? [];
-  const newIds = currentIds.includes(userId)
-    ? currentIds.filter((id) => id !== userId)
-    : [...currentIds, userId];
-  try {
-    const res = await api.put(`/api/user-groups/${selectedGroup.value.id}/managers`, {
-      user_ids: newIds,
-    });
-    selectedGroup.value = res.data;
-    const idx = groups.value.findIndex((g) => g.id === res.data.id);
-    if (idx !== -1) groups.value[idx] = res.data;
-  } catch {
-    showToast('Failed to update group managers.', 'error');
-  } finally {
-    togglingManagerId.value = null;
   }
 }
 

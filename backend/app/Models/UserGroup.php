@@ -13,9 +13,4 @@ class UserGroup extends Model
     {
         return $this->belongsToMany(User::class, 'user_group_user');
     }
-
-    public function managers(): BelongsToMany
-    {
-        return $this->belongsToMany(User::class, 'user_group_managers');
-    }
 }

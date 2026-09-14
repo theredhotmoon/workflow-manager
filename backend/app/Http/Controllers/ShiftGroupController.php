@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\ShiftGroup;
+use App\Models\ShiftStreakRule;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ShiftGroupController extends Controller
@@ -13,7 +15,7 @@ class ShiftGroupController extends Controller
      */
     public function index()
     {
-        $groups = ShiftGroup::orderBy('sort_order')->orderBy('id')->get();
+        $groups = ShiftGroup::with('streakRules')->orderBy('sort_order')->orderBy('id')->get();
 
         return response()->json($groups);
     }
@@ -110,5 +112,41 @@ class ShiftGroupController extends Controller
         }
 
         return response()->json(['message' => 'Shift groups reordered.']);
+    }
+
+    /**
+     * Replace a group's full set of shift-streak rules in one call.
+     */
+    public function syncStreakRules(Request $request, ShiftGroup $shiftGroup)
+    {
+        $request->validate([
+            'rules' => ['present', 'array'],
+            'rules.*.shift_type' => ['required', 'string', 'max:50'],
+            'rules.*.streak_length' => ['required', 'integer', 'min:1'],
+            'rules.*.rest_days' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $shiftTypes = array_column($request->rules, 'shift_type');
+        if (count($shiftTypes) !== count(array_unique($shiftTypes))) {
+            return response()->json([
+                'message' => 'Each shift_type can only have one streak rule per group.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($request, $shiftGroup) {
+            $keepIds = [];
+            foreach ($request->rules as $rule) {
+                $model = ShiftStreakRule::updateOrCreate(
+                    ['shift_group_id' => $shiftGroup->id, 'shift_type' => $rule['shift_type']],
+                    ['streak_length' => $rule['streak_length'], 'rest_days' => $rule['rest_days']],
+                );
+                $keepIds[] = $model->id;
+            }
+            $shiftGroup->streakRules()->whereNotIn('id', $keepIds)->delete();
+        });
+
+        $shiftGroup->load('streakRules');
+
+        return response()->json($shiftGroup);
     }
 }

@@ -36,6 +36,7 @@
                 Week {{ i + 1 }}<br /><span class="text-[10px] text-slate-500">{{ week.start }} – {{ week.end }}</span><br /><span class="text-[10px] text-slate-500">cap {{ week.cap_hours }}h</span>
               </th>
               <th class="px-4 py-3">Total</th>
+              <th class="px-4 py-3">Streak</th>
             </tr>
           </thead>
           <tbody>
@@ -46,9 +47,10 @@
                 {{ hours }}<span v-if="emp.over_cap_weeks.includes(i)"> ⚠️</span>
               </td>
               <td class="px-4 py-3 text-white font-semibold">{{ emp.total_hours }}</td>
+              <td class="px-4 py-3 text-slate-300 text-xs">{{ formatStreakStatus(emp.streak_status) }}</td>
             </tr>
             <tr v-if="report.employees.length === 0">
-              <td :colspan="report.weeks.length + 2" class="px-4 py-6 text-center text-slate-500">No assignments in this period yet.</td>
+              <td :colspan="report.weeks.length + 3" class="px-4 py-6 text-center text-slate-500">No assignments in this period yet.</td>
             </tr>
           </tbody>
         </table>
@@ -101,6 +103,18 @@ async function fetchReport() {
 function stepPeriod(direction) {
   offset.value += direction;
   fetchReport();
+}
+
+function formatStreakStatus(streakStatus) {
+  if (!streakStatus || streakStatus.length === 0) return '';
+  return streakStatus
+    .map((s) => {
+      if (s.resting_until) return `${s.shift_type}: resting until ${s.resting_until}`;
+      if (s.current_count > 0) return `${s.shift_type}: ${s.current_count}/${s.streak_length}`;
+      return null;
+    })
+    .filter(Boolean)
+    .join(', ');
 }
 
 onMounted(async () => {

@@ -30,4 +30,9 @@ class ShiftGroup extends Model
     {
         return $this->hasMany(Shift::class);
     }
+
+    public function streakRules()
+    {
+        return $this->hasMany(ShiftStreakRule::class);
+    }
 }

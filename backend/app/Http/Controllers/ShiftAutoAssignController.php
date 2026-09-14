@@ -25,18 +25,33 @@ class ShiftAutoAssignController extends Controller
         $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
+        $group = ShiftGroup::find($groupId);
 
         $shifts = Shift::whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->where('shift_group_id', $groupId)
+            ->with('assignments')
             ->get();
 
         $totalShifts = $shifts->count();
         $totalAssignments = 0;
 
+        $streakTracker = new \App\Services\ShiftStreakTracker();
+        $streakRules = $group ? $streakTracker->rulesForGroup($group) : collect();
+        $streakStates = $streakRules->isEmpty() ? [] : $streakTracker->loadStates($streakRules, $shifts->flatMap(fn ($s) => $s->assignments->pluck('user_id'))->unique()->values()->all());
+
         foreach ($shifts as $shift) {
-            $totalAssignments += $shift->assignments()->count();
+            $totalAssignments += $shift->assignments->count();
+            if (!$streakRules->isEmpty()) {
+                foreach ($shift->assignments as $assignment) {
+                    $streakTracker->recordUnassignment($streakStates, $streakRules, $assignment->user_id, $shift->shift_type);
+                }
+            }
             $shift->assignments()->delete();
             $shift->delete();
+        }
+
+        if (!$streakRules->isEmpty()) {
+            $streakTracker->persist($streakStates);
         }
 
         return response()->json([
@@ -581,6 +596,10 @@ class ShiftAutoAssignController extends Controller
             ], 422);
         }
 
+        $streakTracker = new \App\Services\ShiftStreakTracker();
+        $streakRules = $streakTracker->rulesForGroup($group);
+        $streakStates = $streakTracker->loadStates($streakRules, $employees->pluck('id')->toArray());
+
         // Build shift time info
         $shiftTimes = [];
         foreach ($shifts as $shift) {
@@ -625,6 +644,10 @@ class ShiftAutoAssignController extends Controller
                     $employeeState[$a->user_id]['total_shifts']++;
                     $employeeState[$a->user_id]['weekly_hours'][$weekNum] = ($employeeState[$a->user_id]['weekly_hours'][$weekNum] ?? 0) + $st['duration_hours'];
                     $employeeState[$a->user_id]['weekly_days'][$weekNum][$dateStr] = true;
+
+                    if (!$streakRules->isEmpty() && !$streakTracker->wasAlreadyProcessed($streakStates, $streakRules, $a->user_id, $shift->shift_type, $shift->date)) {
+                        $streakTracker->recordAssignment($streakStates, $streakRules, $a->user_id, $shift->shift_type, $shift->date, advanceWatermark: true);
+                    }
                 }
             }
         }
@@ -694,6 +717,11 @@ class ShiftAutoAssignController extends Controller
                         continue;
                 }
 
+                // Rule: shift-streak mandatory rest (see ShiftStreakTracker)
+                if (!$streakRules->isEmpty() && $streakTracker->isBlocked($streakStates, $streakRules, $emp->id, $shift->date)) {
+                    continue;
+                }
+
                 // Scoring: prefer employees with fewer hours (fairness)
                 $score = $state['total_hours'];
 
@@ -722,6 +750,10 @@ class ShiftAutoAssignController extends Controller
                 $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $st['duration_hours'];
                 $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
 
+                if (!$streakRules->isEmpty()) {
+                    $streakTracker->recordAssignment($streakStates, $streakRules, $userId, $shift->shift_type, $shift->date, advanceWatermark: true);
+                }
+
                 $assigned++;
                 $totalAssigned++;
             }
@@ -729,6 +761,10 @@ class ShiftAutoAssignController extends Controller
             if ($assigned < $spotsToFill) {
                 $warnings[] = "Could only assign {$assigned}/{$spotsToFill} to {$dateStr} S{$shift->shift_number} (labor code limits)";
             }
+        }
+
+        if (!$streakRules->isEmpty()) {
+            $streakTracker->persist($streakStates);
         }
 
         // Count night shifts

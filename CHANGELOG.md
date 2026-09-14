@@ -4,6 +4,32 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-09-14 — 🔥 Shift Streaks
+
+Each shift group can now define per-shift-type streak rules — "N shifts of this type in a row, then M days fully off" (e.g. 3 night shifts, then 2 days off) — enforced live inside the schedule auto-generator. Manual assignment is unaffected by design: assigning or unassigning a shift always succeeds, it just keeps the streak bookkeeping up to date in the background.
+
+Sub-project 3 of 4 in the broader scheduling feature set (manager permissions — shipped, then reverted; configurable settlement periods — shipped; on-call duty — next).
+
+### Backend
+| What | Details |
+|------|---------|
+| New tables | `shift_streak_rules` (per-group config: shift_type/streak_length/rest_days), `shift_streak_states` (per-employee-per-rule progress, persisted rather than derived live since a streak's history has no bounded lookback) |
+| New service | `ShiftStreakTracker` — the single place streak state is read/written |
+| Updated | `ShiftAutoAssignController::polishLaw()` — a new eligibility filter blocks any shift for an employee during an active mandatory-rest window, alongside the existing 11h/13h/5-day/weekly-cap rules; a watermark makes re-running generation over an already-generated month idempotent |
+| New endpoint | `PUT /shift-groups/{id}/streak-rules` (admin) — full-replace config, preserving existing employee progress for unchanged/edited rules |
+| Updated | `GET /settlement-periods` — each employee gains a `streak_status` field |
+
+### Frontend
+| View | Change |
+|------|--------|
+| **Schedule** | Group settings modal gained a repeatable streak-rule editor |
+| **Settlement Periods** | New "Streak" column showing each employee's current progress or active rest window |
+
+### Known follow-ups (not in this release)
+`random()`/`rotating()` auto-assign modes don't record streak progress (only `polishLaw()` does); the re-run watermark can skip assignments if months are generated out of order; retyping or bulk-deleting shifts doesn't reconcile streak state; an employee resting for an entire settlement period isn't listed in that period's report. All four share the same shape — a controller changing a `ShiftAssignment` without going through the tracker — and the recommended fix is a model observer on `ShiftAssignment` create/delete.
+
+---
+
 ## 2026-09-11 — ↩️ Revert: Manager Permissions for Employee Availability
 
 Reverted the manager-editable-availability feature shipped 2026-09-07 (PR #4). Managers can no longer create/edit/delete availability entries for employees on teams they manage; each user is back to managing only their own entries. Removed the shift-type preference field, the "set by [manager]" badge, the Team Availability page, and the manager-assignment panel on the Users page.

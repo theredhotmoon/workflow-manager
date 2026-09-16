@@ -570,6 +570,19 @@ class ShiftAutoAssignController extends Controller
 
         $blockedMap = $this->buildBlockedMap($employees->pluck('id')->toArray(), $request->month);
 
+        // On-call callbacks for this group/month — read-only input to the
+        // state walk below (see docs/superpowers/specs/2026-09-15-on-call-duty-design.md).
+        // polishLaw() never creates or mutates on-call data, only reads it.
+        $onCallCallbacks = \App\Models\OnCallCallback::whereHas('onCallAssignment', function ($q) use ($groupId, $start, $end, $employees) {
+            $q->where('shift_group_id', $groupId)
+                ->where('starts_at', '<=', $end)
+                ->where('ends_at', '>=', $start)
+                ->whereIn('user_id', $employees->pluck('id'));
+        })
+            ->with('onCallAssignment:id,user_id')
+            ->orderBy('starts_at')
+            ->get();
+
         // Pre-compute each distinct date's settlement-anchored week: a period-qualified
         // key (so weeks from different periods never collide), the week's hour cap,
         // and whether the date is the last day of its anchored week (used below in
@@ -586,6 +599,22 @@ class ShiftAutoAssignController extends Controller
                 $shiftDate = $shift->date->copy()->startOfDay();
                 $period = $calculator->periodContaining($group, $shiftDate);
                 $match = $calculator->weekFor($period, $shiftDate);
+                $weekKeyByDate[$dateStr] = "{$period['period_number']}:{$match['index']}";
+                $weekCapByDate[$dateStr] = $match['week']['cap_hours'];
+                $weekEndByDate[$dateStr] = $dateStr === $match['week']['end']->format('Y-m-d');
+            }
+            // A callback can land on a date with no shift record at all
+            // (called in on an otherwise-scheduled day off) — a callback
+            // crossing midnight is attributed entirely to its starts_at
+            // date, the same convention Shift.date uses for overnight shifts.
+            foreach ($onCallCallbacks as $callback) {
+                $dateStr = $callback->starts_at->format('Y-m-d');
+                if (isset($weekKeyByDate[$dateStr])) {
+                    continue;
+                }
+                $callbackDate = $callback->starts_at->copy()->startOfDay();
+                $period = $calculator->periodContaining($group, $callbackDate);
+                $match = $calculator->weekFor($period, $callbackDate);
                 $weekKeyByDate[$dateStr] = "{$period['period_number']}:{$match['index']}";
                 $weekCapByDate[$dateStr] = $match['week']['cap_hours'];
                 $weekEndByDate[$dateStr] = $dateStr === $match['week']['end']->format('Y-m-d');
@@ -650,6 +679,30 @@ class ShiftAutoAssignController extends Controller
                     }
                 }
             }
+        }
+
+        // Fold on-call callbacks into the same per-employee state used for
+        // shifts: a callback counts as worked time for weekly_hour_cap/5-day
+        // purposes, and can only push last_shift_end forward, never
+        // backward, regardless of whether it falls before or after the
+        // employee's last shift this month.
+        foreach ($onCallCallbacks as $callback) {
+            $userId = $callback->onCallAssignment->user_id;
+            if (!isset($employeeState[$userId])) {
+                continue;
+            }
+
+            $dateStr = $callback->starts_at->format('Y-m-d');
+            $weekNum = $weekKeyByDate[$dateStr];
+            $durationHours = $callback->starts_at->diffInMinutes($callback->ends_at) / 60;
+
+            $currentEnd = $employeeState[$userId]['last_shift_end'];
+            if ($currentEnd === null || $callback->ends_at->gt($currentEnd)) {
+                $employeeState[$userId]['last_shift_end'] = $callback->ends_at;
+            }
+            $employeeState[$userId]['total_hours'] += $durationHours;
+            $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $durationHours;
+            $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
         }
 
         $totalAssigned = 0;

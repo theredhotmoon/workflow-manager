@@ -161,3 +161,16 @@ it('deletes a callback', function () {
 
     expect(OnCallCallback::find($callback->id))->toBeNull();
 });
+
+it('rejects a plain employee from creating an on-call assignment', function () {
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    $target = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+
+    $this->actingAs($employee)->postJson('/api/on-call-assignments', [
+        'shift_group_id' => $group->id,
+        'user_id' => $target->id,
+        'starts_at' => '2026-09-15 08:00:00',
+        'ends_at' => '2026-09-16 08:00:00',
+    ])->assertStatus(403);
+});

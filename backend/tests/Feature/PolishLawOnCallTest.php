@@ -14,6 +14,15 @@ it('blocks a regular shift that would start less than 11h after a logged callbac
     ]);
     $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
 
+    // An earlier shift the auto-assigner will fill first — proves the fix
+    // survives the main loop overwriting $employeeState[...]['last_shift_end']
+    // with this shift's end time before the callback-blocked shift below is
+    // evaluated.
+    Shift::create([
+        'date' => '2026-09-01', 'shift_number' => 1, 'shift_group_id' => $group->id,
+        'start_time' => '08:00', 'end_time' => '16:00',
+    ]);
+
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
         'user_id' => $employee->id,
@@ -44,7 +53,10 @@ it('blocks a regular shift that would start less than 11h after a logged callbac
     ]);
 
     $response->assertOk();
-    expect($response->json('total_assigned'))->toBe(0);
+    // The Sep 1 shift is assigned (total 1); the Sep 2 shift stays blocked
+    // by the callback even though $employeeState[...]['last_shift_end'] was
+    // overwritten by the Sep 1 assignment in between.
+    expect($response->json('total_assigned'))->toBe(1);
 });
 
 it('assigns the same shift when there is no callback blocking rest', function () {
@@ -119,4 +131,38 @@ it('counts a callback hours toward the settlement-anchored weekly_hour_cap, incl
 
     $response->assertOk();
     expect($response->json('total_assigned'))->toBe(0);
+});
+
+it('does not block a shift when the employee is on call but has no callback', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create([
+        'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
+        'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
+    ]);
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+
+    OnCallAssignment::create([
+        'shift_group_id' => $group->id,
+        'user_id' => $employee->id,
+        'starts_at' => '2026-09-01 00:00:00',
+        'ends_at' => '2026-09-30 23:59:59',
+    ]);
+
+    Shift::create([
+        'date' => '2026-09-15', 'shift_number' => 1, 'shift_group_id' => $group->id,
+        'start_time' => '08:00', 'end_time' => '16:00',
+    ]);
+
+    $response = $this->actingAs($maintainer)->postJson('/api/schedule/auto-assign/polish-law', [
+        'month' => '2026-09',
+        'shift_group_id' => $group->id,
+        'users_per_shift_weekday' => 1,
+        'users_per_shift_weekend' => 1,
+        'rotation_days' => 7,
+        'player_mode' => 'include',
+        'player_ids' => [$employee->id],
+    ]);
+
+    $response->assertOk();
+    expect($response->json('total_assigned'))->toBe(1);
 });

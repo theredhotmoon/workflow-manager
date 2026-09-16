@@ -180,7 +180,7 @@ function stepMonth(direction) {
 }
 
 function formatRange(startsAt, endsAt) {
-  const fmt = (s) => new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fmt = (s) => new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
   return `${fmt(startsAt)} → ${fmt(endsAt)}`;
 }
 

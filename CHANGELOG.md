@@ -4,6 +4,25 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-09-16 — 📟 On-Call Duty
+
+Shift groups can now have on-call periods — a manually-assigned window (any number of employees at once, can overlap regular shifts) during which an admin can log a "callback": a real worked interval that counts exactly like a regular shift for the existing rest/hour-cap rules. Passive on-call time itself has no effect on scheduling or hours.
+
+Sub-project 4 of 4 in the broader scheduling feature set (manager permissions — shipped, then reverted; configurable settlement periods — shipped; shift streaks — shipped).
+
+### Backend
+| What | Details |
+|------|---------|
+| New tables | `on_call_assignments` (shift_group_id/user_id/starts_at/ends_at, no overlap constraints), `on_call_callbacks` (on_call_assignment_id/starts_at/ends_at — starts_at must fall within the parent window, ends_at may extend past it) |
+| New endpoints | `GET/POST/DELETE /on-call-assignments`, `POST /on-call-assignments/{id}/callbacks`, `DELETE /on-call-callbacks/{id}` |
+| Updated | `ShiftAutoAssignController::polishLaw()` — a logged callback resets the 11h/35h rest clock and counts toward the settlement-anchored weekly_hour_cap, computed fresh per eligibility check rather than folded into a mutable running counter (which would get overwritten by later shift assignments in the same run) |
+| Updated | `GET /settlement-periods` — callback hours are included in each employee's weekly totals |
+
+### Frontend
+| View | Change |
+|------|--------|
+| **New: On-Call** | Manage on-call assignments per group/month, log/remove callbacks against them |
+
 ## 2026-09-14 — 🔥 Shift Streaks
 
 Each shift group can now define per-shift-type streak rules — "N shifts of this type in a row, then M days fully off" (e.g. 3 night shifts, then 2 days off) — enforced live inside the schedule auto-generator. Manual assignment is unaffected by design: assigning or unassigning a shift always succeeds, it just keeps the streak bookkeeping up to date in the background.

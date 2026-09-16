@@ -573,12 +573,11 @@ class ShiftAutoAssignController extends Controller
         // On-call callbacks for this group/month — read-only input to the
         // state walk below (see docs/superpowers/specs/2026-09-15-on-call-duty-design.md).
         // polishLaw() never creates or mutates on-call data, only reads it.
-        $onCallCallbacks = \App\Models\OnCallCallback::whereHas('onCallAssignment', function ($q) use ($groupId, $start, $end, $employees) {
+        $onCallCallbacks = \App\Models\OnCallCallback::whereHas('onCallAssignment', function ($q) use ($groupId, $employees) {
             $q->where('shift_group_id', $groupId)
-                ->where('starts_at', '<=', $end)
-                ->where('ends_at', '>=', $start)
                 ->whereIn('user_id', $employees->pluck('id'));
         })
+            ->whereBetween('starts_at', [$start, $end])
             ->with('onCallAssignment:id,user_id')
             ->orderBy('starts_at')
             ->get();
@@ -683,9 +682,15 @@ class ShiftAutoAssignController extends Controller
 
         // Fold on-call callbacks into the same per-employee state used for
         // shifts: a callback counts as worked time for weekly_hour_cap/5-day
-        // purposes, and can only push last_shift_end forward, never
-        // backward, regardless of whether it falls before or after the
-        // employee's last shift this month.
+        // purposes, added here since those totals are additive and
+        // order-independent. last_shift_end is NOT updated here — the main
+        // assignment loop below blindly overwrites last_shift_end on every
+        // shift it assigns (line ~800), which would silently erase a
+        // callback's effect on the rest clock the moment any earlier shift
+        // in the month gets assigned. Instead, $callbackEndsByUser is
+        // consulted fresh inside the 11h-rest eligibility check itself,
+        // where it cannot be stale regardless of assignment order.
+        $callbackEndsByUser = [];
         foreach ($onCallCallbacks as $callback) {
             $userId = $callback->onCallAssignment->user_id;
             if (!isset($employeeState[$userId])) {
@@ -696,13 +701,10 @@ class ShiftAutoAssignController extends Controller
             $weekNum = $weekKeyByDate[$dateStr];
             $durationHours = $callback->starts_at->diffInMinutes($callback->ends_at) / 60;
 
-            $currentEnd = $employeeState[$userId]['last_shift_end'];
-            if ($currentEnd === null || $callback->ends_at->gt($currentEnd)) {
-                $employeeState[$userId]['last_shift_end'] = $callback->ends_at;
-            }
             $employeeState[$userId]['total_hours'] += $durationHours;
             $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $durationHours;
             $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
+            $callbackEndsByUser[$userId][] = $callback->ends_at;
         }
 
         $totalAssigned = 0;
@@ -745,9 +747,20 @@ class ShiftAutoAssignController extends Controller
 
                 $state = $employeeState[$emp->id];
 
-                // Rule: 11h rest since last shift
-                if ($state['last_shift_end'] !== null) {
-                    $restHours = $state['last_shift_end']->diffInMinutes($st['start']) / 60;
+                // Rule: 11h rest since last shift or last on-call callback,
+                // whichever is later and already occurred before this
+                // candidate shift starts. Computed fresh here (not folded
+                // into $state['last_shift_end']) because that field gets
+                // overwritten by every shift this loop assigns — see the
+                // callback pre-population comment above.
+                $lastActivityEnd = $state['last_shift_end'];
+                foreach ($callbackEndsByUser[$emp->id] ?? [] as $callbackEnd) {
+                    if ($callbackEnd->lte($st['start']) && ($lastActivityEnd === null || $callbackEnd->gt($lastActivityEnd))) {
+                        $lastActivityEnd = $callbackEnd;
+                    }
+                }
+                if ($lastActivityEnd !== null) {
+                    $restHours = $lastActivityEnd->diffInMinutes($st['start']) / 60;
                     if ($restHours < 11)
                         continue;
                 }

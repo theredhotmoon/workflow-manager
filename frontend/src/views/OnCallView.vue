@@ -252,7 +252,7 @@ async function saveAssignment() {
 }
 
 async function removeAssignment(assignment) {
-  if (!(await confirm(`Remove ${assignment.user.name}'s on-call period?`))) return;
+  if (!(await confirm({ title: 'Remove On-Call Period', message: `Remove ${assignment.user.name}'s on-call period?` }))) return;
   try {
     await api.delete(`/api/on-call-assignments/${assignment.id}`);
     showToast('On-call period removed.');
@@ -292,7 +292,7 @@ async function saveCallback() {
 }
 
 async function removeCallback(callback) {
-  if (!(await confirm('Remove this callback?'))) return;
+  if (!(await confirm({ title: 'Remove Callback', message: 'Remove this callback?' }))) return;
   try {
     await api.delete(`/api/on-call-callbacks/${callback.id}`);
     showToast('Callback removed.');

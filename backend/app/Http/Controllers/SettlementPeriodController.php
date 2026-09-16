@@ -50,6 +50,28 @@ class SettlementPeriodController extends Controller
                 ($employeeWeekHours[$userId][$match['index']] ?? 0) + $timing['duration_hours'];
         }
 
+        // On-call callback hours count toward the same weekly totals as
+        // shifts (see docs/superpowers/specs/2026-09-15-on-call-duty-design.md)
+        // — filtered directly on the callback's own starts_at date, so
+        // weekFor() is only ever called with a date guaranteed to fall
+        // inside $period, matching how the shift loop above stays safe.
+        $callbacks = \App\Models\OnCallCallback::whereHas('onCallAssignment', function ($q) use ($group) {
+            $q->where('shift_group_id', $group->id);
+        })
+            ->whereBetween('starts_at', [$period['start'], $period['end']->copy()->endOfDay()])
+            ->with('onCallAssignment.user:id,name')
+            ->get();
+
+        foreach ($callbacks as $callback) {
+            $match = $calculator->weekFor($period, $callback->starts_at->copy()->startOfDay());
+            $durationHours = $callback->starts_at->diffInMinutes($callback->ends_at) / 60;
+
+            $userId = $callback->onCallAssignment->user_id;
+            $employeeNames[$userId] = $callback->onCallAssignment->user->name;
+            $employeeWeekHours[$userId][$match['index']] =
+                ($employeeWeekHours[$userId][$match['index']] ?? 0) + $durationHours;
+        }
+
         $weeks = array_map(fn($w) => [
             'start' => $w['start']->toDateString(),
             'end' => $w['end']->toDateString(),

@@ -13,6 +13,7 @@ import LoginView from '../views/LoginView.vue';
 import MyAvailabilityView from '../views/MyAvailabilityView.vue';
 import MyShiftsView from '../views/MyShiftsView.vue';
 import OfficeAvailabilityView from '../views/OfficeAvailabilityView.vue';
+import OnCallView from '../views/OnCallView.vue';
 import ProcedureDetailView from '../views/ProcedureDetailView.vue';
 import ProceduresListView from '../views/ProceduresListView.vue';
 import ProceduresToLearnView from '../views/ProceduresToLearnView.vue';
@@ -163,6 +164,12 @@ const routes = [
     path: '/settlement-periods',
     name: 'settlement-periods',
     component: SettlementPeriodsView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/on-call',
+    name: 'on-call',
+    component: OnCallView,
     meta: { requiresAuth: true },
   },
 ];

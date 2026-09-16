@@ -27,6 +27,7 @@ use App\Http\Controllers\ProceduresToLearnController;
 use App\Http\Controllers\AlarmController;
 use App\Http\Controllers\UserGroupController;
 use App\Http\Controllers\SettlementPeriodController;
+use App\Http\Controllers\OnCallController;
 
 /*
 |--------------------------------------------------------------------------
@@ -334,5 +335,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/schedule/auto-assign/polish-law', [ShiftAutoAssignController::class, 'polishLaw']);
         Route::delete('/schedule/clear-month', [ShiftAutoAssignController::class, 'clearMonth']);
         Route::get('/settlement-periods', [SettlementPeriodController::class, 'show']);
+        Route::get('/on-call-assignments', [OnCallController::class, 'index']);
+        Route::post('/on-call-assignments', [OnCallController::class, 'store']);
+        Route::delete('/on-call-assignments/{onCallAssignment}', [OnCallController::class, 'destroy']);
+        Route::post('/on-call-assignments/{onCallAssignment}/callbacks', [OnCallController::class, 'storeCallback']);
+        Route::delete('/on-call-callbacks/{onCallCallback}', [OnCallController::class, 'destroyCallback']);
     });
 });

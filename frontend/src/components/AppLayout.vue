@@ -394,6 +394,7 @@ const topLinks = computed(() => {
     { to: '/procedures-to-learn', label: 'To Learn' },
     { to: '/delegations', label: 'Delegations' },
     { to: '/settlement-periods', label: 'Settlement Periods', scheduleOnly: true },
+    { to: '/on-call', label: 'On-Call', scheduleOnly: true },
   ];
   return links.filter(
     (l) => (!l.adminOnly || isAdmin.value) && (!l.scheduleOnly || canManageSchedule.value),

@@ -35,4 +35,9 @@ class ShiftGroup extends Model
     {
         return $this->hasMany(ShiftStreakRule::class);
     }
+
+    public function onCallAssignments()
+    {
+        return $this->hasMany(OnCallAssignment::class);
+    }
 }

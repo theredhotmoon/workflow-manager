@@ -11,7 +11,7 @@ The user asked to replace Vitest with Playwright entirely, rewrite the existing 
 Decisions made during brainstorming:
 - Playwright will drive a **real browser against the real Dockerized backend** (not mocked network) — most realistic, catches integration bugs like the on-call rest-clock bug caught only by whole-branch review (`[[project-shiftchanger-subproject-decomposition]]`).
 - The handful of pure-logic composable tests become **Playwright Test running in Node mode** (no browser) — same tool/config as e2e, just a separate project, rather than reintroducing a second framework.
-- Test data for e2e is seeded via **new Laravel factories** (backend currently only has `UserFactory`; other models are hand-built with `::create()` in Pest tests) reset once per run via `migrate:fresh --seed`, with individual specs creating their specific fixtures through the **real admin API**, not the factories directly.
+- Test data for e2e is seeded via **new Laravel factories** (backend currently only has `UserFactory`; other models are hand-built with `::create()` in Pest tests) reset once per run via `migrate:fresh` + a dedicated `E2eBaselineSeeder`, with individual specs creating their specific fixtures through the **real admin API**, not the factories directly.
 
 ## Goals
 
@@ -38,7 +38,7 @@ Add: `@playwright/test`.
 Playwright's `globalSetup`/`webServer` options are config-level, not per-project, so `--project=unit` alone would still trigger the e2e project's Docker/dev-server startup if both projects lived in one config file. To keep unit runs dependency-free, use **two separate config files** instead of one config with two projects:
 
 - **`frontend/playwright.unit.config.js`** — no `webServer`, no `globalSetup`, no browser (`testDir: 'src'`, `testMatch: '**/*.test.js'`). Runs co-located with source, matching today's convention (e.g. `useConfirm.test.js` stays next to `useConfirm.js`).
-- **`frontend/playwright.config.js`** (the e2e config) — `use: { baseURL: 'http://localhost:5173' }`, `projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]`, `testDir: 'e2e'`. `webServer` starts `npm run dev` (reusing the existing Vite dev-server proxy to the Dockerized backend at `localhost:8090` already defined in `vite.config.js`), waiting on the baseURL before running tests. `globalSetup` runs `docker exec shift_changer_backend php artisan migrate:fresh --seed` once before the suite starts, for a known-clean baseline (reuses `UsersSeeder`, `ScheduleMaintainerSeeder`). Assumes the Docker backend is already running — same precondition as manual dev testing today; fails fast with a clear error if `docker exec` fails.
+- **`frontend/playwright.config.js`** (the e2e config) — `use: { baseURL: 'http://localhost:5173' }`, `projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]`, `testDir: 'e2e'`. `webServer` starts `npm run dev` (reusing the existing Vite dev-server proxy to the Dockerized backend at `localhost:8090` already defined in `vite.config.js`), waiting on the baseURL before running tests. `globalSetup` runs `docker exec shift_changer_backend php artisan migrate:fresh` then `docker exec shift_changer_backend php artisan db:seed --class="Database\Seeders\E2eBaselineSeeder"` once before the suite starts. **Correction from an earlier draft of this spec:** the default `DatabaseSeeder` only creates one admin (`admin@shiftchanger.com` / `1234`) and does not call `UsersSeeder`/`ScheduleMaintainerSeeder` — plain `--seed` would leave no non-admin user for employee-facing flows. A new test-only `E2eBaselineSeeder` (backend, not part of the default `DatabaseSeeder` chain, so `php artisan db:seed` with no `--class` — e.g. in production — is unaffected) explicitly calls `DatabaseSeeder`, `UsersSeeder` (adds `regular@shiftchanger.com` / `password123`, a plain non-admin employee — used for `MyShiftsView` tests), and `ScheduleMaintainerSeeder` (adds `schedule@company.com` / `schedule123`). Assumes the Docker backend is already running — same precondition as manual dev testing today; fails fast with a clear error if `docker exec` fails.
 
 `frontend/package.json` scripts: `"test": "playwright test --config=playwright.unit.config.js"`, `"test:e2e": "playwright test"`, `"test:all": "npm run test && npm run test:e2e"`.
 
@@ -49,7 +49,9 @@ New Laravel factories in `backend/database/factories/` (additive, backend Pest t
 - `ShiftStreakRuleFactory`
 - `OnCallAssignmentFactory`, `OnCallCallbackFactory`
 
-These back the seeded baseline (`migrate:fresh --seed`) — enough for login and basic navigation to work out of the box. They are **not** called directly from Playwright (Playwright is JS, factories are PHP); they exist so the seeders/baseline can use them instead of hand-rolled `::create()` calls.
+Plus one new seeder, `backend/database/seeders/E2eBaselineSeeder.php`, calling `DatabaseSeeder`, `UsersSeeder`, and `ScheduleMaintainerSeeder` in sequence (none of these are wired together today — see the correction above).
+
+These back the seeded baseline (`E2eBaselineSeeder`) — enough for login and basic navigation to work out of the box. They are **not** called directly from Playwright (Playwright is JS, factories are PHP); they exist so the seeders/baseline can use them instead of hand-rolled `::create()` calls.
 
 Per-spec fixtures go through the real API, via `e2e/fixtures/api-setup.js` — helper functions using an authenticated Playwright `request` context:
 ```js
@@ -94,7 +96,7 @@ This reuses already-tested backend logic instead of duplicating validation/busin
 
 `.github/workflows/frontend-tests.yml` currently only runs `npm run test` (frontend-only, no live backend). It needs to:
 1. `docker compose up -d db backend` (reusing `docker-compose.yml`'s existing service definitions and healthchecks as-is, rather than hand-installing PHP/Postgres in the Actions runner).
-2. Wait for the backend healthcheck, then run migrations/seed inside the container (the same `docker exec ... php artisan migrate:fresh --seed` the e2e `globalSetup` uses locally — `globalSetup` covers this in CI too, so no separate step is needed beyond ensuring the containers are up first).
+2. Wait for the backend healthcheck, then run migrations/seed inside the container (the same `docker exec ... php artisan migrate:fresh` + `db:seed --class="Database\Seeders\E2eBaselineSeeder"` the e2e `globalSetup` uses locally — `globalSetup` covers this in CI too, so no separate step is needed beyond ensuring the containers are up first).
 3. `npx playwright install --with-deps chromium`.
 4. `npm run test` (unit project, no Docker dependency) and `npm run test:e2e` (against the now-running containers).
 

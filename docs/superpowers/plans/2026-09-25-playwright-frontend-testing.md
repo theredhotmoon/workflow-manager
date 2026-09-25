@@ -231,9 +231,16 @@ import { execSync } from 'node:child_process';
 
 export default function globalSetup() {
   try {
-    execSync('docker exec shift_changer_backend php artisan migrate:fresh', { stdio: 'pipe' });
+    // -e APP_ENV=testing: docker-compose.yml fixes the container's APP_ENV to "production", and
+    // Laravel's ConfirmableTrait prompts interactively for confirmation before running a destructive
+    // command (migrate:fresh, db:seed) against what it thinks is production — which hangs/fails under
+    // execSync (no stdin). Overriding APP_ENV per-command (discovered + verified during Task 1) avoids
+    // the prompt without needing --force and without changing the container's real environment.
+    execSync('docker exec -e APP_ENV=testing shift_changer_backend php artisan migrate:fresh', {
+      stdio: 'pipe',
+    });
     execSync(
-      'docker exec shift_changer_backend php artisan db:seed --class="Database\\\\Seeders\\\\E2eBaselineSeeder"',
+      'docker exec -e APP_ENV=testing shift_changer_backend php artisan db:seed --class="Database\\\\Seeders\\\\E2eBaselineSeeder"',
       { stdio: 'pipe' },
     );
   } catch (err) {

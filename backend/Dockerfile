@@ -1,4 +1,4 @@
-# ─── Stage 1: Composer dependencies (production) ─────────────────────────────
+# ─── Stage 1: Composer dependencies ──────────────────────────────────────────
 FROM composer:2 AS vendor
 
 WORKDIR /app
@@ -13,22 +13,6 @@ RUN composer install \
 
 COPY . .
 RUN composer dump-autoload --optimize --classmap-authoritative
-
-
-# ─── Stage 1b: Composer dependencies (with dev) ───────────────────────────────
-FROM composer:2 AS vendor-dev
-
-WORKDIR /app
-
-COPY composer.json composer.lock ./
-RUN composer install \
-    --no-scripts \
-    --no-autoloader \
-    --prefer-dist \
-    --ignore-platform-reqs
-
-COPY . .
-RUN composer dump-autoload --optimize
 
 
 # ─── Stage 2: Runtime image ───────────────────────────────────────────────────
@@ -58,8 +42,8 @@ RUN docker-php-ext-install \
 
 WORKDIR /var/www/html
 
-# Copy app + pre-built vendor from stage 1b (includes dev dependencies for testing)
-COPY --from=vendor-dev /app /var/www/html
+# Copy app + pre-built vendor from stage 1
+COPY --from=vendor /app /var/www/html
 
 # Docker-specific configs
 COPY docker/nginx.conf      /etc/nginx/http.d/default.conf

@@ -11,13 +11,15 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "prepare": "cd .. && husky frontend/.husky",
-    "test": "vitest run"
+    "test": "playwright test --config=playwright.unit.config.js",
+    "test:e2e": "playwright test"
   },
   "lint-staged": {
     "*.{js,vue}": "biome check --write"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.2.0",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/vue": "^8.1.0",

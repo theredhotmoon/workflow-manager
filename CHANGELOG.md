@@ -4,6 +4,24 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-06 — 🛠️ Hybrid Dev Mode & Log Permission Fixes
+
+Two local-dev fixes: `./dev.ps1` now actually serves the app on `:5173`, and the backend no longer loses write access to `laravel.log`.
+
+### Backend
+| What | Details |
+|------|---------|
+| Fixed | `laravel.log` "Permission denied" — `storage/logs` and `storage/app` are named volumes, so the image's build-time `chown` never reached root-owned files left there by `docker compose exec backend php artisan ...`. `docker/entrypoint.sh` now re-chowns both to `www-data` on every container start |
+
+### Frontend / tooling
+| What | Details |
+|------|---------|
+| Fixed | Hybrid dev mode showed the laravel-vite-plugin placeholder page instead of the SPA. New `vite.config.hybrid.js` (Docker standalone-SPA config + `/api` & `/sanctum` proxy, target overridable via `BACKEND_URL`) and `npm run dev:hybrid` script; `dev.ps1` uses it |
+| Removed | The unused `server.proxy` block from `vite.config.js` |
+| Docs | README hybrid section updated; artisan example now uses `exec -u www-data` |
+
+---
+
 ## 2026-09-16 — 📟 On-Call Duty
 
 Shift groups can now have on-call periods — a manually-assigned window (any number of employees at once, can overlap regular shifts) during which an admin can log a "callback": a real worked interval that counts exactly like a regular shift for the existing rest/hour-cap rules. Passive on-call time itself has no effect on scheduling or hours.

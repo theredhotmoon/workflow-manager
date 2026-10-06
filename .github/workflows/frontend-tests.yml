@@ -5,11 +5,15 @@ on:
     paths:
       - 'frontend/**'
       - 'backend/**'
+      - 'docker-compose.yml'
+      - 'docker-compose.dev.yml'
       - '.github/workflows/frontend-tests.yml'
   pull_request:
     paths:
       - 'frontend/**'
       - 'backend/**'
+      - 'docker-compose.yml'
+      - 'docker-compose.dev.yml'
       - '.github/workflows/frontend-tests.yml'
 
 jobs:
@@ -38,6 +42,7 @@ jobs:
           done
           echo "backend did not become ready in time"
           docker compose logs backend
+          docker compose logs db
           exit 1
 
       - name: Setup Node
@@ -62,6 +67,12 @@ jobs:
       - name: Run e2e tests
         working-directory: frontend
         run: npm run test:e2e
+
+      - name: Collect container logs
+        if: failure()
+        run: |
+          mkdir -p frontend/test-results
+          docker compose logs backend db > frontend/test-results/docker.log 2>&1 || true
 
       - name: Upload Playwright artifacts
         if: failure()

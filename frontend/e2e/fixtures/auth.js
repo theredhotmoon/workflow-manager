@@ -1,4 +1,8 @@
 // frontend/e2e/fixtures/auth.js
+//
+// Specs must import `test` (and `expect`) from THIS file, not from '@playwright/test': the
+// per-test auto fixture below resets the API rate limiter, and a spec using the plain Playwright
+// `test` silently skips it and can hit the 60 req/min throttle.
 import { execFileSync } from 'node:child_process';
 import { test as base, expect } from '@playwright/test';
 
@@ -32,6 +36,8 @@ export const test = base.extend({
           'docker',
           [
             'exec',
+            '-u',
+            'www-data',
             '-e',
             'APP_ENV=testing',
             'shift_changer_backend',

@@ -44,6 +44,8 @@ Playwright's `globalSetup`/`webServer` options are config-level, not per-project
 
 ## Test data strategy
 
+**Correction (implementation):** the model factories listed below were dropped; all domain data is seeded through the real admin API (`e2e/fixtures/api-setup.js`) or the UI, as the implementation plan's Task 1 notes explain. Only `E2eBaselineSeeder` was added.
+
 New Laravel factories in `backend/database/factories/` (additive, backend Pest tests may adopt them too but aren't required to):
 - `ShiftGroupFactory`, `ShiftFactory`, `ShiftAssignmentFactory`
 - `ShiftStreakRuleFactory`

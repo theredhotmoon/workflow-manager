@@ -6,7 +6,7 @@ All notable changes to the Shift Changer application are documented here.
 
 ## 2026-10-06 — 🎭 Playwright Frontend Testing
 
-Replaced Vitest/`@testing-library/vue`/MSW with Playwright as the frontend's only test tool, because the mocked-API tests could not catch real backend/frontend drift. Two configs: `playwright.unit.config.js` (`npm run test`, Node-mode composable tests in `src/composables`) and `playwright.config.js` (`npm run test:e2e`, real Chromium against the Dockerized backend, with `npm run dev:hybrid` as its `webServer`). 10 e2e spec files cover auth, settlement periods, schedule (navigation, group settings, month generation, manual assignment, auto-fill), on-call duty, shift colors and My Shifts.
+Replaced Vitest/`@testing-library/vue`/MSW with Playwright as the frontend's only test tool, because the mocked-API tests could not catch real backend/frontend drift. Two configs: `playwright.unit.config.js` (`npm run test`, Node-mode composable tests in `src/composables`) and `playwright.config.js` (`npm run test:e2e`, real Chromium against the Dockerized backend, with `npm run dev:hybrid` as its `webServer`). 11 e2e spec files (23 tests) cover auth, settlement periods (including over-cap highlighting), schedule (navigation, group settings, group rename/delete, month generation, manual assignment, auto-fill in all three modes with the users-per-shift caps), on-call duty, shift colors and My Shifts. The README now has a "Frontend tests (Playwright)" section (prerequisites, commands, and a warning that `test:e2e` resets the local dev database); `npm run test:all` runs both suites.
 
 ### Backend
 | What | Details |
@@ -17,9 +17,9 @@ Replaced Vitest/`@testing-library/vue`/MSW with Playwright as the frontend's onl
 | What | Details |
 |------|---------|
 | Added | Accessibility attributes so controls are reliably addressable: `aria-label` on the month navigation in `ScheduleView.vue` and `MyShiftsView.vue`; `id`/`for` label pairs in `ScheduleView.vue`'s group-settings modal and `OnCallView.vue`'s modals |
-| Added | E2E fixtures send an `Origin` header so Sanctum treats their API calls as stateful, and retry once on HTTP 429 |
-| Added | The API rate limiter is reset before every e2e test via an auto fixture in `fixtures/auth.js`, plus once in `globalSetup` (`cache:clear` in the backend container), because the backend hard-codes 60 req/min per user and the admin user is shared across specs. Fixture API calls also retry once on 429 |
-| Added | The on-call and my-shifts specs pin the browser clock so date-relative data is deterministic |
+| Added | E2E fixtures send an `Origin` header so Sanctum treats their API calls as stateful |
+| Added | The API rate limiter is reset before every e2e test via an auto fixture in `fixtures/auth.js`, plus once in `globalSetup` (`cache:clear` in the backend container), because the backend hard-codes 60 req/min per user and the admin user is shared across specs. Fixture API calls retry once on HTTP 429, and all `docker exec ... artisan` calls run as `www-data` so they never leave root-owned log files |
+| Added | The on-call and my-shifts specs pin the browser clock so date-relative data is deterministic; my-shifts uses a far-future month (2099-08) because the server also rejects past shifts. CI now also triggers on docker-compose changes and uploads `docker.log` on failure |
 | Removed | `vitest`, `@testing-library/vue`, `@testing-library/jest-dom`, `@vue/test-utils`, `happy-dom`, `msw`, the `test` block in `vite.config.js`, and `src/mocks/` |
 
 ---

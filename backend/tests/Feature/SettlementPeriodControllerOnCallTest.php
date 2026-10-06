@@ -4,8 +4,13 @@ use App\Models\OnCallAssignment;
 use App\Models\OnCallCallback;
 use App\Models\ShiftGroup;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 
 it('includes callback hours in the settlement periods report', function () {
+    // offset=0 means "the period containing now" — pin now inside the seeded
+    // September period so the test doesn't break once the month rolls over.
+    Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create([
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
@@ -33,4 +38,6 @@ it('includes callback hours in the settlement periods report', function () {
     $response->assertOk();
     expect($response->json('employees.0.name'))->toBe($employee->name);
     expect($response->json('employees.0.weekly_hours.0'))->toBe(3.0);
+
+    Carbon::setTestNow();
 });

@@ -12,6 +12,7 @@ Two local-dev fixes: `./dev.ps1` now actually serves the app on `:5173`, and the
 | What | Details |
 |------|---------|
 | Fixed | `laravel.log` "Permission denied" — `storage/logs` and `storage/app` are named volumes, so the image's build-time `chown` never reached root-owned files left there by `docker compose exec backend php artisan ...`. `docker/entrypoint.sh` now re-chowns both to `www-data` on every container start |
+| Fixed | `SettlementPeriodControllerOnCallTest` / `SettlementPeriodControllerStreakTest` started failing once October began — they query `offset=0` (the period containing *now*) against September data. Both now pin the clock to 2026-09-15 with `Carbon::setTestNow()` |
 
 ### Frontend / tooling
 | What | Details |

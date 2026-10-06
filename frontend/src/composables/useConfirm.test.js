@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { expect, test } from '@playwright/test';
 import { confirm, useConfirmModal } from './useConfirm.js';
 
-describe('useConfirm', () => {
-  it('resolves true when confirmed', async () => {
+test.describe('useConfirm', () => {
+  test('resolves true when confirmed', async () => {
     const resultPromise = confirm({ title: 'Delete item', message: 'Are you sure?' });
 
     const { isOpen, title, message, onConfirm } = useConfirmModal();
@@ -16,7 +16,7 @@ describe('useConfirm', () => {
     expect(isOpen.value).toBe(false);
   });
 
-  it('resolves false when cancelled', async () => {
+  test('resolves false when cancelled', async () => {
     const resultPromise = confirm({ title: 'Discard changes?' });
 
     const { onCancel } = useConfirmModal();
@@ -25,7 +25,7 @@ describe('useConfirm', () => {
     await expect(resultPromise).resolves.toBe(false);
   });
 
-  it('applies defaults when no options are given', async () => {
+  test('applies defaults when no options are given', async () => {
     const resultPromise = confirm();
 
     const { title, message, confirmLabel, danger, onCancel } = useConfirmModal();

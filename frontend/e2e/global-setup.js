@@ -17,6 +17,12 @@ export default function globalSetup() {
     // is present and correctly autoloaded (confirmed directly via docker exec). Passing argv as an
     // array bypasses host-shell string parsing entirely, so the class name reaches PHP unchanged on
     // both Windows and POSIX. Verified via direct node invocation during this task.
+    // Resets the API rate-limiter counters (cache-backed) at the start of each run.
+    execFileSync(
+      'docker',
+      ['exec', '-e', 'APP_ENV=testing', 'shift_changer_backend', 'php', 'artisan', 'cache:clear'],
+      { stdio: 'pipe' },
+    );
     execFileSync(
       'docker',
       ['exec', '-e', 'APP_ENV=testing', 'shift_changer_backend', 'php', 'artisan', 'migrate:fresh'],

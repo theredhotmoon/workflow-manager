@@ -1,9 +1,20 @@
 // frontend/e2e/fixtures/api-setup.js
 import { getXsrfHeader } from './auth.js';
 
+// The backend throttles /api to 60 req/min per user; on a 429, wait out Retry-After and retry once.
+async function send(context, method, url, options) {
+  let res = await context.request[method](url, options);
+  if (res.status() === 429) {
+    const wait = Math.min(Number(res.headers()['retry-after']) || 60, 65);
+    await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+    res = await context.request[method](url, options);
+  }
+  return res;
+}
+
 export async function createShiftGroupWithStreakRule(context, overrides = {}) {
   const headers = await getXsrfHeader(context);
-  const groupRes = await context.request.post('/api/shift-groups', {
+  const groupRes = await send(context, 'post', '/api/shift-groups', {
     data: { name: 'Night Crew', color: '#6366f1', ...overrides.group },
     headers,
   });
@@ -11,7 +22,7 @@ export async function createShiftGroupWithStreakRule(context, overrides = {}) {
     throw new Error(`create shift group failed: ${groupRes.status()} ${await groupRes.text()}`);
   const groupId = (await groupRes.json()).id;
 
-  const ruleRes = await context.request.put(`/api/shift-groups/${groupId}/streak-rules`, {
+  const ruleRes = await send(context, 'put', `/api/shift-groups/${groupId}/streak-rules`, {
     data: { rules: [{ shift_type: 'night', streak_length: 3, rest_days: 2, ...overrides.rule }] },
     headers,
   });
@@ -23,7 +34,7 @@ export async function createShiftGroupWithStreakRule(context, overrides = {}) {
 
 export async function generateMonthShifts(context, { monthKey, shiftGroupId }) {
   const headers = await getXsrfHeader(context);
-  const res = await context.request.post('/api/schedule/generate', {
+  const res = await send(context, 'post', '/api/schedule/generate', {
     data: {
       month: monthKey,
       shift_group_id: shiftGroupId,
@@ -39,7 +50,7 @@ export async function generateMonthShifts(context, { monthKey, shiftGroupId }) {
 
 export async function assignShift(context, { shiftId, userId }) {
   const headers = await getXsrfHeader(context);
-  const res = await context.request.post('/api/schedule/assign', {
+  const res = await send(context, 'post', '/api/schedule/assign', {
     data: { shift_id: shiftId, user_id: userId },
     headers,
   });
@@ -49,7 +60,7 @@ export async function assignShift(context, { shiftId, userId }) {
 
 export async function getEmployeeIdByEmail(context, email) {
   const headers = await getXsrfHeader(context);
-  const res = await context.request.get('/api/employees', { headers });
+  const res = await send(context, 'get', '/api/employees', { headers });
   if (!res.ok()) throw new Error(`list employees failed: ${res.status()} ${await res.text()}`);
   const employees = await res.json();
   const match = employees.find((e) => e.email === email);
@@ -59,7 +70,7 @@ export async function getEmployeeIdByEmail(context, email) {
 
 export async function getShiftGroupsAndShifts(context, monthKey, shiftGroupId) {
   const headers = await getXsrfHeader(context);
-  const res = await context.request.get('/api/schedule', {
+  const res = await send(context, 'get', '/api/schedule', {
     params: { month: monthKey, shift_group_id: shiftGroupId },
     headers,
   });

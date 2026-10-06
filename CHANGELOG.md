@@ -18,7 +18,7 @@ Replaced Vitest/`@testing-library/vue`/MSW with Playwright as the frontend's onl
 |------|---------|
 | Added | Accessibility attributes so controls are reliably addressable: `aria-label` on the month navigation in `ScheduleView.vue` and `MyShiftsView.vue`; `id`/`for` label pairs in `ScheduleView.vue`'s group-settings modal and `OnCallView.vue`'s modals |
 | Added | E2E fixtures send an `Origin` header so Sanctum treats their API calls as stateful, and retry once on HTTP 429 |
-| Added | `globalSetup` clears the cache to reset the API rate limiter (the backend hard-codes 60 req/min per user) |
+| Added | The API rate limiter is reset before every e2e test via an auto fixture in `fixtures/auth.js`, plus once in `globalSetup` (`cache:clear` in the backend container), because the backend hard-codes 60 req/min per user and the admin user is shared across specs. Fixture API calls also retry once on 429 |
 | Added | The on-call and my-shifts specs pin the browser clock so date-relative data is deterministic |
 | Removed | `vitest`, `@testing-library/vue`, `@testing-library/jest-dom`, `@vue/test-utils`, `happy-dom`, `msw`, the `test` block in `vite.config.js`, and `src/mocks/` |
 

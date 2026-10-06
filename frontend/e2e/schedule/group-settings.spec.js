@@ -22,9 +22,13 @@ test.describe('Shift group settlement + streak-rule settings', () => {
     await adminPage.getByRole('button', { name: 'Save' }).click();
     await expect(adminPage.getByText('Settlement settings saved.')).toBeVisible();
 
-    // Re-open to confirm persistence
+    // Modal stays open after Save, so reload to read back what the server persisted
+    await adminPage.reload();
+    await adminPage.getByRole('button', { name: /Support Team/ }).click();
     await adminPage.getByTitle('Settlement period settings').click();
+    await expect(adminPage.getByLabel('Mode')).toBeVisible();
     await expect(adminPage.getByLabel('Mode')).toHaveValue('quarterly');
+    await expect(adminPage.getByLabel('Weekly Hour Cap')).toHaveValue('40');
     await expect(adminPage.getByPlaceholder('shift type (e.g. night)').last()).toHaveValue('day');
   });
 
@@ -41,6 +45,9 @@ test.describe('Shift group settlement + streak-rule settings', () => {
     await adminPage.getByRole('button', { name: 'Save' }).click();
     await expect(adminPage.getByText('Settlement settings saved.')).toBeVisible();
 
+    // Modal stays open after Save, so reload to read back what the server persisted
+    await adminPage.reload();
+    await adminPage.getByRole('button', { name: /Cleanup Team/ }).click();
     await adminPage.getByTitle('Settlement period settings').click();
     await expect(adminPage.getByLabel('Mode')).toBeVisible();
     await expect(adminPage.getByPlaceholder('shift type (e.g. night)')).toHaveCount(0);

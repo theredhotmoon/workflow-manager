@@ -42,6 +42,7 @@ test.describe('Shift group settlement + streak-rule settings', () => {
     await expect(adminPage.getByText('Settlement settings saved.')).toBeVisible();
 
     await adminPage.getByTitle('Settlement period settings').click();
+    await expect(adminPage.getByLabel('Mode')).toBeVisible();
     await expect(adminPage.getByPlaceholder('shift type (e.g. night)')).toHaveCount(0);
   });
 });

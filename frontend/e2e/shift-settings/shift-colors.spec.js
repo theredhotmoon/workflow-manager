@@ -26,15 +26,18 @@ test.describe('Shift Colors', () => {
 
     // Delete the color
     await renamedRow.getByTitle('Delete').click();
-    // The confirmation modal's Delete button is the only one with the button role and exact text
-    // Use .last() to get the confirmation modal button (distinct from the row delete icons)
-    await adminPage.getByRole('button', { name: 'Delete', exact: true }).last().click();
+    // Scope the Delete button to the confirmation modal dialog
+    await adminPage
+      .locator('[role="dialog"]')
+      .getByRole('button', { name: 'Delete', exact: true })
+      .click();
 
     // After Delete: reload and verify the deletion is persisted
     await adminPage.reload();
     // Positive guard: verify the page rendered
     await expect(adminPage.getByPlaceholder('Color name (e.g. Night, Day, Extra)')).toBeVisible();
-    // Verify the color is deleted
-    await expect(adminPage.getByText('Twilight Shift')).toHaveCount(0);
+    // Verify the color is deleted - use the same row locator to ensure we're checking the same thing
+    // that we verified was present after the edit
+    await expect(adminPage.locator('div.group', { hasText: 'Twilight Shift' })).toHaveCount(0);
   });
 });

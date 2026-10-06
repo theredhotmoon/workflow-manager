@@ -1,3 +1,4 @@
+import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 
 // Every other schedule/on-call spec in this suite runs against a single, never-reset-between-files
@@ -18,8 +19,15 @@ test.describe('Schedule navigation', () => {
   });
 
   test('shows the empty state for a month with no shifts yet', async ({ adminPage }) => {
+    // "No shifts" only renders in All Groups mode, and 2027-09 is reserved for this file
+    // so no other spec seeds shifts there. Create a group to guarantee the tabs render.
+    await createShiftGroupWithStreakRule(adminPage.context(), {
+      group: { name: 'Navigation Empty Group' },
+    });
+
     await adminPage.goto('/schedule/2027-09');
-    await expect(adminPage.getByText('No shifts').first()).toBeVisible();
+    await adminPage.getByRole('button', { name: 'All Groups' }).click();
+    await expect(adminPage.getByText('No shifts', { exact: true })).toHaveCount(30);
   });
 
   test('creates a new shift group from the tabs row', async ({ adminPage }) => {

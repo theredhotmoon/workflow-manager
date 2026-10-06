@@ -18,6 +18,23 @@ async function getPeriod(context, groupId, offset) {
   return (await res.json()).period;
 }
 
+// SettlementPeriodsView fires a report fetch for the default group on mount, and another when the
+// select changes, with no stale-response guard. On a slow runner the default group's response can
+// land last and overwrite the selected group's report, so settle the initial load first and then
+// wait for the selected group's own response.
+async function openReportFor(page, groupName, groupId) {
+  const isReport = (res) => res.url().includes('/api/settlement-periods');
+  const initial = page.waitForResponse(isReport);
+  await page.goto('/settlement-periods');
+  await initial;
+  await expect(page.getByText('Loading…')).toHaveCount(0);
+  const selected = page.waitForResponse(
+    (res) => isReport(res) && res.url().includes(`shift_group_id=${groupId}`),
+  );
+  await page.getByRole('combobox').selectOption({ label: groupName });
+  await selected;
+}
+
 // Hours between HH:MM times, rolling an overnight shift (end <= start) over midnight.
 function shiftHours({ start_time, end_time }) {
   const toMinutes = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -45,8 +62,7 @@ test.describe('Settlement Periods report', () => {
     const [periodStartShift] = schedule[current.start];
     await assignShift(context, { shiftId: periodStartShift.id, userId: employeeId });
 
-    await adminPage.goto('/settlement-periods');
-    await adminPage.getByRole('combobox').selectOption({ label: 'Report Team' });
+    await openReportFor(adminPage, 'Report Team', groupId);
 
     await expect(adminPage.getByText('Regular Employee')).toBeVisible();
     // Cells: Employee, Week 1..n, Total, Streak. The shift sits on the period's first day (week 1).
@@ -85,8 +101,7 @@ test.describe('Settlement Periods report', () => {
     const hours = shiftHours(periodStartShift);
     expect(hours).toBeGreaterThan(CAP);
 
-    await adminPage.goto('/settlement-periods');
-    await adminPage.getByRole('combobox').selectOption({ label: 'OverCap Team' });
+    await openReportFor(adminPage, 'OverCap Team', groupId);
 
     // Positive guard: the report rendered with the persisted cap and the employee's hours.
     const row = adminPage.getByRole('row', { name: /Regular Employee/ });
@@ -116,8 +131,7 @@ test.describe('Settlement Periods report', () => {
     const { schedule } = await getShiftGroupsAndShifts(context, monthKey, groupId);
     await assignShift(context, { shiftId: schedule[current.start][0].id, userId: employeeId });
 
-    await adminPage.goto('/settlement-periods');
-    await adminPage.getByRole('combobox').selectOption({ label: 'Streak Report Team' });
+    await openReportFor(adminPage, 'Streak Report Team', groupId);
 
     // A mid-streak "night: 2/3" is unreachable end-to-end because no API sets shifts.shift_type,
     // so this only guards the column rendering / rule wiring. formatStreakStatus() renders nothing
@@ -131,10 +145,11 @@ test.describe('Settlement Periods report', () => {
     adminPage,
   }) => {
     const context = adminPage.context();
-    await createShiftGroupWithStreakRule(context, { group: { name: 'Empty Group' } });
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'Empty Group' },
+    });
 
-    await adminPage.goto('/settlement-periods');
-    await adminPage.getByRole('combobox').selectOption({ label: 'Empty Group' });
+    await openReportFor(adminPage, 'Empty Group', groupId);
 
     await expect(adminPage.getByText('No assignments in this period yet.')).toBeVisible();
   });

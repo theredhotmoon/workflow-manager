@@ -1,6 +1,7 @@
 # ── Hybrid dev override ──────────────────────────────────────────────────────
 # Use alongside docker-compose.yml to run only `db` + `backend` in containers,
-# while the frontend runs locally via `npm run dev` (Vite).
+# while the frontend runs locally via `npm run dev:hybrid` (Vite, see
+# frontend/vite.config.hybrid.js).
 #
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
 #

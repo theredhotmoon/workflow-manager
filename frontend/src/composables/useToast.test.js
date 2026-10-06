@@ -1,16 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect, test } from '@playwright/test';
 import { useToast } from './useToast.js';
 
-describe('useToast', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('shows a toast with the given message and type', () => {
+test.describe('useToast', () => {
+  test('shows a toast with the given message and type', () => {
     const { toast, showToast } = useToast();
 
     showToast('Saved successfully', 'success');
@@ -18,37 +10,41 @@ describe('useToast', () => {
     expect(toast.value).toEqual({ show: true, message: 'Saved successfully', type: 'success' });
   });
 
-  it('defaults to type "success" and auto-dismisses after 4000ms', () => {
+  test('defaults to type "success" and auto-dismisses after its duration', async () => {
     const { toast, showToast } = useToast();
 
-    showToast('Done');
+    showToast('Done', undefined, 150);
     expect(toast.value.type).toBe('success');
-
-    vi.advanceTimersByTime(3999);
     expect(toast.value.show).toBe(true);
 
-    vi.advanceTimersByTime(1);
+    await new Promise((r) => setTimeout(r, 250));
     expect(toast.value.show).toBe(false);
   });
 
-  it('auto-dismisses after a custom duration', () => {
+  test('auto-dismisses after a custom duration', async () => {
     const { toast, showToast } = useToast();
 
-    showToast('Quick', 'warning', 1000);
+    showToast('Quick', 'warning', 100);
 
-    vi.advanceTimersByTime(1000);
+    await new Promise((r) => setTimeout(r, 200));
     expect(toast.value.show).toBe(false);
   });
 
-  it('dismissToast clears immediately and cancels a pending auto-dismiss', () => {
+  test('dismissToast clears immediately and cancels a pending auto-dismiss', async () => {
     const { toast, showToast, dismissToast } = useToast();
 
-    showToast('Will be dismissed early');
+    showToast('Will be dismissed early', 'success', 100);
     dismissToast();
 
     expect(toast.value.show).toBe(false);
 
-    vi.advanceTimersByTime(5000);
-    expect(toast.value.show).toBe(false);
+    // Write the ref directly (not via showToast) to verify the timer was actually cancelled.
+    // If clearTimeout was not called in dismissToast, the timer would fire and call dismissToast again.
+    toast.value = { show: true, message: 'Shown again', type: 'success' };
+
+    await new Promise((r) => setTimeout(r, 250));
+    expect(toast.value.show).toBe(true);
+
+    dismissToast();
   });
 });

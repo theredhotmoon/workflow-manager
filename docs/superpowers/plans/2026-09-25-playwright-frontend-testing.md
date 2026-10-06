@@ -226,13 +226,41 @@ git commit -m "chore: add Playwright unit/e2e configs alongside existing Vitest 
 
 ```js
 // frontend/e2e/global-setup.js
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 export default function globalSetup() {
   try {
-    execSync('docker exec shift_changer_backend php artisan migrate:fresh', { stdio: 'pipe' });
-    execSync(
-      'docker exec shift_changer_backend php artisan db:seed --class="Database\\\\Seeders\\\\E2eBaselineSeeder"',
+    // -e APP_ENV=testing: docker-compose.yml fixes the container's APP_ENV to "production", and
+    // Laravel's ConfirmableTrait prompts interactively for confirmation before running a destructive
+    // command (migrate:fresh, db:seed) against what it thinks is production — which hangs/fails under
+    // execSync (no stdin). Overriding APP_ENV per-command (discovered + verified during Task 1) avoids
+    // the prompt without needing --force and without changing the container's real environment.
+    //
+    // execFileSync (argv array, no shell) instead of execSync (single shell-command string):
+    // discovered during Task 3 that a shell-string execSync spawns via cmd.exe on Windows, which
+    // (unlike a POSIX shell) does not collapse the `\\` needed to produce a literal single backslash
+    // inside `--class="Database\\Seeders\\..."` — so PHP receives the class name with a literal double
+    // backslash and `class_exists()` fails ("Target class ... does not exist"), even though the class
+    // is present and correctly autoloaded (confirmed directly via docker exec). Passing argv as an
+    // array bypasses host-shell string parsing entirely, so the class name reaches PHP unchanged on
+    // both Windows and POSIX. Verified via direct node invocation during this task.
+    execFileSync(
+      'docker',
+      ['exec', '-e', 'APP_ENV=testing', 'shift_changer_backend', 'php', 'artisan', 'migrate:fresh'],
+      { stdio: 'pipe' },
+    );
+    execFileSync(
+      'docker',
+      [
+        'exec',
+        '-e',
+        'APP_ENV=testing',
+        'shift_changer_backend',
+        'php',
+        'artisan',
+        'db:seed',
+        '--class=Database\\Seeders\\E2eBaselineSeeder',
+      ],
       { stdio: 'pipe' },
     );
   } catch (err) {
@@ -723,25 +751,30 @@ to:
 // frontend/e2e/schedule/navigation.spec.js
 import { test, expect } from '../fixtures/auth.js';
 
+// Every other schedule/on-call spec in this suite runs against a single, never-reset-between-files
+// database (playwright.config.js has workers: 1, and global-setup only resets once for the whole run —
+// see Task 3), each using its own month key to stay isolated. 2027-03 is Task 6/Task 8's month; this
+// file uses 2027-09 (unused elsewhere) so its "no shifts yet" assertion can't be contaminated by
+// shifts another task generated for a month this file also happened to touch.
 test.describe('Schedule navigation', () => {
   test('deep-links to a month and steps forward/back', async ({ adminPage }) => {
-    await adminPage.goto('/schedule/2027-03');
-    await expect(adminPage.getByText('March 2027')).toBeVisible();
+    await adminPage.goto('/schedule/2027-09');
+    await expect(adminPage.getByText('September 2027')).toBeVisible();
 
     await adminPage.getByLabel('Next month').click();
-    await expect(adminPage.getByText('April 2027')).toBeVisible();
+    await expect(adminPage.getByText('October 2027')).toBeVisible();
 
     await adminPage.getByLabel('Previous month').click();
-    await expect(adminPage.getByText('March 2027')).toBeVisible();
+    await expect(adminPage.getByText('September 2027')).toBeVisible();
   });
 
   test('shows the empty state for a month with no shifts yet', async ({ adminPage }) => {
-    await adminPage.goto('/schedule/2027-03');
+    await adminPage.goto('/schedule/2027-09');
     await expect(adminPage.getByText('No shifts').first()).toBeVisible();
   });
 
   test('creates a new shift group from the tabs row', async ({ adminPage }) => {
-    await adminPage.goto('/schedule/2027-03');
+    await adminPage.goto('/schedule/2027-09');
     await adminPage.getByRole('button', { name: 'New Group' }).click();
     await adminPage.getByPlaceholder('Group name (e.g. Event Coverage)').fill('Day Crew');
     await adminPage.getByRole('button', { name: 'Create' }).click();
@@ -1403,7 +1436,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start backend + database
-        run: docker compose up -d db backend
+        # docker-compose.dev.yml maps the backend to localhost:8090, which
+        # `npm run dev:hybrid`'s proxy (the e2e webServer) targets.
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
         env:
           APP_KEY: base64:${{ secrets.CI_APP_KEY || 'AckfSECXIvnK5r28GaUwmieqzqU9BqYnSGaawyLm5fA=' }}
 

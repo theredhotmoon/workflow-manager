@@ -123,6 +123,44 @@ cd backend
 composer test
 ```
 
+### Frontend tests (Playwright)
+
+The frontend uses Playwright for everything: Node-mode unit tests for composables, and end-to-end
+tests that drive real Chromium against the real Dockerized backend (no API mocks).
+
+**Prerequisites**
+
+```bash
+# from the repo root: start the database and backend the e2e suite talks to (:8090)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
+
+cd frontend
+npm ci
+npx playwright install chromium
+```
+
+**Commands** (run from `frontend/`)
+
+```bash
+npm run test       # unit tests (composables), no backend needed
+npm run test:e2e   # end-to-end tests; starts `npm run dev:hybrid` on :5173 itself
+npm run test:all   # unit, then e2e
+```
+
+> **Warning: `npm run test:e2e` resets your local development database** (`migrate:fresh` plus the
+> e2e baseline seed, run inside the `shift_changer_backend` container). Never run it against data
+> you want to keep.
+
+Notes:
+
+- The suite starts its own dev server. A plain `npm run dev` already listening on `:5173` would be
+  reused by Playwright and serve the wrong page (no `/api` proxy), so stop it first.
+- New specs must import `test` and `expect` from `e2e/fixtures/auth.js` (not `@playwright/test`).
+  That file provides the `adminPage` / `employeePage` fixtures and a per-test reset of the API rate
+  limiter (the backend allows 60 requests/minute per user and all specs share one admin).
+- Specs share one database per run, so give every group a unique name and use a month no other spec
+  uses. Do not enable Playwright `retries` or `--repeat-each`.
+
 ---
 
 ## Hybrid dev mode (db + backend in Docker, frontend local)

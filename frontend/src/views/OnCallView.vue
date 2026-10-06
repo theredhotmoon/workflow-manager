@@ -75,22 +75,22 @@
             <h3 class="text-white font-bold text-lg mb-5">Add On-Call Period</h3>
 
             <div class="mb-4">
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Employee</label>
-              <select v-model.number="addForm.user_id"
+              <label for="oncall-add-employee" class="block text-sm font-medium text-slate-300 mb-1.5">Employee</label>
+              <select id="oncall-add-employee" v-model.number="addForm.user_id"
                 class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
                 <option v-for="u in employees" :key="u.id" :value="u.id">{{ u.name }}</option>
               </select>
             </div>
 
             <div class="mb-4">
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
-              <input v-model="addForm.starts_at" type="datetime-local"
+              <label for="oncall-add-starts" class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
+              <input id="oncall-add-starts" v-model="addForm.starts_at" type="datetime-local"
                 class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
             </div>
 
             <div class="mb-5">
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
-              <input v-model="addForm.ends_at" type="datetime-local"
+              <label for="oncall-add-ends" class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
+              <input id="oncall-add-ends" v-model="addForm.ends_at" type="datetime-local"
                 class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
             </div>
 
@@ -116,14 +116,14 @@
             <p class="text-slate-400 text-sm mb-5">{{ callbackTarget?.user?.name }}</p>
 
             <div class="mb-4">
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
-              <input v-model="callbackForm.starts_at" type="datetime-local"
+              <label for="oncall-callback-starts" class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
+              <input id="oncall-callback-starts" v-model="callbackForm.starts_at" type="datetime-local"
                 class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
             </div>
 
             <div class="mb-5">
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
-              <input v-model="callbackForm.ends_at" type="datetime-local"
+              <label for="oncall-callback-ends" class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
+              <input id="oncall-callback-ends" v-model="callbackForm.ends_at" type="datetime-local"
                 class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
             </div>
 
@@ -144,12 +144,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { confirm } from '../composables/useConfirm.js';
-import { useToast } from '../composables/useToast.js';
+import { computed, onMounted, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
 
 const { showToast } = useToast();
 
@@ -161,7 +161,9 @@ const currentMonth = ref(new Date().getMonth());
 const assignments = ref([]);
 const loading = ref(true);
 
-const monthKey = computed(() => `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`);
+const monthKey = computed(
+  () => `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`,
+);
 const monthLabel = computed(() => {
   const d = new Date(currentYear.value, currentMonth.value, 1);
   return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
@@ -180,7 +182,14 @@ function stepMonth(direction) {
 }
 
 function formatRange(startsAt, endsAt) {
-  const fmt = (s) => new Date(s).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+  const fmt = (s) =>
+    new Date(s).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'UTC',
+    });
   return `${fmt(startsAt)} → ${fmt(endsAt)}`;
 }
 
@@ -252,7 +261,13 @@ async function saveAssignment() {
 }
 
 async function removeAssignment(assignment) {
-  if (!(await confirm({ title: 'Remove On-Call Period', message: `Remove ${assignment.user.name}'s on-call period?` }))) return;
+  if (
+    !(await confirm({
+      title: 'Remove On-Call Period',
+      message: `Remove ${assignment.user.name}'s on-call period?`,
+    }))
+  )
+    return;
   try {
     await api.delete(`/api/on-call-assignments/${assignment.id}`);
     showToast('On-call period removed.');

@@ -85,8 +85,9 @@ docker compose down -v
 # Open a shell inside the backend container
 docker compose exec backend sh
 
-# Run an Artisan command
-docker compose exec backend php artisan <command>
+# Run an Artisan command (as www-data, so any log files it creates stay
+# writable by php-fpm — the container also re-chowns storage/ on every start)
+docker compose exec -u www-data backend php artisan <command>
 ```
 
 ---
@@ -137,18 +138,24 @@ locally, but you still get instant frontend HMR.
 This brings up `db` and `backend` (using `docker-compose.dev.yml`, which exposes
 the backend on `http://localhost:8090` — override with `BACKEND_PORT` in `.env`
 if that's taken too — and relaxes a few env vars for local use), waits for the
-backend to respond, then runs `npm run dev` in `frontend/`.
+backend to respond, then runs `npm run dev:hybrid` in `frontend/`.
 
-Open **`http://localhost:5173`**. The Vite dev server proxies `/api` and
-`/sanctum` requests to the containerized backend (see the `server.proxy` block
-in `frontend/vite.config.js`), mirroring what the production frontend Nginx
-container does — so Sanctum's cookie-based auth works without CORS changes.
+Open **`http://localhost:5173`**. The Vite dev server (`frontend/vite.config.hybrid.js`)
+serves the standalone SPA and proxies `/api` and `/sanctum` requests to the
+containerized backend, mirroring what the production frontend Nginx container
+does — so Sanctum's cookie-based auth works without CORS changes. Set
+`BACKEND_URL` to point the proxy somewhere other than `http://localhost:8090`.
+
+> Use `npm run dev:hybrid`, not `npm run dev` — the latter loads
+> laravel-vite-plugin, which shows its own placeholder page on `:5173`.
+> The backend on `:8090` serves the API only in this mode, so opening it in
+> the browser fails with "Vite manifest not found".
 
 To run the same containers manually instead of the script:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build db backend
-cd frontend && npm run dev
+cd frontend && npm run dev:hybrid
 ```
 
 Full-Docker mode (all three services) is unaffected — see above.
@@ -239,5 +246,6 @@ workflow-manager/
     ├── Dockerfile
     ├── vite.config.js        # Local dev config (laravel-vite-plugin)
     ├── vite.config.docker.js # Docker build config (standalone dist/)
+    ├── vite.config.hybrid.js # Hybrid dev config (docker config + API proxy)
     └── ...
 ```

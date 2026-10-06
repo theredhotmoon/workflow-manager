@@ -2,6 +2,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "dev:hybrid": "vite --config vite.config.hybrid.js",
     "build": "vite build",
     "build:docker": "vite build --config vite.config.docker.js",
     "lint": "biome lint .",

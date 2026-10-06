@@ -7,7 +7,7 @@
     docker-compose.dev.yml (exposes the backend on localhost:8090 and relaxes a
     few env vars for local development). Then runs the Vite dev server in
     ./frontend, which proxies /api and /sanctum to the containerized backend
-    (see vite.config.js).
+    (see vite.config.hybrid.js).
 
     Full-Docker mode (all three services, including frontend) is unaffected -
     that's still just: docker compose up -d --build
@@ -53,7 +53,7 @@ finally {
 Write-Host "==> Starting frontend dev server ..." -ForegroundColor Cyan
 Push-Location (Join-Path $root 'frontend')
 try {
-    npm run dev
+    npm run dev:hybrid
 }
 finally {
     Pop-Location

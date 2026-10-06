@@ -16,7 +16,7 @@
 - Chromium only — no cross-browser requirement was requested.
 - No production `app/` backend code changes — only a new seeder under `database/seeders/`.
 - Docker container names are fixed: `shift_changer_backend` (Laravel), `shift_changer_db` (Postgres) — confirmed via `docker ps`.
-- Frontend dev server runs on `http://localhost:5173` (Vite default) and proxies `/api` + `/sanctum` to the backend at `http://localhost:8090` (`frontend/vite.config.js`) — same-origin from the browser's perspective, so cookie-based Sanctum auth works without CORS.
+- Frontend dev server runs on `http://localhost:5173` (Vite default) and proxies `/api` + `/sanctum` to the backend at `http://localhost:8090` (`frontend/vite.config.hybrid.js`, started via `npm run dev:hybrid` — plain `npm run dev` serves the laravel-vite-plugin placeholder instead of the SPA) — same-origin from the browser's perspective, so cookie-based Sanctum auth works without CORS.
 - Biome (`npm run check:fix`) is the existing lint/format tool for all new/changed `frontend/**/*.js` files.
 - Follow `[[feedback-changelog-updates]]`: add a `CHANGELOG.md` entry for this migration as part of the final task.
 
@@ -128,7 +128,7 @@ git commit -m "test: add e2e baseline seeder"
 - Create: `frontend/e2e/.gitkeep` (placeholder so the empty `e2e/` dir is tracked until Task 5 adds real specs)
 
 **Interfaces:**
-- Produces: two runnable configs. `npm run test` → unit project (no browser, no Docker). `npm run test:e2e` → e2e project (Chromium, `webServer` on `npm run dev`, `globalSetup` — added in Task 3, not yet in this task).
+- Produces: two runnable configs. `npm run test` → unit project (no browser, no Docker). `npm run test:e2e` → e2e project (Chromium, `webServer` on `npm run dev:hybrid`, `globalSetup` — added in Task 3, not yet in this task).
 
 - [ ] **Step 1: Install Playwright**
 
@@ -169,10 +169,9 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run dev:hybrid',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
-    env: { LARAVEL_BYPASS_ENV_CHECK: '1' },
     timeout: 30_000,
   },
 });
@@ -227,7 +226,7 @@ git commit -m "chore: add Playwright unit/e2e configs alongside existing Vitest 
 
 ```js
 // frontend/e2e/global-setup.js
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 export default function globalSetup() {
   try {
@@ -236,11 +235,32 @@ export default function globalSetup() {
     // command (migrate:fresh, db:seed) against what it thinks is production — which hangs/fails under
     // execSync (no stdin). Overriding APP_ENV per-command (discovered + verified during Task 1) avoids
     // the prompt without needing --force and without changing the container's real environment.
-    execSync('docker exec -e APP_ENV=testing shift_changer_backend php artisan migrate:fresh', {
-      stdio: 'pipe',
-    });
-    execSync(
-      'docker exec -e APP_ENV=testing shift_changer_backend php artisan db:seed --class="Database\\\\Seeders\\\\E2eBaselineSeeder"',
+    //
+    // execFileSync (argv array, no shell) instead of execSync (single shell-command string):
+    // discovered during Task 3 that a shell-string execSync spawns via cmd.exe on Windows, which
+    // (unlike a POSIX shell) does not collapse the `\\` needed to produce a literal single backslash
+    // inside `--class="Database\\Seeders\\..."` — so PHP receives the class name with a literal double
+    // backslash and `class_exists()` fails ("Target class ... does not exist"), even though the class
+    // is present and correctly autoloaded (confirmed directly via docker exec). Passing argv as an
+    // array bypasses host-shell string parsing entirely, so the class name reaches PHP unchanged on
+    // both Windows and POSIX. Verified via direct node invocation during this task.
+    execFileSync(
+      'docker',
+      ['exec', '-e', 'APP_ENV=testing', 'shift_changer_backend', 'php', 'artisan', 'migrate:fresh'],
+      { stdio: 'pipe' },
+    );
+    execFileSync(
+      'docker',
+      [
+        'exec',
+        '-e',
+        'APP_ENV=testing',
+        'shift_changer_backend',
+        'php',
+        'artisan',
+        'db:seed',
+        '--class=Database\\Seeders\\E2eBaselineSeeder',
+      ],
       { stdio: 'pipe' },
     );
   } catch (err) {
@@ -1416,7 +1436,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start backend + database
-        run: docker compose up -d db backend
+        # docker-compose.dev.yml maps the backend to localhost:8090, which
+        # `npm run dev:hybrid`'s proxy (the e2e webServer) targets.
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
         env:
           APP_KEY: base64:${{ secrets.CI_APP_KEY || 'AckfSECXIvnK5r28GaUwmieqzqU9BqYnSGaawyLm5fA=' }}
 
@@ -1452,8 +1474,6 @@ jobs:
       - name: Run e2e tests
         working-directory: frontend
         run: npm run test:e2e
-        env:
-          LARAVEL_BYPASS_ENV_CHECK: "1"
 ```
 
 **Note for the implementer:** the `APP_KEY` fallback above is a placeholder value for CI-only ephemeral containers (never a real secret) — confirm whether the repo already has a `CI_APP_KEY` secret or an `.env.ci` checked in before finalizing; if `docker-compose.yml` already generates/reads a key some other way (check for an existing `.env` committed for CI, or an `APP_KEY` generation step in `backend-tests.yml`), reuse that mechanism instead of introducing a second one.

@@ -9,6 +9,10 @@ use App\Services\ShiftStreakTracker;
 use Illuminate\Support\Carbon;
 
 it('includes streak_status per employee in the settlement periods report', function () {
+    // offset=0 means "the period containing now" — pin now inside the seeded
+    // September period so the test doesn't break once the month rolls over.
+    Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create([
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
@@ -48,4 +52,6 @@ it('includes streak_status per employee in the settlement periods report', funct
         'streak_length' => 3,
         'resting_until' => null,
     ]);
+
+    Carbon::setTestNow();
 });

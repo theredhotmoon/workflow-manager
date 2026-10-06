@@ -18,7 +18,7 @@ Two local-dev fixes: `./dev.ps1` now actually serves the app on `:5173`, and the
 |------|---------|
 | Fixed | Hybrid dev mode showed the laravel-vite-plugin placeholder page instead of the SPA. New `vite.config.hybrid.js` (Docker standalone-SPA config + `/api` & `/sanctum` proxy, target overridable via `BACKEND_URL`) and `npm run dev:hybrid` script; `dev.ps1` uses it |
 | Removed | The unused `server.proxy` block from `vite.config.js` |
-| Docs | README hybrid section updated; artisan example now uses `exec -u www-data` |
+| Docs | README hybrid section updated; artisan example now uses `exec -u www-data`. Playwright migration plan/spec now start the e2e `webServer` with `npm run dev:hybrid` (dropping the laravel-plugin-only `LARAVEL_BYPASS_ENV_CHECK`) |
 
 ---
 

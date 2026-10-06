@@ -16,7 +16,7 @@
 - Chromium only — no cross-browser requirement was requested.
 - No production `app/` backend code changes — only a new seeder under `database/seeders/`.
 - Docker container names are fixed: `shift_changer_backend` (Laravel), `shift_changer_db` (Postgres) — confirmed via `docker ps`.
-- Frontend dev server runs on `http://localhost:5173` (Vite default) and proxies `/api` + `/sanctum` to the backend at `http://localhost:8090` (`frontend/vite.config.js`) — same-origin from the browser's perspective, so cookie-based Sanctum auth works without CORS.
+- Frontend dev server runs on `http://localhost:5173` (Vite default) and proxies `/api` + `/sanctum` to the backend at `http://localhost:8090` (`frontend/vite.config.hybrid.js`, started via `npm run dev:hybrid` — plain `npm run dev` serves the laravel-vite-plugin placeholder instead of the SPA) — same-origin from the browser's perspective, so cookie-based Sanctum auth works without CORS.
 - Biome (`npm run check:fix`) is the existing lint/format tool for all new/changed `frontend/**/*.js` files.
 - Follow `[[feedback-changelog-updates]]`: add a `CHANGELOG.md` entry for this migration as part of the final task.
 
@@ -128,7 +128,7 @@ git commit -m "test: add e2e baseline seeder"
 - Create: `frontend/e2e/.gitkeep` (placeholder so the empty `e2e/` dir is tracked until Task 5 adds real specs)
 
 **Interfaces:**
-- Produces: two runnable configs. `npm run test` → unit project (no browser, no Docker). `npm run test:e2e` → e2e project (Chromium, `webServer` on `npm run dev`, `globalSetup` — added in Task 3, not yet in this task).
+- Produces: two runnable configs. `npm run test` → unit project (no browser, no Docker). `npm run test:e2e` → e2e project (Chromium, `webServer` on `npm run dev:hybrid`, `globalSetup` — added in Task 3, not yet in this task).
 
 - [ ] **Step 1: Install Playwright**
 
@@ -169,10 +169,9 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run dev:hybrid',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
-    env: { LARAVEL_BYPASS_ENV_CHECK: '1' },
     timeout: 30_000,
   },
 });
@@ -1440,8 +1439,6 @@ jobs:
       - name: Run e2e tests
         working-directory: frontend
         run: npm run test:e2e
-        env:
-          LARAVEL_BYPASS_ENV_CHECK: "1"
 ```
 
 **Note for the implementer:** the `APP_KEY` fallback above is a placeholder value for CI-only ephemeral containers (never a real secret) — confirm whether the repo already has a `CI_APP_KEY` secret or an `.env.ci` checked in before finalizing; if `docker-compose.yml` already generates/reads a key some other way (check for an existing `.env` committed for CI, or an `APP_KEY` generation step in `backend-tests.yml`), reuse that mechanism instead of introducing a second one.

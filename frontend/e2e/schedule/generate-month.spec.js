@@ -28,6 +28,8 @@ test.describe('Generate Month', () => {
     await expect(adminPage.getByText(/Generated \d+ shift slots/)).toBeVisible();
 
     await adminPage.getByRole('button', { name: 'All Groups' }).click();
+    // Positive evidence first: an empty count alone also passes while the calendar is still loading.
+    await expect(adminPage.getByText('S1', { exact: true })).toHaveCount(30);
     await expect(emptyDays).toHaveCount(0);
   });
 });

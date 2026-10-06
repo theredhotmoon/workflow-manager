@@ -12,10 +12,9 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run dev:hybrid',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
-    env: { LARAVEL_BYPASS_ENV_CHECK: '1' },
     timeout: 30_000,
   },
 });

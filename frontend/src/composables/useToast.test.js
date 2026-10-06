@@ -33,12 +33,18 @@ test.describe('useToast', () => {
   test('dismissToast clears immediately and cancels a pending auto-dismiss', async () => {
     const { toast, showToast, dismissToast } = useToast();
 
-    showToast('Will be dismissed early', 'success', 5000);
+    showToast('Will be dismissed early', 'success', 100);
     dismissToast();
 
     expect(toast.value.show).toBe(false);
 
-    await new Promise((r) => setTimeout(r, 150));
-    expect(toast.value.show).toBe(false);
+    // Write the ref directly (not via showToast) to verify the timer was actually cancelled.
+    // If clearTimeout was not called in dismissToast, the timer would fire and call dismissToast again.
+    toast.value = { show: true, message: 'Shown again', type: 'success' };
+
+    await new Promise((r) => setTimeout(r, 250));
+    expect(toast.value.show).toBe(true);
+
+    dismissToast();
   });
 });

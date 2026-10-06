@@ -128,7 +128,7 @@ git commit -m "test: add e2e baseline seeder"
 - Create: `frontend/e2e/.gitkeep` (placeholder so the empty `e2e/` dir is tracked until Task 5 adds real specs)
 
 **Interfaces:**
-- Produces: two runnable configs. `npm run test` → unit project (no browser, no Docker). `npm run test:e2e` → e2e project (Chromium, `baseURL: http://localhost:8090` — the backend, not the Vite dev server, see Step 3's correction — `globalSetup` added in Task 3, not yet in this task).
+- Produces: two runnable configs. `npm run test` → unit project (no browser, no Docker). `npm run test:e2e` → e2e project (Chromium, `webServer` on `npm run dev`, `globalSetup` — added in Task 3, not yet in this task).
 
 - [ ] **Step 1: Install Playwright**
 
@@ -150,11 +150,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 3: Write `playwright.config.js` (no `webServer` — see below for why; `globalSetup` added in Task 3)**
-
-**Correction discovered live while executing this plan (SDD Task 3, verified end-to-end by the controller before dispatch):** the original draft of this step pointed `baseURL`/`webServer` at the bare Vite dev server (`npm run dev` on `:5173`) with `command`/`url` set accordingly. That does not work for this app's architecture: `laravel-vite-plugin`'s dev server deliberately serves only assets/HMR — any non-asset request (including `/`) gets its own informational 404 page ("This is the Vite development server... To access your Laravel application, you will need to run a local development server"), confirmed by hitting it directly. The real SPA entry point (`backend/resources/views/app.blade.php`, injected via the `@vite()` directive) is only ever served by the **Laravel backend**, not by Vite. Verified working instead: `npm run build` (compiles into `backend/public/build/`, per `vite.config.js`'s `publicDirectory`/`buildDirectory`) + rebuilding the backend Docker image so it bakes in those built assets + serving through the backend's own port (`8090` via `docker-compose.dev.yml`'s mapping) — confirmed with real `curl` calls returning the actual "Shift Changer" SPA shell with correctly-resolving `/build/assets/*.js`/`.css` URLs. **A stale `backend/public/hot` file (written by any earlier `npm run dev` run) must not exist when building the image** — its mere presence makes `@vite()` render broken dev-mode `<script>`/`<link>` tags pointing at a Vite server that isn't running, even though the manifest-based assets are correctly built; Task 3's `global-setup.js` removes it defensively every run.
-
-Since "build assets + rebuild + restart a Docker container" is not the kind of one-shot spawn-and-poll operation Playwright's `webServer` option is designed for (it can take upward of 15-20s and involves Docker, not just a Node child process), this responsibility moves entirely into `globalSetup` (Task 3) instead — `playwright.config.js` itself just points `baseURL` at the already-serving backend and carries no `webServer` block at all:
+- [ ] **Step 3: Write `playwright.config.js` (webServer only for now — `globalSetup` added in Task 3)**
 
 ```js
 // frontend/playwright.config.js
@@ -166,12 +162,19 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:8090',
+    baseURL: 'http://localhost:5173',
     trace: 'retain-on-failure',
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+    env: { LARAVEL_BYPASS_ENV_CHECK: '1' },
+    timeout: 30_000,
+  },
 });
 ```
 
@@ -222,69 +225,33 @@ git commit -m "chore: add Playwright unit/e2e configs alongside existing Vitest 
 
 - [ ] **Step 1: Write `global-setup.js`**
 
-**Two corrections folded in below, both discovered live while executing this plan (SDD Task 3):**
-1. **Windows shell-escaping bug:** `execSync` with a shell-command *string* spawns via `cmd.exe` on Windows, which does not collapse `\\` the way a POSIX shell does — the class name argument reaches PHP as a literal double backslash and `class_exists('Database\\Seeders\\E2eBaselineSeeder')` (with the escaped value) returns false, even though the seeder is correctly autoloaded. Fixed by using `execFileSync` with an argv array instead of a shell-string — this bypasses host-shell parsing entirely (also the safer general pattern vs. shell-string `exec`), and works identically on POSIX.
-2. **The backend now also needs fresh built frontend assets** to serve the real SPA at all (see Step 3's correction in Task 2, above) — this step now also runs `npm run build`, removes any stale `backend/public/hot` file (its mere presence breaks asset resolution even with a correct manifest — see Task 2's Step 3 note), and rebuilds + restarts the backend container so the image bakes in the freshly-built assets.
-
 ```js
 // frontend/e2e/global-setup.js
-import { execFileSync } from 'node:child_process';
-import { existsSync, unlinkSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const frontendDir = path.dirname(fileURLToPath(import.meta.url)).replace(/e2e$/, '');
-const repoRoot = path.resolve(frontendDir, '..');
-
-// -e APP_ENV=testing: docker-compose.yml fixes the container's APP_ENV to "production", and Laravel's
-// ConfirmableTrait prompts interactively for confirmation before running a destructive command
-// (migrate:fresh, db:seed) against what it thinks is production — which hangs/fails under a
-// non-interactive spawn unless overridden. Discovered + verified during Task 1's fix round.
-const DOCKER_EXEC_TESTING = ['exec', '-e', 'APP_ENV=testing', 'shift_changer_backend'];
+import { execSync } from 'node:child_process';
 
 export default function globalSetup() {
   try {
-    // A stale hot-reload marker from a previous `npm run dev` run makes Laravel's @vite() directive
-    // render dev-mode <script>/<link> tags pointing at a Vite server that isn't running, even once
-    // the manifest-based build below is correct — see Task 2's Step 3 correction.
-    const hotFile = path.join(repoRoot, 'backend', 'public', 'hot');
-    if (existsSync(hotFile)) unlinkSync(hotFile);
-
-    // Compile fresh assets into backend/public/build (per vite.config.js's publicDirectory/buildDirectory).
-    execFileSync('npm', ['run', 'build'], {
-      cwd: frontendDir,
-      stdio: 'pipe',
-      env: { ...process.env, LARAVEL_BYPASS_ENV_CHECK: '1' },
-    });
-
-    // Rebuild the backend image so it bakes in those assets, and restart the (fixed-name) container.
-    execFileSync('docker', ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.dev.yml', 'build', 'backend'], {
-      cwd: repoRoot,
+    // -e APP_ENV=testing: docker-compose.yml fixes the container's APP_ENV to "production", and
+    // Laravel's ConfirmableTrait prompts interactively for confirmation before running a destructive
+    // command (migrate:fresh, db:seed) against what it thinks is production — which hangs/fails under
+    // execSync (no stdin). Overriding APP_ENV per-command (discovered + verified during Task 1) avoids
+    // the prompt without needing --force and without changing the container's real environment.
+    execSync('docker exec -e APP_ENV=testing shift_changer_backend php artisan migrate:fresh', {
       stdio: 'pipe',
     });
-    execFileSync(
-      'docker',
-      ['compose', '-f', 'docker-compose.yml', '-f', 'docker-compose.dev.yml', 'up', '-d', '--no-deps', 'backend'],
-      { cwd: repoRoot, stdio: 'pipe' },
-    );
-
-    execFileSync('docker', [...DOCKER_EXEC_TESTING, 'php', 'artisan', 'migrate:fresh'], { stdio: 'pipe' });
-    execFileSync(
-      'docker',
-      [...DOCKER_EXEC_TESTING, 'php', 'artisan', 'db:seed', '--class=Database\\Seeders\\E2eBaselineSeeder'],
+    execSync(
+      'docker exec -e APP_ENV=testing shift_changer_backend php artisan db:seed --class="Database\\\\Seeders\\\\E2eBaselineSeeder"',
       { stdio: 'pipe' },
     );
   } catch (err) {
     throw new Error(
-      'e2e global setup failed to build the frontend, rebuild the backend image, or reset its DB. ' +
-        'Is Docker running, and is the shift_changer_backend container reachable? (docker ps)\n' +
+      'e2e global setup failed to reset the backend DB via `docker exec shift_changer_backend`. ' +
+        'Is the shift_changer_backend container running? (docker ps)\n' +
         (err.stderr?.toString() || err.message),
     );
   }
 }
 ```
-
-`--no-deps` on the `up` call: this worktree's `db` container may be tracked under a different Compose project name than this worktree's (a leftover from prior dev sessions on this machine) — `--no-deps` avoids Compose trying to manage a `db` service it doesn't recognize as already running. If `docker exec` then fails with a database-connection error (not the confirmation-prompt issue — an actual "could not connect" / DNS-resolution failure), the backend container isn't attached to the same Docker network as `db`; reconnect manually (`docker network connect <db's-network> shift_changer_backend`) — this is a local-dev environment quirk, not something to script here, since a fresh/CI environment's `db` and `backend` are always on one Compose-managed network together.
 
 - [ ] **Step 2: Wire it into `playwright.config.js`**
 
@@ -405,7 +372,8 @@ export async function getShiftGroupsAndShifts(context, monthKey, shiftGroupId) {
 - [ ] **Step 5: Smoke-test the fixtures manually**
 
 Run: `cd frontend && npx playwright test --list` (should still list 0 e2e specs — none written yet — but must not error on `global-setup.js`/`auth.js`/`api-setup.js` syntax)
-Then run: `npx playwright test`. Playwright itself always exits 1 with `Error: No tests found` when `testDir` is empty, regardless of whether `globalSetup` succeeded — that's Playwright's own behavior for an empty suite, not a defect, and will stop mattering once Task 5 adds real specs. What actually matters here: confirm `globalSetup` itself ran successfully before that empty-suite error — verify by checking `admin@shiftchanger.com`'s `updated_at` timestamp via `docker exec -e APP_ENV=testing shift_changer_backend php artisan tinker --execute="echo App\Models\User::where('email','admin@shiftchanger.com')->first()->updated_at;"` before and after the run — it should move forward exactly when `npx playwright test` ran, proving the build+rebuild+DB-reset sequence executed end-to-end through the real Playwright harness (not just via a standalone Node invocation of `global-setup.js`'s export). Also confirm `curl http://localhost:8090/` (after the run) returns the real SPA shell (`<title>Shift Changer</title>`, `<div id="app">`, `/build/assets/*.js` URLs that themselves 200) — proving the asset-build/rebuild half worked too.
+Then run: `npx playwright test` (runs global setup only, no specs yet, should complete without throwing)
+Expected: global setup runs `migrate:fresh` + `db:seed` successfully, no test files found, exit code 0.
 
 - [ ] **Step 6: Commit**
 
@@ -1448,12 +1416,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Start backend + database
-        # -f docker-compose.dev.yml: maps the backend onto host port 8090, matching the port
-        # frontend/playwright.config.js's baseURL targets (see Task 2/3's webServer correction —
-        # the app is served by the backend, not the bare Vite dev server). global-setup.js rebuilds
-        # this same container with fresh frontend assets baked in before any spec runs, so this step
-        # only needs to get `db` up and `backend` minimally reachable, not final.
-        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
+        run: docker compose up -d db backend
         env:
           APP_KEY: base64:${{ secrets.CI_APP_KEY || 'AckfSECXIvnK5r28GaUwmieqzqU9BqYnSGaawyLm5fA=' }}
 

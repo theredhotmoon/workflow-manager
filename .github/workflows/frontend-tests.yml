@@ -4,22 +4,41 @@ on:
   push:
     paths:
       - 'frontend/**'
+      - 'backend/**'
       - '.github/workflows/frontend-tests.yml'
   pull_request:
     paths:
       - 'frontend/**'
+      - 'backend/**'
       - '.github/workflows/frontend-tests.yml'
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: frontend
-
     steps:
       - uses: actions/checkout@v4
+
+      - name: Generate ephemeral APP_KEY
+        # Throwaway key for CI-only containers; never committed.
+        run: echo "APP_KEY=base64:$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Start backend + database
+        # docker-compose.dev.yml maps the backend to localhost:8090, which
+        # `npm run dev:hybrid`'s proxy (the e2e webServer) targets.
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
+
+      - name: Wait for backend healthcheck
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8090/healthz > /dev/null; then
+              echo "backend is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "backend did not become ready in time"
+          docker compose logs backend
+          exit 1
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -29,14 +48,27 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
+        working-directory: frontend
         run: npm ci
 
-      - name: Run test suite
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run unit tests
+        working-directory: frontend
         run: npm run test
-        env:
-          # laravel-vite-plugin refuses to boot the Vite dev server when it
-          # detects a CI environment (it assumes you meant to run a build).
-          # vitest reuses the same vite.config.js, so it hits this check too.
-          # Bypass it here since we genuinely want the Vite/Vitest pipeline
-          # to run in CI for testing, not production asset building.
-          LARAVEL_BYPASS_ENV_CHECK: "1"
+
+      - name: Run e2e tests
+        working-directory: frontend
+        run: npm run test:e2e
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore

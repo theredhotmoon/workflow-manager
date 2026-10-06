@@ -11,14 +11,14 @@
         <div class="flex items-center gap-3">
           <!-- Month Navigator -->
           <div class="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-2 py-1">
-            <button @click="prevMonth"
+            <button @click="prevMonth" aria-label="Previous month"
               class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
             <span class="text-white font-semibold text-sm min-w-[140px] text-center">{{ monthLabel }}</span>
-            <button @click="nextMonth"
+            <button @click="nextMonth" aria-label="Next month"
               class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />

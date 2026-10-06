@@ -21,7 +21,15 @@ test.describe('Shift group rename and delete', () => {
     const renameInput = adminPage.locator('button input[type="text"]');
     await expect(renameInput).toHaveValue('Rename Me Team');
     await renameInput.fill('Renamed Team');
+    // While the input is open the tab's accessible name already contains the typed text, so wait
+    // for the PUT itself and for the input to close before trusting the UI.
+    const saved = adminPage.waitForResponse(
+      (res) =>
+        res.request().method() === 'PUT' && res.url().endsWith(`/api/shift-groups/${groupId}`),
+    );
     await renameInput.press('Enter');
+    expect((await saved).ok()).toBe(true);
+    await expect(renameInput).toHaveCount(0);
     await expect(adminPage.getByRole('button', { name: /Renamed Team/ })).toBeVisible();
 
     // Server side: the rename was persisted, not only shown.

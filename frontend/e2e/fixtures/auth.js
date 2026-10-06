@@ -16,16 +16,20 @@ export async function loginAs(context, email, password) {
   }
 }
 
+// Sanctum only treats a request as stateful (session auth) when Origin/Referer is a configured
+// frontend domain; context.request sends neither, so API calls after login would be 401.
+const STATEFUL_ORIGIN = { Origin: 'http://localhost:5173' };
+
 export const test = base.extend({
   adminPage: async ({ browser }, use) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
     await loginAs(context, 'admin@shiftchanger.com', '1234');
     const page = await context.newPage();
     await use(page);
     await context.close();
   },
   employeePage: async ({ browser }, use) => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
     await loginAs(context, 'regular@shiftchanger.com', 'password123');
     const page = await context.newPage();
     await use(page);

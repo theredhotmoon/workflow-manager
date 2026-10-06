@@ -77,3 +77,20 @@ export async function getShiftGroupsAndShifts(context, monthKey, shiftGroupId) {
   if (!res.ok()) throw new Error(`fetch schedule failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function updateShiftGroup(context, groupId, fields) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'put', `/api/shift-groups/${groupId}`, {
+    data: fields,
+    headers,
+  });
+  if (!res.ok()) throw new Error(`update shift group failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function listShiftGroups(context) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'get', '/api/shift-groups', { headers });
+  if (!res.ok()) throw new Error(`list shift groups failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

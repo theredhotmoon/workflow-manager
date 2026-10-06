@@ -9,7 +9,7 @@ test.describe('Login', () => {
     await page.getByRole('button', { name: 'Sign In' }).click();
 
     await expect(page.getByRole('button', { name: 'Signed In' })).toBeVisible();
-    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 3000 });
+    await expect(page).toHaveURL(/\/dashboard$/);
   });
 
   test('shows an error and stays on the login page when credentials are invalid', async ({

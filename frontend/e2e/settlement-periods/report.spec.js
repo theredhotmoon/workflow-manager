@@ -4,6 +4,7 @@ import {
   generateMonthShifts,
   getEmployeeIdByEmail,
   getShiftGroupsAndShifts,
+  updateShiftGroup,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 
@@ -62,6 +63,42 @@ test.describe('Settlement Periods report', () => {
     await expect(
       adminPage.getByText(`${previous.start} – ${previous.end}`, { exact: true }).first(),
     ).toBeVisible();
+  });
+
+  test('highlights a week in which an employee exceeds the group weekly hour cap', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'OverCap Team' },
+    });
+    // The generated shift is 8h, so a 4h cap is exceeded by a single assignment.
+    const CAP = 4;
+    await updateShiftGroup(context, groupId, { weekly_hour_cap: CAP });
+    const current = await getPeriod(context, groupId, 0);
+    const monthKey = current.start.slice(0, 7);
+    await generateMonthShifts(context, { monthKey, shiftGroupId: groupId });
+    const employeeId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    const { schedule } = await getShiftGroupsAndShifts(context, monthKey, groupId);
+    const [periodStartShift] = schedule[current.start];
+    await assignShift(context, { shiftId: periodStartShift.id, userId: employeeId });
+    const hours = shiftHours(periodStartShift);
+    expect(hours).toBeGreaterThan(CAP);
+
+    await adminPage.goto('/settlement-periods');
+    await adminPage.getByRole('combobox').selectOption({ label: 'OverCap Team' });
+
+    // Positive guard: the report rendered with the persisted cap and the employee's hours.
+    const row = adminPage.getByRole('row', { name: /Regular Employee/ });
+    await expect(row).toBeVisible();
+    await expect(adminPage.getByText(`cap ${CAP}h`).first()).toBeVisible();
+
+    // Week 1 holds the shift; it is over the cap, so it is flagged.
+    const week1 = row.getByRole('cell').nth(1);
+    await expect(week1).toHaveText(`${hours} ⚠️`);
+    await expect(week1).toHaveClass(/text-red-400/);
+    // The Total cell is never flagged.
+    await expect(row.getByRole('cell').nth(-2)).not.toHaveClass(/text-red-400/);
   });
 
   test('renders the streak status column for an employee under a night streak rule', async ({

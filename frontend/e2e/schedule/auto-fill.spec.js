@@ -104,3 +104,129 @@ test.describe('Auto-Fill', () => {
     await expect(runButton).toBeFocused();
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// Caps and the remaining modes. Each test owns its group and month (2027-11, 2027-12, 2028-01).
+// ---------------------------------------------------------------------------------------------
+
+const isWeekend = (date) => [0, 6].includes(new Date(`${date}T12:00:00`).getDay());
+
+// Per-shift assignment counts, split into weekday and weekend buckets.
+function countsByDayType(schedule) {
+  const weekday = [];
+  const weekend = [];
+  for (const [date, shifts] of Object.entries(schedule)) {
+    for (const shift of shifts) {
+      (isWeekend(date) ? weekend : weekday).push(shift.assignments.length);
+    }
+  }
+  return { weekday, weekend };
+}
+
+// Sets a ShiftCountInputs range slider; fill() dispatches the input event the component listens to.
+async function setCaps(dialog, { weekday, weekend }) {
+  const sliders = dialog.locator('input[type="range"]');
+  await sliders.nth(0).fill(String(weekday));
+  await sliders.nth(1).fill(String(weekend));
+  await expect(dialog.getByText(String(weekday), { exact: true }).first()).toBeVisible();
+}
+
+// Positive guards first (assignments exist and both caps are exercised), then the caps themselves.
+function expectCaps(weekday, weekend) {
+  expect(weekday.length).toBeGreaterThan(0);
+  expect(weekend.length).toBeGreaterThan(0);
+  expect(weekday.some((n) => n === 2)).toBe(true);
+  expect(weekend.some((n) => n === 1)).toBe(true);
+  for (const n of weekday) expect(n).toBeLessThanOrEqual(2);
+  for (const n of weekend) expect(n).toBeLessThanOrEqual(1);
+}
+
+async function runMode(page, { groupName, month, mode, modalTitle, caps, rotationDays }) {
+  await page.goto(`/schedule/${month}`);
+  await openAutoFill(page, groupName);
+  await page.locator('select').filter({ hasText: 'Random Coverage' }).selectOption(mode);
+  await page.getByRole('button', { name: 'Run' }).click();
+  const dialog = page.getByRole('dialog', { name: modalTitle });
+  await expect(dialog).toBeVisible();
+  await setCaps(dialog, caps);
+  if (rotationDays) await dialog.locator('input[type="range"]').nth(2).fill(String(rotationDays));
+  await dialog.getByRole('button', { name: 'Auto-Fill' }).click();
+  await expect(dialog).toBeHidden();
+}
+
+test.describe('Auto-Fill caps and modes', () => {
+  test.beforeEach(async ({ adminPage }) => {
+    await adminPage.setViewportSize({ width: 1920, height: 1080 });
+  });
+
+  test('Random Coverage respects the Users-per-shift caps for weekdays and weekends', async ({
+    adminPage,
+  }) => {
+    const groupName = 'Caps Random Team';
+    const month = '2027-11';
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, { group: { name: groupName } });
+    await generateMonthShifts(context, { monthKey: month, shiftGroupId: groupId });
+
+    // The slider default is already 1, so weekdays are set to 2 to prove the input is wired
+    // through to the request; weekends stay at 1.
+    await runMode(adminPage, {
+      groupName,
+      month,
+      mode: 'random',
+      modalTitle: 'Random Coverage',
+      caps: { weekday: 2, weekend: 1 },
+    });
+    await expect(adminPage.getByText(/assigned|filled/i)).toBeVisible({ timeout: 10000 });
+
+    const { schedule } = await getShiftGroupsAndShifts(context, month, groupId);
+    const { weekday, weekend } = countsByDayType(schedule);
+    expectCaps(weekday, weekend);
+  });
+
+  test('Rotating Subteam assigns shifts and respects the Users-per-shift caps', async ({
+    adminPage,
+  }) => {
+    const groupName = 'Caps Rotating Team';
+    const month = '2027-12';
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, { group: { name: groupName } });
+    await generateMonthShifts(context, { monthKey: month, shiftGroupId: groupId });
+
+    await runMode(adminPage, {
+      groupName,
+      month,
+      mode: 'rotating',
+      modalTitle: 'Rotating Subteam',
+      caps: { weekday: 2, weekend: 1 },
+      rotationDays: 2,
+    });
+    await expect(adminPage.getByText(/assigned|filled/i)).toBeVisible({ timeout: 10000 });
+
+    const { schedule } = await getShiftGroupsAndShifts(context, month, groupId);
+    const { weekday, weekend } = countsByDayType(schedule);
+    expectCaps(weekday, weekend);
+  });
+
+  test('Polish Law assigns shifts within the caps', async ({ adminPage }) => {
+    const groupName = 'Caps Polish Team';
+    const month = '2028-01';
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, { group: { name: groupName } });
+    await generateMonthShifts(context, { monthKey: month, shiftGroupId: groupId });
+
+    await runMode(adminPage, {
+      groupName,
+      month,
+      mode: 'polish-law',
+      modalTitle: 'Polish Law',
+      caps: { weekday: 2, weekend: 1 },
+      rotationDays: 2,
+    });
+    await expect(adminPage.getByText(/assigned|filled/i)).toBeVisible({ timeout: 10000 });
+
+    const { schedule } = await getShiftGroupsAndShifts(context, month, groupId);
+    const { weekday, weekend } = countsByDayType(schedule);
+    expectCaps(weekday, weekend);
+  });
+});

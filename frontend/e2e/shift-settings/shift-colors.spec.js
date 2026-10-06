@@ -7,6 +7,8 @@ test.describe('Shift Colors', () => {
     // Add a shift color
     await adminPage.getByPlaceholder('Color name (e.g. Night, Day, Extra)').fill('Twilight');
     await adminPage.getByRole('button', { name: '+ Add' }).click();
+    // Toast confirms the POST finished; reloading earlier could abort the request.
+    await expect(adminPage.getByText('Color added.')).toBeVisible();
 
     // After Add: reload and verify the new color is persisted
     await adminPage.reload();
@@ -18,6 +20,7 @@ test.describe('Shift Colors', () => {
     // Use a CSS selector to target the exact placeholder "Name" input (distinct from "Color name...")
     await adminPage.locator('input[placeholder="Name"]').fill('Twilight Shift');
     await adminPage.getByRole('button', { name: 'Save' }).click();
+    await expect(adminPage.getByText('Color updated.')).toBeVisible();
 
     // After Save: reload and verify the edit is persisted
     await adminPage.reload();
@@ -31,6 +34,7 @@ test.describe('Shift Colors', () => {
       .locator('[role="dialog"]')
       .getByRole('button', { name: 'Delete', exact: true })
       .click();
+    await expect(adminPage.getByText('Color deleted.')).toBeVisible();
 
     // After Delete: reload and verify the deletion is persisted
     await adminPage.reload();

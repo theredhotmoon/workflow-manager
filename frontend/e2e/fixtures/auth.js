@@ -1,4 +1,5 @@
 // frontend/e2e/fixtures/auth.js
+import { execFileSync } from 'node:child_process';
 import { test as base, expect } from '@playwright/test';
 
 export async function getXsrfHeader(context) {
@@ -21,6 +22,36 @@ export async function loginAs(context, email, password) {
 const STATEFUL_ORIGIN = { Origin: 'http://localhost:5173' };
 
 export const test = base.extend({
+  // The backend hard-codes 60 req/min per user for /api, and the admin user is shared across all
+  // spec files, so each test starts with a fresh limiter budget.
+  resetRateLimit: [
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright requires a destructured first argument
+    async ({}, use) => {
+      try {
+        execFileSync(
+          'docker',
+          [
+            'exec',
+            '-e',
+            'APP_ENV=testing',
+            'shift_changer_backend',
+            'php',
+            'artisan',
+            'cache:clear',
+          ],
+          { stdio: 'pipe' },
+        );
+      } catch (err) {
+        throw new Error(
+          'e2e rate-limit reset failed via `docker exec shift_changer_backend`. ' +
+            'Is the shift_changer_backend container running? (docker ps)\n' +
+            (err.stderr?.toString() || err.message),
+        );
+      }
+      await use();
+    },
+    { auto: true },
+  ],
   adminPage: async ({ browser }, use) => {
     const context = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
     await loginAs(context, 'admin@shiftchanger.com', '1234');

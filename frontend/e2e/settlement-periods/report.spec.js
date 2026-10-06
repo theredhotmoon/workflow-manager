@@ -17,6 +17,14 @@ async function getPeriod(context, groupId, offset) {
   return (await res.json()).period;
 }
 
+// Hours between HH:MM times, rolling an overnight shift (end <= start) over midnight.
+function shiftHours({ start_time, end_time }) {
+  const toMinutes = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  let minutes = toMinutes(end_time) - toMinutes(start_time);
+  if (minutes <= 0) minutes += 24 * 60;
+  return minutes / 60;
+}
+
 test.describe('Settlement Periods report', () => {
   test('loads groups and shows the report for the selected group, with prev-period navigation', async ({
     adminPage,
@@ -40,6 +48,12 @@ test.describe('Settlement Periods report', () => {
     await adminPage.getByRole('combobox').selectOption({ label: 'Report Team' });
 
     await expect(adminPage.getByText('Regular Employee')).toBeVisible();
+    // Cells: Employee, Week 1..n, Total, Streak. The shift sits on the period's first day (week 1).
+    // The view prints the number as-is (8, not 8.0 or 8h).
+    const hours = String(shiftHours(periodStartShift));
+    const cells = adminPage.getByRole('row', { name: /Regular Employee/ }).getByRole('cell');
+    await expect(cells.nth(1)).toHaveText(hours);
+    await expect(cells.nth(-2)).toHaveText(hours);
     await expect(
       adminPage.getByText(`${current.start} – ${current.end}`, { exact: true }).first(),
     ).toBeVisible();

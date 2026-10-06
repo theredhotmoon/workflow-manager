@@ -710,8 +710,8 @@
           <p class="text-slate-400 text-sm mb-5">{{ groupSettingsTarget?.name }}</p>
 
           <div class="mb-4">
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Mode</label>
-            <select v-model="groupSettingsForm.settlement_mode"
+            <label for="settlement-mode" class="block text-sm font-medium text-slate-300 mb-1.5">Mode</label>
+            <select id="settlement-mode" v-model="groupSettingsForm.settlement_mode"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
@@ -721,20 +721,20 @@
           </div>
 
           <div class="mb-4">
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Anchor Date</label>
-            <input v-model="groupSettingsForm.settlement_anchor_date" type="date"
+            <label for="settlement-anchor-date" class="block text-sm font-medium text-slate-300 mb-1.5">Anchor Date</label>
+            <input id="settlement-anchor-date" v-model="groupSettingsForm.settlement_anchor_date" type="date"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
 
           <div v-if="groupSettingsForm.settlement_mode === 'custom'" class="mb-4">
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Custom Length (days)</label>
-            <input v-model.number="groupSettingsForm.settlement_custom_length_days" type="number" min="1"
+            <label for="settlement-custom-length" class="block text-sm font-medium text-slate-300 mb-1.5">Custom Length (days)</label>
+            <input id="settlement-custom-length" v-model.number="groupSettingsForm.settlement_custom_length_days" type="number" min="1"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
 
           <div class="mb-5">
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Weekly Hour Cap</label>
-            <input v-model.number="groupSettingsForm.weekly_hour_cap" type="number" min="0" step="0.5"
+            <label for="settlement-weekly-hour-cap" class="block text-sm font-medium text-slate-300 mb-1.5">Weekly Hour Cap</label>
+            <input id="settlement-weekly-hour-cap" v-model.number="groupSettingsForm.weekly_hour_cap" type="number" min="0" step="0.5"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
 

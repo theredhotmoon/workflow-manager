@@ -4,6 +4,26 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-06 — 🎭 Playwright Frontend Testing
+
+Replaced Vitest/`@testing-library/vue`/MSW with Playwright as the frontend's only test tool, because the mocked-API tests could not catch real backend/frontend drift. Two configs: `playwright.unit.config.js` (`npm run test`, Node-mode composable tests in `src/composables`) and `playwright.config.js` (`npm run test:e2e`, real Chromium against the Dockerized backend, with `npm run dev:hybrid` as its `webServer`). 10 e2e spec files cover auth, settlement periods, schedule (navigation, group settings, month generation, manual assignment, auto-fill), on-call duty, shift colors and My Shifts.
+
+### Backend
+| What | Details |
+|------|---------|
+| Added | Test-only `E2eBaselineSeeder` (run by the e2e `globalSetup` after `migrate:fresh`). No production code changes |
+
+### Frontend / tooling
+| What | Details |
+|------|---------|
+| Added | Accessibility attributes so controls are reliably addressable: `aria-label` on the month navigation in `ScheduleView.vue` and `MyShiftsView.vue`; `id`/`for` label pairs in `ScheduleView.vue`'s group-settings modal and `OnCallView.vue`'s modals |
+| Added | E2E fixtures send an `Origin` header so Sanctum treats their API calls as stateful, and retry once on HTTP 429 |
+| Added | `globalSetup` clears the cache to reset the API rate limiter (the backend hard-codes 60 req/min per user) |
+| Added | The on-call and my-shifts specs pin the browser clock so date-relative data is deterministic |
+| Removed | `vitest`, `@testing-library/vue`, `@testing-library/jest-dom`, `@vue/test-utils`, `happy-dom`, `msw`, the `test` block in `vite.config.js`, and `src/mocks/` |
+
+---
+
 ## 2026-10-06 — 🛠️ Hybrid Dev Mode & Log Permission Fixes
 
 Two local-dev fixes: `./dev.ps1` now actually serves the app on `:5173`, and the backend no longer loses write access to `laravel.log`.

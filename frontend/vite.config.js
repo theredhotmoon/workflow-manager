@@ -28,9 +28,4 @@ export default defineConfig({
     },
   },
   // Hybrid dev mode (backend in Docker, SPA on :5173) uses vite.config.hybrid.js.
-  test: {
-    environment: 'happy-dom',
-    setupFiles: ['./src/mocks/setup.js'],
-    globals: false,
-  },
 });

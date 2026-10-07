@@ -510,7 +510,7 @@
                         class="min-h-[28px] bg-white/[0.03] border border-dashed border-white/10 rounded-lg flex flex-wrap gap-1 p-1 transition-colors hover:border-indigo-500/30 hover:bg-indigo-500/5"
                       >
                         <div v-for="assignment in shift.assignments" :key="assignment.user_id"
-                          :class="['flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium cursor-grab active:cursor-grabbing whitespace-nowrap',
+                          :class="['flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium cursor-grab active:cursor-grabbing whitespace-nowrap min-w-0 max-w-full',
                             assignment.has_change_request
                               ? 'bg-amber-500/20 border border-amber-500/30 text-amber-300'
                               : 'bg-indigo-500/20 border border-indigo-500/30 text-indigo-300']"
@@ -519,20 +519,22 @@
                             assignment.has_change_request ? 'bg-orange-500/30 text-orange-200' : 'bg-indigo-500/30 text-indigo-200']">
                             {{ getInitials(assignment.user_name) }}
                           </span>
-                          {{ assignment.user_name }}
+                          <!-- The chip shrinks to its day column (min-w-0/max-w-full above); the name
+                               truncates instead of pushing the × into the next day's drop-zone. -->
+                          <span class="truncate min-w-0" :title="assignment.user_name">{{ assignment.user_name }}</span>
                           <!-- Employee: request day off button -->
                           <button v-if="currentUser && !currentUser.is_admin && currentUser.id === assignment.user_id && !assignment.has_change_request && isShiftFuture(shift, day.dateStr)"
                             @click.stop="openChangeRequestModal(assignment, shift, day.dateStr)"
-                            class="ml-0.5 w-4 h-4 flex items-center justify-center text-[9px] text-slate-400 hover:text-orange-300 hover:bg-orange-500/15 rounded transition-all"
+                            class="ml-0.5 w-4 h-4 shrink-0 flex items-center justify-center text-[9px] text-slate-400 hover:text-orange-300 hover:bg-orange-500/15 rounded transition-all"
                             title="Request day off">
                             🔄
                           </button>
                           <!-- Pending badge for employee -->
                           <span v-if="currentUser && !currentUser.is_admin && currentUser.id === assignment.user_id && assignment.has_change_request"
-                            class="ml-0.5 text-[7px] px-1 py-0.5 bg-orange-500/20 text-orange-300 rounded font-bold uppercase">Pending</span>
+                            class="ml-0.5 shrink-0 text-[7px] px-1 py-0.5 bg-orange-500/20 text-orange-300 rounded font-bold uppercase">Pending</span>
                           <!-- Admin: remove button -->
                           <button v-if="canManageSchedule" @click.stop="removeAssignment(assignment, shift)"
-                            class="ml-0.5 w-3 h-3 flex items-center justify-center text-indigo-400/60 hover:text-red-400 transition-colors">
+                            class="ml-0.5 w-3 h-3 shrink-0 flex items-center justify-center text-indigo-400/60 hover:text-red-400 transition-colors">
                             ×
                           </button>
                         </div>

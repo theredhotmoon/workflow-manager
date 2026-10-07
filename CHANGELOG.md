@@ -4,6 +4,25 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 🏷️ Shift Type Labelling
+
+Shift Streaks can now actually trigger: shifts get a type (e.g. `night`), set per slot when generating a month, per shift, or per slot in bulk. Previously nothing wrote `shifts.shift_type`, so streak rules could be configured but never matched.
+
+### Backend
+| What | Details |
+|------|---------|
+| New | `App\Support\ShiftType::normalize()` (trim + lower-case, blank → null), applied via `Shift`/`ShiftStreakRule` mutators and in streak-rule sync (case-only duplicates now rejected); migration normalises existing values and aborts (never deletes) on rule collisions |
+| New | `PUT /schedule/shifts/{shift}/type` and `PUT /schedule/shift-types` (per slot, per month), via `ShiftTypeChanger`: changing an assigned shift's type re-books each assignment's streak counters (old type out, new type in) in one transaction |
+| Updated | `POST /schedule/generate` accepts `shift_times[i].shift_type`; schedule payloads include `shift_type` |
+
+### Frontend
+| View | Change |
+|------|--------|
+| **Schedule** | Type field per slot in the Generate Month template and in the shift edit modal (suggestions from the group's streak rules); new **Set shift types** bulk editor; chips show `S1 · night` |
+| **Tests** | New `e2e/schedule/shift-types.spec.js`; the settlement report streak test now asserts real `night: 2/3` and `night: resting until …` states |
+
+---
+
 ## 2026-10-06 — 🎭 Playwright Frontend Testing
 
 Replaced Vitest/`@testing-library/vue`/MSW with Playwright as the frontend's only test tool, because the mocked-API tests could not catch real backend/frontend drift. Two configs: `playwright.unit.config.js` (`npm run test`, Node-mode composable tests in `src/composables`) and `playwright.config.js` (`npm run test:e2e`, real Chromium against the Dockerized backend, with `npm run dev:hybrid` as its `webServer`). 11 e2e spec files (23 tests) cover auth, settlement periods (including over-cap highlighting), schedule (navigation, group settings, group rename/delete, month generation, manual assignment, auto-fill in all three modes with the users-per-shift caps), on-call duty, shift colors and My Shifts. The README now has a "Frontend tests (Playwright)" section (prerequisites, commands, and a warning that `test:e2e` resets the local dev database); `npm run test:all` runs both suites.

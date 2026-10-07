@@ -38,7 +38,7 @@
             Generate Month
           </button>
 
-          <!-- Set shift types (admin only, not in all-groups mode) -->
+          <!-- Set shift types (requires canManageSchedule, not in all-groups mode) -->
           <button v-if="canManageSchedule && !isAllGroupsMode" @click="showShiftTypeEditor = true"
             class="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-semibold rounded-xl transition-all duration-200 text-sm">
             Set shift types
@@ -421,7 +421,7 @@
                       <div class="px-1 pb-1 space-y-0.5">
                         <div v-for="shift in groupBlock.shifts" :key="shift.id" class="group relative">
                           <div class="flex items-center gap-1 flex-wrap">
-                            <span class="text-[9px] uppercase tracking-wide text-slate-500">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · {{ shift.shift_type }}</template></span>
+                            <span class="text-[9px] uppercase tracking-wide text-slate-500">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · <span class="normal-case">{{ shift.shift_type }}</span></template></span>
                             <span v-if="shift.start_time" class="text-[8px] font-mono text-slate-400">{{ shift.start_time }}–{{ shift.end_time }}</span>
                             <span v-if="shift.work_mode" :class="['text-[7px]', shift.work_mode === 'remote' ? 'text-teal-400' : 'text-amber-400']">{{ shift.work_mode === 'remote' ? '🏠' : '🏢' }}</span>
                           </div>
@@ -453,7 +453,7 @@
                         boxShadow: 'inset 0 0 0 1px rgba(16, 185, 129, 0.2)'
                       } : getShiftCellStyle(shift)">
                       <div class="flex items-center gap-1 mb-0.5 flex-wrap">
-                        <span :class="['text-[9px] uppercase tracking-wide', activeShiftId === shift.id ? 'text-emerald-400 font-bold' : 'text-slate-500']">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · {{ shift.shift_type }}</template></span>
+                        <span :class="['text-[9px] uppercase tracking-wide', activeShiftId === shift.id ? 'text-emerald-400 font-bold' : 'text-slate-500']">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · <span class="normal-case">{{ shift.shift_type }}</span></template></span>
                         <span v-if="activeShiftId === shift.id"
                           class="px-1 py-0.5 text-[7px] font-bold uppercase rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 animate-pulse tracking-wider">
                           ● LIVE

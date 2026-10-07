@@ -5,53 +5,61 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use App\Models\User;
-use App\Services\ShiftStreakTracker;
 use Illuminate\Support\Carbon;
 
-it('includes streak_status per employee in the settlement periods report', function () {
-    // offset=0 means "the period containing now" — pin now inside the seeded
-    // September period so the test doesn't break once the month rolls over.
-    Carbon::setTestNow(Carbon::parse('2026-09-15'));
+function spsReport($test, User $maintainer, ShiftGroup $group, int $offset = 0)
+{
+    return $test->actingAs($maintainer)->getJson('/api/settlement-periods?'.http_build_query([
+        'shift_group_id' => $group->id, 'offset' => $offset,
+    ]));
+}
 
-    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
-    $group = ShiftGroup::create([
+function spsNight(ShiftGroup $group, User $employee, string $date): void
+{
+    $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
+        'start_time' => '22:00', 'end_time' => '06:00']);
+    ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
+}
+
+beforeEach(function () {
+    Carbon::setTestNow('2026-09-15');
+    $this->maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $this->group = ShiftGroup::create([
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01',
     ]);
-    ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    ShiftStreakRule::create(['shift_group_id' => $this->group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
+    $this->employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+});
 
-    foreach (['2026-09-01', '2026-09-02'] as $date) {
-        $shift = Shift::create([
-            'date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
-            'start_time' => '22:00', 'end_time' => '06:00',
-        ]);
-        ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
+afterEach(function () {
+    Carbon::setTestNow();
+});
+
+it('reports a mid-streak count as of the end of the displayed period', function () {
+    spsNight($this->group, $this->employee, '2026-09-01');
+    spsNight($this->group, $this->employee, '2026-09-02');
+
+    expect(spsReport($this, $this->maintainer, $this->group)->json('employees.0.streak_status'))->toBe([
+        ['shift_type' => 'night', 'current_count' => 2, 'streak_length' => 3, 'resting_until' => null],
+    ]);
+});
+
+it('reports a rest window that ends inside the displayed period', function () {
+    foreach (['2026-09-01', '2026-09-02', '2026-09-03'] as $date) {
+        spsNight($this->group, $this->employee, $date);
     }
 
-    // The report reads persisted streak state, not the raw assignments — populate
-    // it the same way a real polishLaw()/manual-assign call would.
-    $tracker = new ShiftStreakTracker();
-    $rules = $tracker->rulesForGroup($group);
-    $states = $tracker->loadStates($rules, [$employee->id]);
-    $tracker->recordAssignment($states, $rules, $employee->id, 'night', Carbon::parse('2026-09-01'));
-    $tracker->recordAssignment($states, $rules, $employee->id, 'night', Carbon::parse('2026-09-02'));
-    $tracker->persist($states);
+    expect(spsReport($this, $this->maintainer, $this->group)->json('employees.0.streak_status.0.resting_until'))->toBe('2026-09-05');
+});
 
-    $response = $this->actingAs($maintainer)->getJson('/api/settlement-periods?' . http_build_query([
-        'shift_group_id' => $group->id,
-        'offset' => 0,
-    ]));
+it('does not report a rest window that ended before the displayed period', function () {
+    foreach (['2026-08-01', '2026-08-02', '2026-08-03'] as $date) {
+        spsNight($this->group, $this->employee, $date);
+    }
+    spsNight($this->group, $this->employee, '2026-09-10'); // so the employee appears in September's report
 
-    $response->assertOk();
-    $status = $response->json('employees.0.streak_status');
-    expect($status)->toHaveCount(1);
-    expect($status[0])->toBe([
-        'shift_type' => 'night',
-        'current_count' => 2,
-        'streak_length' => 3,
-        'resting_until' => null,
-    ]);
-
-    Carbon::setTestNow();
+    expect(spsReport($this, $this->maintainer, $this->group)->json('employees.0.streak_status.0'))->toBe(
+        ['shift_type' => 'night', 'current_count' => 1, 'streak_length' => 3, 'resting_until' => null],
+    );
 });

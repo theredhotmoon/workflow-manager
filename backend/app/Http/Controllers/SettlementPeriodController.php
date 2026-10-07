@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Services\SettlementPeriodCalculator;
-use App\Services\ShiftStreakTracker;
+use App\Services\StreakReplay;
 use Illuminate\Http\Request;
 
 class SettlementPeriodController extends Controller
@@ -78,9 +78,9 @@ class SettlementPeriodController extends Controller
             'cap_hours' => $w['cap_hours'],
         ], $period['weeks']);
 
-        $streakTracker = new ShiftStreakTracker();
-        $streakRules = $streakTracker->rulesForGroup($group);
-        $streakStates = $streakTracker->loadStates($streakRules, array_keys($employeeNames));
+        // Status as of the end of the displayed period; windows ending inside or after it are shown.
+        $streakUntil = $period['end']->copy()->addDay();
+        $streakTimeline = app(StreakReplay::class)->forGroup($group, array_keys($employeeNames), $streakUntil);
 
         $employees = [];
         foreach ($employeeNames as $userId => $name) {
@@ -94,16 +94,7 @@ class SettlementPeriodController extends Controller
                 }
             }
 
-            $streakStatus = [];
-            foreach ($streakRules as $rule) {
-                $state = $streakStates["{$userId}:{$rule->id}"];
-                $streakStatus[] = [
-                    'shift_type' => $rule->shift_type,
-                    'current_count' => $state['current_count'],
-                    'streak_length' => $rule->streak_length,
-                    'resting_until' => $state['resting_until']?->toDateString(),
-                ];
-            }
+            $streakStatus = $streakTimeline->statusAsOf($userId, $streakUntil, $period['start']);
 
             $employees[] = [
                 'id' => $userId,

@@ -20,6 +20,8 @@ services:
       APP_DEBUG: "true"
       LOG_CHANNEL: stack
       LOG_LEVEL: debug
+      # Local dev and the e2e suite share one user, so don't throttle them at the production 60/min.
+      API_RATE_LIMIT: ${API_RATE_LIMIT:-1000}
       # Always append the Vite dev server origin, so Sanctum's SPA cookie auth
       # accepts it regardless of whatever SANCTUM_STATEFUL_DOMAINS is set to
       # in the root .env (which may not include it).

@@ -34,7 +34,8 @@ function artisan(...args) {
 
 export default function globalSetup() {
   try {
-    // Resets the API rate-limiter counters (cache-backed) at the start of each run.
+    // Resets the API rate-limiter counters (cache-backed) at the start of each run. Safety net only:
+    // docker-compose.dev.yml raises API_RATE_LIMIT so the suite doesn't normally get near it.
     artisan('cache:clear');
     artisan('migrate:fresh');
     artisan('db:seed', '--class=Database\\Seeders\\E2eBaselineSeeder');

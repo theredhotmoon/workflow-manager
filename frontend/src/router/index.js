@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import api from '../axios.js';
+import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
 import AlarmsView from '../views/AlarmsView.vue';
 import ChecklistBuilderView from '../views/ChecklistBuilderView.vue';
 import ChecklistFillView from '../views/ChecklistFillView.vue';
@@ -182,8 +182,7 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresAuth) {
     try {
-      const response = await api.get('/api/user');
-      currentUser.value = response.data;
+      currentUser.value = await fetchCurrentUser();
 
       if (
         to.meta.requiresAdmin &&
@@ -194,17 +193,25 @@ router.beforeEach(async (to, from, next) => {
       } else {
         next();
       }
-    } catch {
-      currentUser.value = null;
-      next({ name: 'login' });
+    } catch (error) {
+      if (isLoggedOut(error)) {
+        currentUser.value = null;
+        next({ name: 'login' });
+      } else if (currentUser.value) {
+        // Throttled or failing API, but we already know who this is: keep the session as is.
+        next();
+      } else {
+        // Never resolved the user, so there's no session state to keep; abort rather than
+        // pretend the user is logged out or let an unverified (possibly admin-only) page render.
+        next(false);
+      }
     }
   } else if (to.meta.guest) {
     try {
-      const response = await api.get('/api/user');
-      currentUser.value = response.data;
+      currentUser.value = await fetchCurrentUser();
       next({ name: 'dashboard' });
-    } catch {
-      currentUser.value = null;
+    } catch (error) {
+      if (isLoggedOut(error)) currentUser.value = null;
       next();
     }
   } else {

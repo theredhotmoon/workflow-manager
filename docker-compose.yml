@@ -40,6 +40,9 @@ services:
       DB_USERNAME:   ${DB_USERNAME:-postgres}
       DB_PASSWORD:   ${DB_PASSWORD:-secret}
 
+      # Max API requests per minute, per user (HTTP 429 beyond that)
+      API_RATE_LIMIT: ${API_RATE_LIMIT:-60}
+
       LOG_CHANNEL: stderr
       LOG_LEVEL:   warning
 

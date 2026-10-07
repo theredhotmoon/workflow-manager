@@ -263,11 +263,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { currentUser } from '../router/index.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
+import { currentUser } from '../router/index.js';
 
 const router = useRouter();
 const user = ref(null);
@@ -356,11 +357,14 @@ const stats = ref([
 
 onMounted(async () => {
   try {
-    const response = await api.get('/api/user');
-    user.value = response.data;
-  } catch {
-    router.push({ name: 'login' });
-    return;
+    user.value = await fetchCurrentUser();
+  } catch (error) {
+    if (isLoggedOut(error)) {
+      router.push({ name: 'login' });
+      return;
+    }
+    // Throttled or failing API: not a logout. Fall back to the user the router guard resolved.
+    user.value = currentUser.value;
   }
 
   // Fetch checklist alerts

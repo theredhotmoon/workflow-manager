@@ -460,6 +460,31 @@ class ScheduleController extends Controller
     }
 
     /**
+     * Set the type of one slot (shift_number) across a group's month, re-booking streak counters.
+     */
+    public function updateSlotShiftTypes(Request $request, ShiftTypeChanger $changer)
+    {
+        $request->validate([
+            'shift_group_id' => ['required', 'integer', 'exists:shift_groups,id'],
+            'month' => ['required', 'date_format:Y-m'],
+            'shift_number' => ['required', 'integer', 'min:1'],
+            'shift_type' => ['present', 'nullable', 'string', 'max:50'],
+        ]);
+
+        // 'Y-m-d' with an explicit day: createFromFormat('Y-m') fills in today's day and overflows
+        // into the next month on the 29th-31st.
+        $start = Carbon::createFromFormat('Y-m-d', $request->month.'-01')->startOfDay();
+        $end = $start->copy()->endOfMonth();
+
+        $shifts = Shift::where('shift_group_id', $request->shift_group_id)
+            ->where('shift_number', $request->shift_number)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get();
+
+        return response()->json($changer->change($shifts, $request->input('shift_type')));
+    }
+
+    /**
      * Generate default shift times by splitting 24h evenly.
      */
     private function defaultShiftTimes(int $count): array

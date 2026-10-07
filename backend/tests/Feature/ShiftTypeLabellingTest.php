@@ -6,6 +6,7 @@ use App\Models\ShiftStreakRule;
 use App\Models\ShiftStreakState;
 use App\Services\ShiftStreakTracker;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 
 function stlMaintainer(): User
 {
@@ -204,4 +205,106 @@ it('rolls back the type change when re-booking fails', function () {
 
     expect($night->fresh()->shift_type)->toBe('night');
     expect(stlState($employee, $rule)->current_count)->toBe(1);
+});
+
+it('bulk-sets the type for one slot in one group and month only', function () {
+    $group = stlGroup();
+    $other = stlGroup('Other');
+    $target1 = Shift::create(['date' => '2027-03-01', 'shift_number' => 1, 'shift_group_id' => $group->id]);
+    $target2 = Shift::create(['date' => '2027-03-31', 'shift_number' => 1, 'shift_group_id' => $group->id]);
+    $otherSlot = Shift::create(['date' => '2027-03-01', 'shift_number' => 2, 'shift_group_id' => $group->id]);
+    $otherMonth = Shift::create(['date' => '2027-04-01', 'shift_number' => 1, 'shift_group_id' => $group->id]);
+    $otherGroup = Shift::create(['date' => '2027-03-01', 'shift_number' => 1, 'shift_group_id' => $other->id]);
+
+    $this->actingAs(stlMaintainer())->putJson('/api/schedule/shift-types', [
+        'shift_group_id' => $group->id, 'month' => '2027-03', 'shift_number' => 1, 'shift_type' => 'Night',
+    ])->assertOk()->assertExactJson(['updated' => 2, 'rebooked' => 0]);
+
+    expect($target1->fresh()->shift_type)->toBe('night');
+    expect($target2->fresh()->shift_type)->toBe('night');
+    foreach ([$otherSlot, $otherMonth, $otherGroup] as $untouched) {
+        expect($untouched->fresh()->shift_type)->toBeNull();
+    }
+});
+
+it('bulk-relabels assigned shifts in date order so the rest window starts on the 3rd night', function () {
+    $maintainer = stlMaintainer();
+    $group = stlGroup();
+    $rule = stlNightRule($group);
+    $employee = stlEmployee();
+    // Created out of date order on purpose.
+    foreach (['2027-03-03', '2027-03-01', '2027-03-02'] as $date) {
+        $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'day']);
+        stlAssign($this, $maintainer, $shift, $employee);
+    }
+
+    $this->actingAs($maintainer)->putJson('/api/schedule/shift-types', [
+        'shift_group_id' => $group->id, 'month' => '2027-03', 'shift_number' => 1, 'shift_type' => 'night',
+    ])->assertOk()->assertExactJson(['updated' => 3, 'rebooked' => 3]);
+
+    $state = stlState($employee, $rule);
+    expect($state->current_count)->toBe(0);
+    expect($state->resting_until->toDateString())->toBe('2027-03-05');
+});
+
+it('bulk edit on the 31st still targets the requested month', function () {
+    Carbon::setTestNow('2026-10-31 12:00:00');
+    $group = stlGroup();
+    $february = Shift::create(['date' => '2027-02-10', 'shift_number' => 1, 'shift_group_id' => $group->id]);
+    $march = Shift::create(['date' => '2027-03-02', 'shift_number' => 1, 'shift_group_id' => $group->id]);
+
+    $this->actingAs(stlMaintainer())->putJson('/api/schedule/shift-types', [
+        'shift_group_id' => $group->id, 'month' => '2027-02', 'shift_number' => 1, 'shift_type' => 'night',
+    ])->assertOk()->assertExactJson(['updated' => 1, 'rebooked' => 0]);
+
+    expect($february->fresh()->shift_type)->toBe('night');
+    expect($march->fresh()->shift_type)->toBeNull();
+    Carbon::setTestNow();
+});
+
+it('bulk edit returns updated 0 for a slot with no shifts and validates input', function () {
+    $group = stlGroup();
+    $maintainer = stlMaintainer();
+
+    $this->actingAs($maintainer)->putJson('/api/schedule/shift-types', [
+        'shift_group_id' => $group->id, 'month' => '2027-03', 'shift_number' => 4, 'shift_type' => 'night',
+    ])->assertOk()->assertExactJson(['updated' => 0, 'rebooked' => 0]);
+
+    $this->actingAs($maintainer)->putJson('/api/schedule/shift-types', [
+        'shift_group_id' => $group->id, 'month' => '2027-3', 'shift_number' => 0, 'shift_type' => 'night',
+    ])->assertStatus(422)->assertJsonValidationErrors(['month', 'shift_number']);
+});
+
+it('auto-assign respects a streak once shifts are labelled through the bulk endpoint', function () {
+    $maintainer = stlMaintainer();
+    $group = ShiftGroup::create([
+        'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
+        'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
+    ]);
+    stlNightRule($group);
+    $employee = stlEmployee();
+    foreach (['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'] as $date) {
+        Shift::create([
+            'date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id,
+            'start_time' => '22:00', 'end_time' => '06:00',
+        ]);
+    }
+
+    $this->actingAs($maintainer)->putJson('/api/schedule/shift-types', [
+        'shift_group_id' => $group->id, 'month' => '2026-09', 'shift_number' => 1, 'shift_type' => 'night',
+    ])->assertOk();
+
+    $response = $this->actingAs($maintainer)->postJson('/api/schedule/auto-assign/polish-law', [
+        'month' => '2026-09',
+        'shift_group_id' => $group->id,
+        'users_per_shift_weekday' => 1,
+        'users_per_shift_weekend' => 1,
+        'rotation_days' => 7,
+        'player_mode' => 'include',
+        'player_ids' => [$employee->id],
+    ]);
+
+    $response->assertOk();
+    // 3 nights, then rest on 09-04 and 09-05 (rest_days 2). Without types, all 5 would be assigned.
+    expect($response->json('total_assigned'))->toBe(3);
 });

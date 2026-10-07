@@ -415,7 +415,7 @@
                       <div class="px-1 pb-1 space-y-0.5">
                         <div v-for="shift in groupBlock.shifts" :key="shift.id" class="group relative">
                           <div class="flex items-center gap-1 flex-wrap">
-                            <span class="text-[9px] uppercase tracking-wide text-slate-500">S{{ shift.shift_number }}</span>
+                            <span class="text-[9px] uppercase tracking-wide text-slate-500">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · {{ shift.shift_type }}</template></span>
                             <span v-if="shift.start_time" class="text-[8px] font-mono text-slate-400">{{ shift.start_time }}–{{ shift.end_time }}</span>
                             <span v-if="shift.work_mode" :class="['text-[7px]', shift.work_mode === 'remote' ? 'text-teal-400' : 'text-amber-400']">{{ shift.work_mode === 'remote' ? '🏠' : '🏢' }}</span>
                           </div>
@@ -447,7 +447,7 @@
                         boxShadow: 'inset 0 0 0 1px rgba(16, 185, 129, 0.2)'
                       } : getShiftCellStyle(shift)">
                       <div class="flex items-center gap-1 mb-0.5 flex-wrap">
-                        <span :class="['text-[9px] uppercase tracking-wide', activeShiftId === shift.id ? 'text-emerald-400 font-bold' : 'text-slate-500']">S{{ shift.shift_number }}</span>
+                        <span :class="['text-[9px] uppercase tracking-wide', activeShiftId === shift.id ? 'text-emerald-400 font-bold' : 'text-slate-500']">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · {{ shift.shift_type }}</template></span>
                         <span v-if="activeShiftId === shift.id"
                           class="px-1 py-0.5 text-[7px] font-bold uppercase rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 animate-pulse tracking-wider">
                           ● LIVE
@@ -542,6 +542,10 @@
     </main>
 
     <AppToast />
+
+    <datalist id="shift-type-suggestions">
+      <option v-for="type in shiftTypeSuggestions" :key="type" :value="type" />
+    </datalist>
 
     <!-- Checklist Config Modal -->
     <Transition
@@ -678,6 +682,13 @@
               </button>
             </div>
             <input v-if="timeForm.color" v-model="timeForm.color_label" type="text" :placeholder="'Label (default: ' + (shiftColorById[timeForm.color]?.name || '') + ')'"
+              class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+          </div>
+
+          <div class="mb-4">
+            <label for="shift-edit-type" class="block text-sm font-medium text-slate-300 mb-1.5">Shift type</label>
+            <input id="shift-edit-type" v-model="timeForm.shift_type" type="text" maxlength="50"
+              list="shift-type-suggestions" placeholder="e.g. night (used by streak rules)"
               class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
           </div>
 
@@ -1065,6 +1076,15 @@
                             title="No color">✕</button>
                         </div>
                       </div>
+                    </div>
+
+                    <div class="mt-2 flex items-center gap-2">
+                      <label :for="`gen-shift-type-${idx}`" class="w-24 shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">
+                        Shift {{ idx + 1 }} type
+                      </label>
+                      <input :id="`gen-shift-type-${idx}`" v-model="shift.shift_type" type="text" maxlength="50"
+                        list="shift-type-suggestions" placeholder="e.g. night"
+                        class="flex-1 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
                     </div>
 
                     <!-- Checklists -->
@@ -1658,13 +1678,40 @@ function buildDefaultShifts(count) {
       { start_time: '18:00', end_time: '06:00', checklists: [] },
     ],
     3: [
-      { start_time: '06:00', end_time: '14:00', checklists: [], color: null, color_label: '' },
-      { start_time: '14:00', end_time: '22:00', checklists: [], color: null, color_label: '' },
-      { start_time: '22:00', end_time: '06:00', checklists: [], color: null, color_label: '' },
+      {
+        start_time: '06:00',
+        end_time: '14:00',
+        checklists: [],
+        color: null,
+        color_label: '',
+        shift_type: '',
+      },
+      {
+        start_time: '14:00',
+        end_time: '22:00',
+        checklists: [],
+        color: null,
+        color_label: '',
+        shift_type: '',
+      },
+      {
+        start_time: '22:00',
+        end_time: '06:00',
+        checklists: [],
+        color: null,
+        color_label: '',
+        shift_type: '',
+      },
     ],
   };
   if (presets[count])
-    return presets[count].map((p) => ({ ...p, checklists: [], color: null, color_label: '' }));
+    return presets[count].map((p) => ({
+      ...p,
+      checklists: [],
+      color: null,
+      color_label: '',
+      shift_type: '',
+    }));
   const hoursPerShift = Math.floor(24 / count);
   const shifts = [];
   let startMin = 6 * 60;
@@ -1676,6 +1723,7 @@ function buildDefaultShifts(count) {
       checklists: [],
       color: null,
       color_label: '',
+      shift_type: '',
     });
     startMin = endMin;
   }
@@ -1797,6 +1845,7 @@ const timeForm = ref({
   end_time: '',
   color: null,
   color_label: '',
+  shift_type: '',
 });
 
 // Toast
@@ -2047,6 +2096,17 @@ function isOvernightShift(shift) {
   return shift.start_time && shift.end_time && shift.end_time < shift.start_time;
 }
 
+// Streak rules match shift types exactly, so offer the active group's rule types plus types
+// already used this month; free text is still allowed.
+const shiftTypeSuggestions = computed(() => {
+  const group = shiftGroups.value.find((g) => g.id === activeGroupId.value);
+  const fromRules = (group?.streak_rules ?? []).map((r) => r.shift_type);
+  const fromMonth = Object.values(schedule.value ?? {})
+    .flat()
+    .map((s) => s.shift_type);
+  return [...new Set([...fromRules, ...fromMonth].filter(Boolean))].sort();
+});
+
 function openTimeEditor(shift, dateStr) {
   timeConfigShift.value = shift;
   timeConfigDate.value = dateStr;
@@ -2055,6 +2115,7 @@ function openTimeEditor(shift, dateStr) {
     end_time: shift.end_time || '14:00',
     color: shift.color || null,
     color_label: shift.color_label || '',
+    shift_type: shift.shift_type || '',
   };
   showTimeModal.value = true;
 }
@@ -2080,8 +2141,23 @@ async function saveShiftTimes() {
     shift.color = colorRes.data.color;
     shift.color_label = colorRes.data.color_label;
 
+    // Only call the type endpoint when the (normalised) value changed: it re-books streak counters.
+    const newType = timeForm.value.shift_type.trim().toLowerCase() || null;
+    let rebooked = 0;
+    if (newType !== (shift.shift_type ?? null)) {
+      const typeRes = await api.put(`/api/schedule/shifts/${shift.id}/type`, {
+        shift_type: newType,
+      });
+      shift.shift_type = typeRes.data.shift_type;
+      rebooked = typeRes.data.rebooked;
+    }
+
     showTimeModal.value = false;
-    showToast('Shift updated.');
+    showToast(
+      rebooked > 0
+        ? `Shift updated; streak counters adjusted for ${rebooked} employee${rebooked === 1 ? '' : 's'}.`
+        : 'Shift updated.',
+    );
   } catch (err) {
     const msg = err.response?.data?.message || 'Failed to update shift.';
     showToast(msg, 'error');
@@ -2171,6 +2247,7 @@ async function doGenerateMonth() {
       end_time: s.end_time,
       color: s.color || null,
       color_label: s.color_label || null,
+      shift_type: s.shift_type?.trim() || null,
       checklists: (s.checklists || [])
         .filter((c) => c.checklist_template_id)
         .map((c) => ({

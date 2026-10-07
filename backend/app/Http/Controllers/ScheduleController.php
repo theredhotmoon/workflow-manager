@@ -62,6 +62,7 @@ class ScheduleController extends Controller
             $shiftData = [
                 'id' => $shift->id,
                 'shift_number' => $shift->shift_number,
+                'shift_type' => $shift->shift_type,
                 'start_time' => $shift->start_time ? substr($shift->start_time, 0, 5) : null,
                 'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
                 'color' => $shift->color,
@@ -122,6 +123,7 @@ class ScheduleController extends Controller
             'shift_times' => ['sometimes', 'array'],
             'shift_times.*.start_time' => ['required_with:shift_times', 'date_format:H:i'],
             'shift_times.*.end_time' => ['required_with:shift_times', 'date_format:H:i'],
+            'shift_times.*.shift_type' => ['sometimes', 'nullable', 'string', 'max:50'],
             'shift_times.*.checklists' => ['sometimes', 'array'],
             'shift_times.*.checklists.*.checklist_template_id' => ['required', 'exists:checklist_templates,id'],
             'shift_times.*.checklists.*.is_required' => ['required', 'boolean'],
@@ -160,6 +162,7 @@ class ScheduleController extends Controller
                         'work_mode' => $isWeekend ? $workModeWeekend : $workModeWeekday,
                         'color' => $times['color'] ?? null,
                         'color_label' => $times['color_label'] ?? null,
+                        'shift_type' => $times['shift_type'] ?? null,
                     ]
                 );
 
@@ -250,6 +253,7 @@ class ScheduleController extends Controller
             ->map(fn($s) => [
                 'id' => $s->id,
                 'shift_number' => $s->shift_number,
+                'shift_type' => $s->shift_type,
                 'start_time' => $s->start_time ? substr($s->start_time, 0, 5) : null,
                 'end_time' => $s->end_time ? substr($s->end_time, 0, 5) : null,
                 'color' => $s->color,

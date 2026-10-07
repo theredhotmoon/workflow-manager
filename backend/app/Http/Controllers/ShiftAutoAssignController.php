@@ -7,6 +7,7 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\UserAvailability;
+use App\Services\StreakReplay;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Support\Month;
@@ -611,9 +612,9 @@ class ShiftAutoAssignController extends Controller
             ], 422);
         }
 
-        $streakTracker = new \App\Services\ShiftStreakTracker();
-        $streakRules = $streakTracker->rulesForGroup($group);
-        $streakStates = $streakTracker->loadStates($streakRules, $employees->pluck('id')->toArray());
+        // Everything already assigned before the month's end is part of the replay; days are processed in
+        // date order below and every new assignment is appended, so eligibility stays exact.
+        $streakTimeline = app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all(), \Illuminate\Support\Carbon::instance($end)->addDay());
 
         // Build shift time info
         $shiftTimes = [];
@@ -659,10 +660,6 @@ class ShiftAutoAssignController extends Controller
                     $employeeState[$a->user_id]['total_shifts']++;
                     $employeeState[$a->user_id]['weekly_hours'][$weekNum] = ($employeeState[$a->user_id]['weekly_hours'][$weekNum] ?? 0) + $st['duration_hours'];
                     $employeeState[$a->user_id]['weekly_days'][$weekNum][$dateStr] = true;
-
-                    if (!$streakRules->isEmpty() && !$streakTracker->wasAlreadyProcessed($streakStates, $streakRules, $a->user_id, $shift->shift_type, $shift->date)) {
-                        $streakTracker->recordAssignment($streakStates, $streakRules, $a->user_id, $shift->shift_type, $shift->date, advanceWatermark: true);
-                    }
                 }
             }
         }
@@ -770,8 +767,8 @@ class ShiftAutoAssignController extends Controller
                         continue;
                 }
 
-                // Rule: shift-streak mandatory rest (see ShiftStreakTracker)
-                if (!$streakRules->isEmpty() && $streakTracker->isBlocked($streakStates, $streakRules, $emp->id, $shift->date)) {
+                // Rule: shift-streak mandatory rest (see StreakTimeline)
+                if ($streakTimeline->isResting($emp->id, $shift->date)) {
                     continue;
                 }
 
@@ -803,9 +800,7 @@ class ShiftAutoAssignController extends Controller
                 $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $st['duration_hours'];
                 $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
 
-                if (!$streakRules->isEmpty()) {
-                    $streakTracker->recordAssignment($streakStates, $streakRules, $userId, $shift->shift_type, $shift->date, advanceWatermark: true);
-                }
+                $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
 
                 $assigned++;
                 $totalAssigned++;
@@ -814,10 +809,6 @@ class ShiftAutoAssignController extends Controller
             if ($assigned < $spotsToFill) {
                 $warnings[] = "Could only assign {$assigned}/{$spotsToFill} to {$dateStr} S{$shift->shift_number} (labor code limits)";
             }
-        }
-
-        if (!$streakRules->isEmpty()) {
-            $streakTracker->persist($streakStates);
         }
 
         // Count night shifts

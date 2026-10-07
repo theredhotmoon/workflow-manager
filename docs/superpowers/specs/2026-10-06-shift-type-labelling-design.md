@@ -62,7 +62,7 @@ New `PUT /schedule/shift-types` → `ScheduleController::updateSlotShiftTypes()`
 
 - Body: `{ shift_group_id, month (Y-m), shift_number (int ≥ 1), shift_type: string|null }`.
 - Updates every shift in that group/month/slot whose normalised type differs, re-booking assigned employees exactly as the single-shift edit does, all in one transaction.
-- Response: `{ updated, rebooked }`.
+- Response: `{ updated, rebooked }`, where `updated` is the number of shifts whose type changed and `rebooked` the number of assignments whose counters were re-booked (for a single shift this equals the number of employees).
 
 ### Payloads
 

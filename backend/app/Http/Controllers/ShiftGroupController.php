@@ -128,7 +128,7 @@ class ShiftGroupController extends Controller
         ]);
 
         $rules = array_map(
-            fn (array $rule) => [...$rule, 'shift_type' => ShiftType::normalize($rule['shift_type'])],
+            fn (array $rule) => array_merge($rule, ['shift_type' => ShiftType::normalize($rule['shift_type'])]),
             $request->input('rules'),
         );
 

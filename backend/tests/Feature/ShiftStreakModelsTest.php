@@ -33,3 +33,12 @@ it('no longer has a shift_streak_states table', function () {
 it('keeps the rest_policy column on shift_assignments', function () {
     expect(Schema::hasColumn('shift_assignments', 'rest_policy'))->toBeTrue();
 });
+
+it('cascades streak rules when the shift group is deleted', function () {
+    $group = ShiftGroup::create(['name' => 'Temp', 'sort_order' => 1]);
+    $rule = ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
+
+    $group->delete();
+
+    expect(ShiftStreakRule::find($rule->id))->toBeNull();
+});

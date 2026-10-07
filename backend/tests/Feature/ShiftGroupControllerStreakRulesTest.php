@@ -128,3 +128,41 @@ it('includes streak_rules on the shift-groups index response', function () {
     expect($ourGroup)->not->toBeNull();
     expect($ourGroup['streak_rules'][0]['shift_type'])->toBe('night');
 });
+
+it('stores streak-rule types normalised', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+
+    $this->actingAs($admin)->putJson("/api/shift-groups/{$group->id}/streak-rules", [
+        'rules' => [['shift_type' => ' Night ', 'streak_length' => 3, 'rest_days' => 2]],
+    ])->assertOk();
+
+    expect(ShiftStreakRule::where('shift_group_id', $group->id)->pluck('shift_type')->all())->toBe(['night']);
+});
+
+it('rejects two rules whose types only differ by case or whitespace', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+
+    $this->actingAs($admin)->putJson("/api/shift-groups/{$group->id}/streak-rules", [
+        'rules' => [
+            ['shift_type' => 'Night', 'streak_length' => 3, 'rest_days' => 2],
+            ['shift_type' => 'night ', 'streak_length' => 4, 'rest_days' => 1],
+        ],
+    ])->assertStatus(422);
+
+    expect(ShiftStreakRule::where('shift_group_id', $group->id)->count())->toBe(0);
+});
+
+it('updates an existing rule when the same type is resubmitted in different case', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    $rule = ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
+
+    $this->actingAs($admin)->putJson("/api/shift-groups/{$group->id}/streak-rules", [
+        'rules' => [['shift_type' => 'NIGHT', 'streak_length' => 5, 'rest_days' => 2]],
+    ])->assertOk();
+
+    expect(ShiftStreakRule::where('shift_group_id', $group->id)->count())->toBe(1);
+    expect($rule->fresh()->streak_length)->toBe(5);
+});

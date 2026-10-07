@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
+use App\Support\ShiftType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -126,16 +127,21 @@ class ShiftGroupController extends Controller
             'rules.*.rest_days' => ['required', 'integer', 'min:1'],
         ]);
 
-        $shiftTypes = array_column($request->rules, 'shift_type');
+        $rules = array_map(
+            fn (array $rule) => [...$rule, 'shift_type' => ShiftType::normalize($rule['shift_type'])],
+            $request->input('rules'),
+        );
+
+        $shiftTypes = array_column($rules, 'shift_type');
         if (count($shiftTypes) !== count(array_unique($shiftTypes))) {
             return response()->json([
                 'message' => 'Each shift_type can only have one streak rule per group.',
             ], 422);
         }
 
-        DB::transaction(function () use ($request, $shiftGroup) {
+        DB::transaction(function () use ($rules, $shiftGroup) {
             $keepIds = [];
-            foreach ($request->rules as $rule) {
+            foreach ($rules as $rule) {
                 $model = ShiftStreakRule::updateOrCreate(
                     ['shift_group_id' => $shiftGroup->id, 'shift_type' => $rule['shift_type']],
                     ['streak_length' => $rule['streak_length'], 'rest_days' => $rule['rest_days']],

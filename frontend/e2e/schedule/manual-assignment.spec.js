@@ -29,9 +29,6 @@ test.describe('Manual shift assignment (drag and drop)', () => {
   test('assigns an employee by dragging from the roster, persists it, then unassigns via the remove button', async ({
     adminPage,
   }) => {
-    // A wide viewport keeps the assigned chip (name + x button) inside its narrow day cell;
-    // at the default width it overflows and the next day's drop-zone covers the x button.
-    await adminPage.setViewportSize({ width: 1920, height: 1080 });
     const context = adminPage.context();
     const groupId = await createShiftGroupWithStreakRule(context, { group: { name: GROUP_NAME } });
     await generateMonthShifts(context, { monthKey: MONTH, shiftGroupId: groupId });

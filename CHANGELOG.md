@@ -4,6 +4,18 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 🧩 Assigned-employee chips fit their day on narrower screens
+
+On the schedule calendar, an assigned employee's chip couldn't shrink below its full name. At a 1280 px window a day column is ~133 px but "Regular Employee" plus initials and × needs ~142 px, so the chip spilled into the next day — whose drop-zone then sat on top of the × button, making "remove" click the wrong day.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Fixed | `ScheduleView.vue`: chips can shrink to their column (`min-w-0 max-w-full`); the name truncates with an ellipsis and shows the full name as a tooltip; initials, day-off, Pending and × controls keep their size |
+| Tests | New `e2e/schedule/chip-layout.spec.js` at the default 1280×720 viewport: chip stays inside its cell, × is the element under the pointer, full name available via tooltip (failed before the fix: chip edge 734.7 px vs cell 713.3 px); `manual-assignment.spec.js` drops its 1920×1080 workaround |
+
+---
+
 ## 2026-10-07 — 🐛 Settlement report no longer shows another group's data
 
 On the Settlement Periods page, picking a group (or stepping periods) while an earlier report request was still in flight could end with the earlier response replacing the report — e.g. the default group's report loaded on page open arriving after the user had already switched to another group, while the selector still showed the chosen one.

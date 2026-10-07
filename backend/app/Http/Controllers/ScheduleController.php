@@ -9,6 +9,7 @@ use App\Models\ShiftChecklist;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\ChecklistTemplate;
+use App\Services\ShiftTypeChanger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -436,6 +437,25 @@ class ScheduleController extends Controller
             'id' => $shift->id,
             'color' => $shift->color,
             'color_label' => $shift->color_label,
+        ]);
+    }
+
+    /**
+     * Set one shift's type, re-booking streak counters of anyone assigned to it.
+     */
+    public function updateShiftType(Request $request, Shift $shift, ShiftTypeChanger $changer)
+    {
+        $request->validate([
+            'shift_type' => ['present', 'nullable', 'string', 'max:50'],
+        ]);
+
+        $result = $changer->change(collect([$shift]), $request->input('shift_type'));
+        $shift->refresh();
+
+        return response()->json([
+            'id' => $shift->id,
+            'shift_type' => $shift->shift_type,
+            'rebooked' => $result['rebooked'],
         ]);
     }
 

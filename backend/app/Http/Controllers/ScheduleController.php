@@ -9,6 +9,7 @@ use App\Models\ShiftChecklist;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\ChecklistTemplate;
+use App\Services\ShiftTypeChanger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -62,6 +63,7 @@ class ScheduleController extends Controller
             $shiftData = [
                 'id' => $shift->id,
                 'shift_number' => $shift->shift_number,
+                'shift_type' => $shift->shift_type,
                 'start_time' => $shift->start_time ? substr($shift->start_time, 0, 5) : null,
                 'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
                 'color' => $shift->color,
@@ -122,6 +124,7 @@ class ScheduleController extends Controller
             'shift_times' => ['sometimes', 'array'],
             'shift_times.*.start_time' => ['required_with:shift_times', 'date_format:H:i'],
             'shift_times.*.end_time' => ['required_with:shift_times', 'date_format:H:i'],
+            'shift_times.*.shift_type' => ['sometimes', 'nullable', 'string', 'max:50'],
             'shift_times.*.checklists' => ['sometimes', 'array'],
             'shift_times.*.checklists.*.checklist_template_id' => ['required', 'exists:checklist_templates,id'],
             'shift_times.*.checklists.*.is_required' => ['required', 'boolean'],
@@ -160,6 +163,7 @@ class ScheduleController extends Controller
                         'work_mode' => $isWeekend ? $workModeWeekend : $workModeWeekday,
                         'color' => $times['color'] ?? null,
                         'color_label' => $times['color_label'] ?? null,
+                        'shift_type' => $times['shift_type'] ?? null,
                     ]
                 );
 
@@ -250,6 +254,7 @@ class ScheduleController extends Controller
             ->map(fn($s) => [
                 'id' => $s->id,
                 'shift_number' => $s->shift_number,
+                'shift_type' => $s->shift_type,
                 'start_time' => $s->start_time ? substr($s->start_time, 0, 5) : null,
                 'end_time' => $s->end_time ? substr($s->end_time, 0, 5) : null,
                 'color' => $s->color,
@@ -433,6 +438,50 @@ class ScheduleController extends Controller
             'color' => $shift->color,
             'color_label' => $shift->color_label,
         ]);
+    }
+
+    /**
+     * Set one shift's type, re-booking streak counters of anyone assigned to it.
+     */
+    public function updateShiftType(Request $request, Shift $shift, ShiftTypeChanger $changer)
+    {
+        $request->validate([
+            'shift_type' => ['present', 'nullable', 'string', 'max:50'],
+        ]);
+
+        $result = $changer->change(collect([$shift]), $request->input('shift_type'));
+        $shift->refresh();
+
+        return response()->json([
+            'id' => $shift->id,
+            'shift_type' => $shift->shift_type,
+            'rebooked' => $result['rebooked'],
+        ]);
+    }
+
+    /**
+     * Set the type of one slot (shift_number) across a group's month, re-booking streak counters.
+     */
+    public function updateSlotShiftTypes(Request $request, ShiftTypeChanger $changer)
+    {
+        $request->validate([
+            'shift_group_id' => ['required', 'integer', 'exists:shift_groups,id'],
+            'month' => ['required', 'date_format:Y-m'],
+            'shift_number' => ['required', 'integer', 'min:1'],
+            'shift_type' => ['present', 'nullable', 'string', 'max:50'],
+        ]);
+
+        // 'Y-m-d' with an explicit day: createFromFormat('Y-m') fills in today's day and overflows
+        // into the next month on the 29th-31st.
+        $start = Carbon::createFromFormat('Y-m-d', $request->month.'-01')->startOfDay();
+        $end = $start->copy()->endOfMonth();
+
+        $shifts = Shift::where('shift_group_id', $request->shift_group_id)
+            ->where('shift_number', $request->shift_number)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get();
+
+        return response()->json($changer->change($shifts, $request->input('shift_type')));
     }
 
     /**

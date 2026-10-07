@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\ShiftType;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
 class Shift extends Model
@@ -30,5 +32,10 @@ class Shift extends Model
     public function submissions()
     {
         return $this->hasMany(ChecklistSubmission::class);
+    }
+
+    protected function shiftType(): Attribute
+    {
+        return Attribute::make(set: fn (?string $value) => ShiftType::normalize($value));
     }
 }

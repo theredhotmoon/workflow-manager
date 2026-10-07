@@ -4,6 +4,7 @@ import {
   generateMonthShifts,
   getEmployeeIdByEmail,
   getShiftGroupsAndShifts,
+  setShiftTypes,
   updateShiftGroup,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
@@ -116,7 +117,7 @@ test.describe('Settlement Periods report', () => {
     await expect(row.getByRole('cell').nth(-2)).not.toHaveClass(/text-red-400/);
   });
 
-  test('renders the streak status column for an employee under a night streak rule', async ({
+  test('renders mid-streak and resting streak status for an employee on night shifts', async ({
     adminPage,
   }) => {
     const context = adminPage.context();
@@ -125,20 +126,41 @@ test.describe('Settlement Periods report', () => {
       rule: { shift_type: 'night', streak_length: 3, rest_days: 2 },
     });
     const current = await getPeriod(context, groupId, 0);
-    const monthKey = current.start.slice(0, 7);
-    await generateMonthShifts(context, { monthKey, shiftGroupId: groupId });
+
+    // Three consecutive days from the period start; they may cross a month boundary.
+    const days = [0, 1, 2].map((offset) => {
+      const d = new Date(`${current.start}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
+    });
+    const months = [...new Set(days.map((d) => d.slice(0, 7)))];
+    const shiftByDay = {};
+    for (const month of months) {
+      await generateMonthShifts(context, { monthKey: month, shiftGroupId: groupId });
+      await setShiftTypes(context, {
+        shiftGroupId: groupId,
+        month,
+        shiftNumber: 1,
+        shiftType: 'night',
+      });
+      const { schedule } = await getShiftGroupsAndShifts(context, month, groupId);
+      for (const day of days) if (schedule[day]) shiftByDay[day] = schedule[day][0];
+    }
     const employeeId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
-    const { schedule } = await getShiftGroupsAndShifts(context, monthKey, groupId);
-    await assignShift(context, { shiftId: schedule[current.start][0].id, userId: employeeId });
 
+    await assignShift(context, { shiftId: shiftByDay[days[0]].id, userId: employeeId });
+    await assignShift(context, { shiftId: shiftByDay[days[1]].id, userId: employeeId });
     await openReportFor(adminPage, 'Streak Report Team', groupId);
-
-    // A mid-streak "night: 2/3" is unreachable end-to-end because no API sets shifts.shift_type,
-    // so this only guards the column rendering / rule wiring. formatStreakStatus() renders nothing
-    // for a count of 0 (never "night: 0/3"), so the employee's Streak cell must be empty.
     const row = adminPage.getByRole('row', { name: /Regular Employee/ });
     await expect(row).toBeVisible();
-    await expect(row.getByRole('cell').last()).toHaveText('');
+    await expect(row.getByRole('cell').last()).toHaveText('night: 2/3');
+
+    await assignShift(context, { shiftId: shiftByDay[days[2]].id, userId: employeeId });
+    const restEnd = new Date(`${days[2]}T12:00:00Z`);
+    restEnd.setUTCDate(restEnd.getUTCDate() + 2); // rest_days
+    const restingUntil = restEnd.toISOString().slice(0, 10); // resting_until is serialised as Y-m-d
+    await openReportFor(adminPage, 'Streak Report Team', groupId);
+    await expect(row.getByRole('cell').last()).toHaveText(`night: resting until ${restingUntil}`);
   });
 
   test('shows an empty-assignments message for a period with no assignments yet', async ({

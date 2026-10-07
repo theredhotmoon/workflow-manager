@@ -76,7 +76,13 @@ class ShiftStreakTracker
 
         $states[$key]['current_count']++;
         if ($states[$key]['current_count'] >= $rule->streak_length) {
-            $states[$key]['resting_until'] = $day->copy()->addDays($rule->rest_days);
+            // Keep the later end date: re-booking an earlier date (e.g. relabelling a past month
+            // after a later one) must never shorten a rest window that is already in force.
+            $newRestEnd = $day->copy()->addDays($rule->rest_days);
+            $existingRest = $states[$key]['resting_until'];
+            $states[$key]['resting_until'] = ($existingRest !== null && $newRestEnd->lt($existingRest))
+                ? $existingRest
+                : $newRestEnd;
             $states[$key]['current_count'] = 0;
         }
 

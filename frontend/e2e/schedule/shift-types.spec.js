@@ -6,7 +6,7 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, test } from '../fixtures/auth.js';
 
-// Months reserved for this file: 2028-02 (template), 2028-03 (single edit), 2028-04 (bulk editor).
+// Months reserved for this file: 2028-02 (template), 2028-03 (single edit), 2028-04 (bulk editor), 2028-05 (mixed slot left blank).
 
 test.describe('Shift types', () => {
   test('a type set in the Generate Month template shows on every generated chip', async ({
@@ -109,5 +109,47 @@ test.describe('Shift types', () => {
     await adminPage.reload();
     await adminPage.getByRole('button', { name: /Types Bulk Team/ }).click();
     await expect(adminPage.getByText('S1 · evening', { exact: true })).toHaveCount(30);
+  });
+
+  test('saving a mixed slot left blank keeps its per-day types', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'Types Mixed Team' },
+    });
+    await generateMonthShifts(context, { monthKey: '2028-05', shiftGroupId: groupId });
+    await setShiftTypes(context, {
+      shiftGroupId: groupId,
+      month: '2028-05',
+      shiftNumber: 1,
+      shiftType: 'night',
+    });
+    const { schedule: seeded } = await getShiftGroupsAndShifts(context, '2028-05', groupId);
+    const headers = await getXsrfHeader(context);
+    const typeRes = await context.request.put(
+      `/api/schedule/shifts/${seeded['2028-05-01'][0].id}/type`,
+      { data: { shift_type: 'day' }, headers },
+    );
+    expect(typeRes.ok()).toBe(true);
+    const slot1Types = async () => {
+      const { schedule } = await getShiftGroupsAndShifts(context, '2028-05', groupId);
+      return Object.entries(schedule).map(([date, shifts]) => [
+        date,
+        shifts.find((s) => s.shift_number === 1)?.shift_type,
+      ]);
+    };
+    const expected = await slot1Types();
+    expect(new Set(expected.map(([, t]) => t))).toEqual(new Set(['day', 'night']));
+
+    await adminPage.goto('/schedule/2028-05');
+    await adminPage.getByRole('button', { name: /Types Mixed Team/ }).click();
+    await adminPage.getByRole('button', { name: 'Set shift types' }).click();
+    const dialog = adminPage.getByRole('dialog', { name: 'Set shift types' });
+    await expect(dialog.getByLabel('Slot 1 type')).toHaveAttribute('placeholder', 'mixed');
+    await dialog.getByLabel('Slot 1 type').fill('evening');
+    await dialog.getByLabel('Slot 1 type').fill('');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toBeHidden();
+
+    expect(await slot1Types()).toEqual(expected);
   });
 });

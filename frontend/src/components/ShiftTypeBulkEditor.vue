@@ -10,7 +10,7 @@
       <div v-for="row in rows" :key="row.shiftNumber" class="flex items-center gap-3 mb-2">
         <label :for="`bulk-shift-type-${row.shiftNumber}`" class="w-24 shrink-0 text-sm text-slate-300">Slot {{ row.shiftNumber }} type</label>
         <input :id="`bulk-shift-type-${row.shiftNumber}`" v-model="row.value" type="text" maxlength="50"
-          list="shift-type-suggestions" :placeholder="row.mixed ? 'mixed' : 'none'" @input="row.dirty = true"
+          list="shift-type-suggestions" :placeholder="row.mixed ? 'mixed' : 'none'"
           class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
       </div>
 
@@ -35,6 +35,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved']);
 
 // One row per slot number present this month; a slot whose days disagree starts empty as "mixed".
+// Only rows whose trimmed value differs from their initial value are sent, so a mixed slot left blank stays untouched.
 function buildRows() {
   const typesBySlot = new Map();
   for (const shifts of Object.values(props.schedule)) {
@@ -47,7 +48,8 @@ function buildRows() {
     .sort(([a], [b]) => a - b)
     .map(([shiftNumber, types]) => {
       const mixed = types.size > 1;
-      return { shiftNumber, mixed, value: mixed ? '' : ([...types][0] ?? ''), dirty: false };
+      const initial = mixed ? '' : ([...types][0] ?? '');
+      return { shiftNumber, mixed, initial, value: initial };
     });
 }
 
@@ -61,7 +63,7 @@ async function save() {
   let updated = 0;
   let rebooked = 0;
   try {
-    for (const row of rows.value.filter((r) => r.dirty)) {
+    for (const row of rows.value.filter((r) => r.value.trim() !== r.initial)) {
       const res = await api.put('/api/schedule/shift-types', {
         shift_group_id: props.groupId,
         month: props.monthKey,

@@ -54,6 +54,7 @@ it('skips a resting employee', function (string $endpoint, array $extra) {
 
     $this->actingAs($maintainer)->postJson($endpoint, aasPayload($group, $employee, $extra))->assertOk();
 
+    // 01-03 is already excluded by the modes' back-to-back rule; only 01-04 exercises the rest-window skip.
     expect(aasAssignedDates($group, $employee))->toBe(['2029-01-01', '2029-01-02', '2029-01-05']);
 })->with([
     'random' => ['/api/schedule/auto-assign/random', []],

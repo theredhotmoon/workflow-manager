@@ -2,8 +2,7 @@
 
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
-use App\Models\ShiftStreakState;
-use App\Models\User;
+use Illuminate\Support\Facades\Schema;
 
 it('creates a streak rule scoped to a shift group and shift type', function () {
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
@@ -27,23 +26,10 @@ it('rejects a second rule for the same shift group and shift type', function () 
         ->toThrow(\Illuminate\Database\QueryException::class);
 });
 
-it('creates a streak state keyed by user and rule, and cascades on group deletion', function () {
-    $group = ShiftGroup::create(['name' => 'Temp', 'sort_order' => 1]);
-    $rule = ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $user = User::factory()->create();
+it('no longer has a shift_streak_states table', function () {
+    expect(Schema::hasTable('shift_streak_states'))->toBeFalse();
+});
 
-    $state = ShiftStreakState::create([
-        'user_id' => $user->id,
-        'shift_streak_rule_id' => $rule->id,
-        'current_count' => 1,
-        'resting_until' => null,
-        'last_processed_date' => '2026-09-01',
-    ]);
-
-    expect($state->current_count)->toBe(1);
-
-    $group->delete();
-
-    expect(ShiftStreakRule::find($rule->id))->toBeNull();
-    expect(ShiftStreakState::find($state->id))->toBeNull();
+it('keeps the rest_policy column on shift_assignments', function () {
+    expect(Schema::hasColumn('shift_assignments', 'rest_policy'))->toBeTrue();
 });

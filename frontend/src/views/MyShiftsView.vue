@@ -315,20 +315,28 @@ function formatTime(isoStr) {
   });
 }
 
+// Switching months while a load is in flight overlaps fetches. Only the latest one may apply its
+// result — otherwise a slower load of the previous month shows its shifts under the new month's
+// heading.
+let shiftsRequestSeq = 0;
+
 async function fetchMyShifts() {
+  const requestSeq = ++shiftsRequestSeq;
   loading.value = true;
   try {
     const [shiftRes, delRes] = await Promise.all([
       api.get('/api/my-shifts', { params: { month: monthKey.value } }),
       api.get('/api/my-delegations', { params: { month: monthKey.value } }),
     ]);
+    if (requestSeq !== shiftsRequestSeq) return;
     shifts.value = shiftRes.data;
     delegations.value = delRes.data;
   } catch {
+    if (requestSeq !== shiftsRequestSeq) return;
     shifts.value = {};
     delegations.value = [];
   } finally {
-    loading.value = false;
+    if (requestSeq === shiftsRequestSeq) loading.value = false;
   }
 }
 

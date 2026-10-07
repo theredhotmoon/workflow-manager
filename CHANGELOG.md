@@ -4,6 +4,18 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 🐛 My Shifts no longer shows the previous month's shifts after switching
+
+On My Shifts, moving to another month while the current one was still loading could end with the earlier month's shifts (often none) displayed under the new month's heading — `fetchMyShifts()` waits for both `/my-shifts` and `/my-delegations`, so a slow earlier load could finish last. Found as an intermittent CI failure.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Fixed | `MyShiftsView.vue` `fetchMyShifts()` only applies the latest load's result (request-sequence guard, as on the schedule and settlement pages) |
+| Tests | New e2e test in `my-shifts/my-shifts.spec.js` holds the initial month's load until after switching (fails without the fix); `manual-assignment.spec.js` uses a 1280×1000 window so the drag target stays on screen on CI fonts, and its drag helper now errors clearly when a target is off screen |
+
+---
+
 ## 2026-10-07 — 🧩 Assigned-employee chips fit their day on narrower screens
 
 On the schedule calendar, an assigned employee's chip couldn't shrink below its full name. At a 1280 px window a day column is ~133 px but "Regular Employee" plus initials and × needs ~142 px, so the chip spilled into the next day — whose drop-zone then sat on top of the × button, making "remove" click the wrong day.

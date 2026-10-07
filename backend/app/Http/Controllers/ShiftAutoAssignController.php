@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\UserAvailability;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Support\Month;
 
 class ShiftAutoAssignController extends Controller
 {
@@ -22,7 +23,7 @@ class ShiftAutoAssignController extends Controller
             'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
         $group = ShiftGroup::find($groupId);
@@ -75,7 +76,7 @@ class ShiftAutoAssignController extends Controller
             'player_ids.*' => ['integer', 'exists:users,id'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
 
@@ -191,7 +192,7 @@ class ShiftAutoAssignController extends Controller
             'player_ids.*' => ['integer', 'exists:users,id'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
 
@@ -388,7 +389,7 @@ class ShiftAutoAssignController extends Controller
      */
     private function buildBlockedMap(array $userIds, string $month): array
     {
-        $start = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        $start = Month::start($month);
         $end = $start->copy()->endOfMonth();
 
         $availabilities = UserAvailability::whereIn('user_id', $userIds)
@@ -544,7 +545,7 @@ class ShiftAutoAssignController extends Controller
             'player_ids.*' => ['integer', 'exists:users,id'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
         $group = ShiftGroup::findOrFail($groupId);

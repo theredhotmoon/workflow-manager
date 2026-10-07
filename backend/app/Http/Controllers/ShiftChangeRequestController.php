@@ -9,6 +9,7 @@ use App\Models\Alarm;
 use App\Services\AlarmService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Support\Month;
 
 class ShiftChangeRequestController extends Controller
 {
@@ -76,7 +77,7 @@ class ShiftChangeRequestController extends Controller
             'month' => ['required', 'date_format:Y-m'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $requests = ShiftChangeRequest::with(['user:id,name', 'shift:id,date,shift_number', 'assignment'])

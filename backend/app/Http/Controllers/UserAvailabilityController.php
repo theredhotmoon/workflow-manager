@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\UserAvailability;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Support\Month;
 
 class UserAvailabilityController extends Controller
 {
@@ -72,7 +73,7 @@ class UserAvailabilityController extends Controller
             'month' => ['required', 'date_format:Y-m'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $entries = UserAvailability::where('user_id', $userId)

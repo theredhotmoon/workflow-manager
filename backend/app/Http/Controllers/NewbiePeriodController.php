@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\NewbiePeriod;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Support\Month;
 
 class NewbiePeriodController extends Controller
 {
@@ -36,7 +37,7 @@ class NewbiePeriodController extends Controller
     public function forMonth(Request $request)
     {
         $request->validate(['month' => ['required', 'date_format:Y-m']]);
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $periods = NewbiePeriod::with('user:id,name')

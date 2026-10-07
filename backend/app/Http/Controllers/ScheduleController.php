@@ -12,6 +12,7 @@ use App\Models\ChecklistTemplate;
 use App\Services\ShiftTypeChanger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Support\Month;
 
 class ScheduleController extends Controller
 {
@@ -25,7 +26,7 @@ class ScheduleController extends Controller
             'shift_group_id' => ['sometimes'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $isAllGroups = $request->input('shift_group_id') === 'all';
@@ -141,7 +142,7 @@ class ScheduleController extends Controller
         $shiftTimes = $request->input('shift_times', $this->defaultShiftTimes($shiftsPerDay));
         $workModeWeekday = $request->input('work_mode_weekday', 'office');
         $workModeWeekend = $request->input('work_mode_weekend', 'office');
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $created = 0;
@@ -471,9 +472,7 @@ class ScheduleController extends Controller
             'shift_type' => ['present', 'nullable', 'string', 'max:50'],
         ]);
 
-        // 'Y-m-d' with an explicit day: createFromFormat('Y-m') fills in today's day and overflows
-        // into the next month on the 29th-31st.
-        $start = Carbon::createFromFormat('Y-m-d', $request->month.'-01')->startOfDay();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $shifts = Shift::where('shift_group_id', $request->shift_group_id)

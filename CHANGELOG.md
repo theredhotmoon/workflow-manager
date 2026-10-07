@@ -4,6 +4,19 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 📅 Month views no longer jump to the next month on the 29th–31st
+
+Every endpoint that takes a `month` (`YYYY-MM`) parsed it with `Carbon::createFromFormat('Y-m', …)`, which fills in *today's* day of the month. On the 31st, any 30-day month or February rolled over into the next month (`2027-02` became March); on the 29th–30th, February did. On those days the schedule, auto-assign, generate, on-call, delegations, newbie periods, office closures, change requests, availability and My Shifts silently showed — or wrote to — the wrong month.
+
+### Backend
+| What | Details |
+|------|---------|
+| New | `App\Support\Month::start('YYYY-MM')` — first day of the month at 00:00, independent of today's date |
+| Fixed | All 16 call sites switched to it: `ScheduleController` (index, generate, slot shift types), `ShiftAutoAssignController` (5), `OfficeClosureController` (2), `DelegationController`, `NewbiePeriodController`, `OnCallController`, `ShiftChangeRequestController`, `UserAvailabilityController`, and the `/my-shifts` route |
+| Tests | `MonthParsingTest` pins the clock to the 31st (helper, `/api/schedule`, `/api/my-shifts`), plus a guard test that fails if the `createFromFormat('Y-m'` pattern reappears under `app/` or `routes/` |
+
+---
+
 ## 2026-10-07 — 🐛 Schedule no longer snaps back to the default group
 
 Opening a deep link such as `/schedule/2027-03` and switching group tabs right away could jump the view back to the default group. The page's first schedule request goes out before the groups have loaded, without a group, and the server answers with the default group. When that slower response arrived after the switch, it overwrote the user's choice. This was also the cause of the intermittently failing `group-settings` e2e test, whose gear click then opened the default group's settings.

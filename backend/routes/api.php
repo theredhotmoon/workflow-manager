@@ -91,7 +91,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/my-shifts', function (Request $request) {
         $request->validate(['month' => ['required', 'date_format:Y-m']]);
         $user = $request->user();
-        $start = \Carbon\Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = \App\Support\Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $assignments = \App\Models\ShiftAssignment::where('user_id', $user->id)

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\OfficeClosure;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use App\Support\Month;
 
 class OfficeClosureController extends Controller
 {
@@ -16,7 +17,7 @@ class OfficeClosureController extends Controller
         $query = OfficeClosure::with('creator:id,name')->orderBy('date');
 
         if ($request->has('month')) {
-            $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+            $start = Month::start($request->month);
             $end = $start->copy()->endOfMonth();
             $query->whereBetween('date', [$start->toDateString(), $end->toDateString()]);
         }
@@ -93,7 +94,7 @@ class OfficeClosureController extends Controller
             'month' => ['required', 'date_format:Y-m'],
         ]);
 
-        $start = Carbon::createFromFormat('Y-m', $request->month)->startOfMonth();
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
         $closures = OfficeClosure::whereBetween('date', [$start->toDateString(), $end->toDateString()])

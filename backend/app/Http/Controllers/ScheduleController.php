@@ -10,6 +10,8 @@ use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\ChecklistTemplate;
 use App\Services\ShiftTypeChanger;
+use App\Services\StreakReplay;
+use App\Services\StreakTimeline;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Support\Month;
@@ -83,6 +85,7 @@ class ScheduleController extends Controller
                         'id' => $a->id,
                         'user_id' => $a->user_id,
                         'user_name' => $a->user->name,
+                        'rest_policy' => $a->rest_policy,
                         'has_change_request' => $pendingRequest !== null,
                         'change_request_reason' => $pendingRequest?->reason,
                         'change_request_id' => $pendingRequest?->id,
@@ -272,6 +275,7 @@ class ScheduleController extends Controller
                     'id' => $a->id,
                     'user_id' => $a->user_id,
                     'user_name' => $a->user->name,
+                    'rest_policy' => $a->rest_policy,
                 ]),
             ]);
 
@@ -284,11 +288,12 @@ class ScheduleController extends Controller
     /**
      * Assign a user to a shift slot.
      */
-    public function assign(Request $request)
+    public function assign(Request $request, StreakReplay $streakReplay)
     {
         $request->validate([
             'shift_id' => ['required', 'exists:shifts,id'],
             'user_id' => ['required', 'exists:users,id'],
+            'rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
         ]);
 
         // Check if user is already assigned to this shift
@@ -303,20 +308,34 @@ class ScheduleController extends Controller
             ], 422);
         }
 
-        $assignment = ShiftAssignment::create([
-            'shift_id' => $request->shift_id,
-            'user_id' => $request->user_id,
-        ]);
+        $shift = Shift::with('shiftGroup')->findOrFail($request->shift_id);
+        $userId = (int) $request->user_id;
 
-        $shift = Shift::find($request->shift_id);
-        $streakTracker = new \App\Services\ShiftStreakTracker();
-        $streakRules = $streakTracker->rulesForGroup($shift->shiftGroup);
-        if (!$streakRules->isEmpty()) {
-            $streakStates = $streakTracker->loadStates($streakRules, [(int) $request->user_id]);
-            $streakTracker->recordAssignment($streakStates, $streakRules, (int) $request->user_id, $shift->shift_type, $shift->date, advanceWatermark: true);
-            $streakTracker->persist($streakStates);
+        // A rest day needs the manager's decision on how it counts (StreakTimeline policies).
+        $window = $shift->shiftGroup
+            ? $streakReplay->forGroup($shift->shiftGroup, [$userId], $shift->date)->activeWindow($userId, $shift->date)
+            : null;
+        if ($window !== null && !$request->filled('rest_policy')) {
+            $rule = $window['rule'];
+            $restingUntil = $window['end']->toDateString();
+
+            return response()->json([
+                'code' => 'rest_window_conflict',
+                'message' => "This employee is resting until {$restingUntil} ({$rule->shift_type}: {$rule->streak_length} in a row, then {$rule->rest_days} days off).",
+                'resting_until' => $restingUntil,
+                'rule' => [
+                    'shift_type' => $rule->shift_type,
+                    'streak_length' => (int) $rule->streak_length,
+                    'rest_days' => (int) $rule->rest_days,
+                ],
+            ], 409);
         }
 
+        $assignment = ShiftAssignment::create([
+            'shift_id' => $shift->id,
+            'user_id' => $userId,
+            'rest_policy' => $window !== null ? $request->input('rest_policy') : null,
+        ]);
         $assignment->load('user:id,name');
 
         return response()->json([
@@ -324,6 +343,7 @@ class ScheduleController extends Controller
             'shift_id' => $assignment->shift_id,
             'user_id' => $assignment->user_id,
             'user_name' => $assignment->user->name,
+            'rest_policy' => $assignment->rest_policy,
         ], 201);
     }
 
@@ -332,15 +352,6 @@ class ScheduleController extends Controller
      */
     public function unassign(ShiftAssignment $assignment)
     {
-        $shift = $assignment->shift;
-        $streakTracker = new \App\Services\ShiftStreakTracker();
-        $streakRules = $streakTracker->rulesForGroup($shift->shiftGroup);
-        if (!$streakRules->isEmpty()) {
-            $streakStates = $streakTracker->loadStates($streakRules, [$assignment->user_id]);
-            $streakTracker->recordUnassignment($streakStates, $streakRules, $assignment->user_id, $shift->shift_type);
-            $streakTracker->persist($streakStates);
-        }
-
         // Auto-acknowledge any pending change requests for this assignment
         ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
             ->where('status', 'pending')

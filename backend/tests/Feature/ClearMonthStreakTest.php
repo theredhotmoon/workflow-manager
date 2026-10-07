@@ -5,6 +5,8 @@ use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use App\Models\ShiftStreakState;
 use App\Models\User;
+use App\Services\StreakReplay;
+use Illuminate\Support\Carbon;
 
 it('reverses streak bookkeeping for assignments deleted by clear-month', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
@@ -29,8 +31,9 @@ it('reverses streak bookkeeping for assignments deleted by clear-month', functio
         'user_id' => $employee->id,
     ])->assertCreated();
 
-    $state = ShiftStreakState::where('user_id', $employee->id)->where('shift_streak_rule_id', $rule->id)->first();
-    expect($state->current_count)->toBe(2);
+    $replayCount = fn () => app(StreakReplay::class)->forGroup($group, [$employee->id], Carbon::parse('2026-09-10'))
+        ->statusAsOf($employee->id, Carbon::parse('2026-09-10'))[0]['current_count'];
+    expect($replayCount())->toBe(2);
 
     $response = $this->actingAs($maintainer)->deleteJson('/api/schedule/clear-month', [
         'month' => '2026-09',
@@ -41,8 +44,7 @@ it('reverses streak bookkeeping for assignments deleted by clear-month', functio
 
     expect(Shift::where('shift_group_id', $group->id)->count())->toBe(0);
 
-    $state->refresh();
-    expect($state->current_count)->toBe(0);
+    expect($replayCount())->toBe(0);
 });
 
 it('is a no-op for streak bookkeeping when the group has no streak rules configured', function () {

@@ -7,6 +7,7 @@ use App\Models\ShiftStreakState;
 use App\Services\ShiftStreakTracker;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use App\Services\StreakReplay;
 
 function stlMaintainer(): User
 {
@@ -86,6 +87,13 @@ function stlAssign($test, User $maintainer, Shift $shift, User $employee): void
     $test->actingAs($maintainer)->postJson('/api/schedule/assign', ['shift_id' => $shift->id, 'user_id' => $employee->id])->assertCreated();
 }
 
+/** Night-rule status read through the replay (manual assigns no longer write stored counters). */
+function stlStatus(ShiftGroup $group, User $employee, string $asOf): array
+{
+    return app(StreakReplay::class)->forGroup($group, [$employee->id], Carbon::parse($asOf))
+        ->statusAsOf($employee->id, Carbon::parse($asOf))[0];
+}
+
 function stlState(User $employee, ShiftStreakRule $rule): ?ShiftStreakState
 {
     return ShiftStreakState::where('user_id', $employee->id)->where('shift_streak_rule_id', $rule->id)->first();
@@ -120,12 +128,12 @@ it('re-books streak counters when an assigned night shift becomes a day shift', 
     $s2 = Shift::create(['date' => '2027-03-02', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);
     stlAssign($this, $maintainer, $s1, $employee);
     stlAssign($this, $maintainer, $s2, $employee);
-    expect(stlState($employee, $rule)->current_count)->toBe(2);
+    expect(stlStatus($group, $employee, '2027-03-10')['current_count'])->toBe(2);
 
     $this->actingAs($maintainer)->putJson("/api/schedule/shifts/{$s2->id}/type", ['shift_type' => 'day'])
         ->assertOk()->assertJson(['rebooked' => 1]);
 
-    expect(stlState($employee, $rule)->current_count)->toBe(1);
+    expect(stlStatus($group, $employee, '2027-03-10')['current_count'])->toBe(1);
 });
 
 it('re-books every assigned employee and can trigger a rest window', function () {
@@ -147,9 +155,9 @@ it('re-books every assigned employee and can trigger a rest window', function ()
         ->assertOk()->assertJson(['rebooked' => 2]);
 
     foreach ([$alice, $bob] as $employee) {
-        $state = stlState($employee, $rule);
-        expect($state->current_count)->toBe(0);
-        expect($state->resting_until->toDateString())->toBe('2027-03-05');
+        $status = stlStatus($group, $employee, '2027-03-04');
+        expect($status['current_count'])->toBe(0);
+        expect($status['resting_until'])->toBe('2027-03-05');
     }
 });
 
@@ -204,7 +212,7 @@ it('rolls back the type change when re-booking fails', function () {
         ->assertStatus(500);
 
     expect($night->fresh()->shift_type)->toBe('night');
-    expect(stlState($employee, $rule)->current_count)->toBe(1);
+    expect(stlStatus($group, $employee, '2027-03-10')['current_count'])->toBe(1);
 });
 
 it('bulk-sets the type for one slot in one group and month only', function () {

@@ -82,7 +82,13 @@ async function fetchGroups() {
   }
 }
 
+// Fetches overlap (the on-load fetch for the default group, a group change, period stepping).
+// Only the latest one may apply its response — otherwise a slower, older response replaces the
+// report the user is looking at with another group's or period's.
+let reportRequestSeq = 0;
+
 async function fetchReport() {
+  const requestSeq = ++reportRequestSeq;
   if (!selectedGroupId.value) {
     loading.value = false;
     return;
@@ -92,11 +98,12 @@ async function fetchReport() {
     const res = await api.get('/api/settlement-periods', {
       params: { shift_group_id: selectedGroupId.value, offset: offset.value },
     });
+    if (requestSeq !== reportRequestSeq) return;
     report.value = res.data;
   } catch {
-    report.value = null;
+    if (requestSeq === reportRequestSeq) report.value = null;
   } finally {
-    loading.value = false;
+    if (requestSeq === reportRequestSeq) loading.value = false;
   }
 }
 

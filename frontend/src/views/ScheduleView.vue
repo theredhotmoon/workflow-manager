@@ -2042,12 +2042,19 @@ async function onShiftTypesSaved({ updated, rebooked }) {
   await fetchSchedule();
 }
 
+// Several fetches can overlap (e.g. a deep link fires one before the groups have loaded, then the
+// user switches tabs). Only the latest one may apply its response — otherwise a slower, older
+// response (which also reports a shift_group_id) snaps the view back to the wrong group.
+let scheduleRequestSeq = 0;
+
 async function fetchSchedule() {
+  const requestSeq = ++scheduleRequestSeq;
   loading.value = true;
   try {
     const params = { month: monthKey.value };
     if (activeGroupId.value) params.shift_group_id = activeGroupId.value;
     const response = await api.get('/api/schedule', { params });
+    if (requestSeq !== scheduleRequestSeq) return;
     schedule.value = response.data.schedule;
     employees.value = response.data.employees;
     employeePool.value = response.data.employees.map((e) => ({
@@ -2062,9 +2069,9 @@ async function fetchSchedule() {
     fetchNewbies(); // Always fetch for newbie star display
     fetchShiftColors(); // Load global color definitions
   } catch (err) {
-    showToast('Failed to load schedule.', 'error');
+    if (requestSeq === scheduleRequestSeq) showToast('Failed to load schedule.', 'error');
   } finally {
-    loading.value = false;
+    if (requestSeq === scheduleRequestSeq) loading.value = false;
   }
 }
 

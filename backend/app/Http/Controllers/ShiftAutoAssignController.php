@@ -26,7 +26,6 @@ class ShiftAutoAssignController extends Controller
         $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
-        $group = ShiftGroup::find($groupId);
 
         $shifts = Shift::whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->where('shift_group_id', $groupId)
@@ -36,23 +35,10 @@ class ShiftAutoAssignController extends Controller
         $totalShifts = $shifts->count();
         $totalAssignments = 0;
 
-        $streakTracker = new \App\Services\ShiftStreakTracker();
-        $streakRules = $group ? $streakTracker->rulesForGroup($group) : collect();
-        $streakStates = $streakRules->isEmpty() ? [] : $streakTracker->loadStates($streakRules, $shifts->flatMap(fn ($s) => $s->assignments->pluck('user_id'))->unique()->values()->all());
-
         foreach ($shifts as $shift) {
             $totalAssignments += $shift->assignments->count();
-            if (!$streakRules->isEmpty()) {
-                foreach ($shift->assignments as $assignment) {
-                    $streakTracker->recordUnassignment($streakStates, $streakRules, $assignment->user_id, $shift->shift_type);
-                }
-            }
             $shift->assignments()->delete();
             $shift->delete();
-        }
-
-        if (!$streakRules->isEmpty()) {
-            $streakTracker->persist($streakStates);
         }
 
         return response()->json([

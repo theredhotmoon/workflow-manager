@@ -3,8 +3,6 @@
 use App\Models\Shift;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
-use App\Models\ShiftStreakState;
-use App\Services\ShiftStreakTracker;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use App\Services\StreakReplay;
@@ -87,16 +85,11 @@ function stlAssign($test, User $maintainer, Shift $shift, User $employee): void
     $test->actingAs($maintainer)->postJson('/api/schedule/assign', ['shift_id' => $shift->id, 'user_id' => $employee->id])->assertCreated();
 }
 
-/** Night-rule status read through the replay (manual assigns no longer write stored counters). */
+/** Night-rule status read through the replay of the group's assignments. */
 function stlStatus(ShiftGroup $group, User $employee, string $asOf): array
 {
     return app(StreakReplay::class)->forGroup($group, [$employee->id], Carbon::parse($asOf))
         ->statusAsOf($employee->id, Carbon::parse($asOf))[0];
-}
-
-function stlState(User $employee, ShiftStreakRule $rule): ?ShiftStreakState
-{
-    return ShiftStreakState::where('user_id', $employee->id)->where('shift_streak_rule_id', $rule->id)->first();
 }
 
 it('updates a shift type, normalised', function () {
@@ -119,7 +112,7 @@ it('rejects a type over 50 characters and non-managers', function () {
         ->assertStatus(403);
 });
 
-it('re-books streak counters when an assigned night shift becomes a day shift', function () {
+it('changes the replayed streak count when an assigned night shift becomes a day shift', function () {
     $maintainer = stlMaintainer();
     $group = stlGroup();
     $rule = stlNightRule($group);
@@ -136,7 +129,7 @@ it('re-books streak counters when an assigned night shift becomes a day shift', 
     expect(stlStatus($group, $employee, '2027-03-10')['current_count'])->toBe(1);
 });
 
-it('re-books every assigned employee and can trigger a rest window', function () {
+it('relabelling counts every assigned employee and can trigger a rest window', function () {
     $maintainer = stlMaintainer();
     $group = stlGroup();
     $rule = stlNightRule($group);
@@ -161,7 +154,7 @@ it('re-books every assigned employee and can trigger a rest window', function ()
     }
 });
 
-it('clearing the type of an assigned night shift decrements the counter', function () {
+it('clearing the type of an assigned night shift drops it from the replayed streak', function () {
     $maintainer = stlMaintainer();
     $group = stlGroup();
     $rule = stlNightRule($group);
@@ -172,10 +165,10 @@ it('clearing the type of an assigned night shift decrements the counter', functi
     $this->actingAs($maintainer)->putJson("/api/schedule/shifts/{$night->id}/type", ['shift_type' => null])
         ->assertOk()->assertJson(['shift_type' => null, 'rebooked' => 1]);
 
-    expect(stlState($employee, $rule)->current_count)->toBe(0);
+    expect(stlStatus($group, $employee, '2027-03-10')['current_count'])->toBe(0);
 });
 
-it('makes no tracker writes for an unassigned shift or an unchanged type', function () {
+it('reports rebooked 0 when no streak rule is touched (unassigned, unchanged, or between rule-less types)', function () {
     $maintainer = stlMaintainer();
     $group = stlGroup();
     stlNightRule($group);
@@ -183,36 +176,18 @@ it('makes no tracker writes for an unassigned shift or an unchanged type', funct
     $unassigned = Shift::create(['date' => '2027-03-01', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'day']);
     $assigned = Shift::create(['date' => '2027-03-02', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);
     stlAssign($this, $maintainer, $assigned, $employee);
-    $statesBefore = ShiftStreakState::orderBy('id')->get()->toArray();
 
     $this->actingAs($maintainer)->putJson("/api/schedule/shifts/{$unassigned->id}/type", ['shift_type' => 'night'])
         ->assertOk()->assertJson(['rebooked' => 0]);
     $this->actingAs($maintainer)->putJson("/api/schedule/shifts/{$assigned->id}/type", ['shift_type' => 'NIGHT'])
         ->assertOk()->assertJson(['shift_type' => 'night', 'rebooked' => 0]);
 
-    expect(ShiftStreakState::orderBy('id')->get()->toArray())->toBe($statesBefore);
-});
+    // An assigned shift moving between two types that have no rule affects no streak either.
+    $plain = Shift::create(['date' => '2027-03-03', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'day']);
+    stlAssign($this, $maintainer, $plain, $employee);
+    $this->actingAs($maintainer)->putJson("/api/schedule/shifts/{$plain->id}/type", ['shift_type' => 'evening'])
+        ->assertOk()->assertJson(['shift_type' => 'evening', 'rebooked' => 0]);
 
-it('rolls back the type change when re-booking fails', function () {
-    $maintainer = stlMaintainer();
-    $group = stlGroup();
-    $rule = stlNightRule($group);
-    $employee = stlEmployee();
-    $night = Shift::create(['date' => '2027-03-01', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);
-    stlAssign($this, $maintainer, $night, $employee);
-
-    $this->app->bind(ShiftStreakTracker::class, fn () => new class extends ShiftStreakTracker {
-        public function persist(array $states): void
-        {
-            throw new RuntimeException('simulated persist failure');
-        }
-    });
-
-    $this->actingAs($maintainer)->putJson("/api/schedule/shifts/{$night->id}/type", ['shift_type' => 'day'])
-        ->assertStatus(500);
-
-    expect($night->fresh()->shift_type)->toBe('night');
-    expect(stlStatus($group, $employee, '2027-03-10')['current_count'])->toBe(1);
 });
 
 it('bulk-sets the type for one slot in one group and month only', function () {
@@ -250,9 +225,7 @@ it('bulk-relabels assigned shifts in date order so the rest window starts on the
         'shift_group_id' => $group->id, 'month' => '2027-03', 'shift_number' => 1, 'shift_type' => 'night',
     ])->assertOk()->assertExactJson(['updated' => 3, 'rebooked' => 3]);
 
-    $state = stlState($employee, $rule);
-    expect($state->current_count)->toBe(0);
-    expect($state->resting_until->toDateString())->toBe('2027-03-05');
+    expect(stlStatus($group, $employee, '2027-03-04'))->toMatchArray(['current_count' => 0, 'resting_until' => '2027-03-05']);
 });
 
 it('bulk edit on the 31st still targets the requested month', function () {
@@ -317,7 +290,7 @@ it('auto-assign respects a streak once shifts are labelled through the bulk endp
     expect($response->json('total_assigned'))->toBe(3);
 });
 
-it('re-booking an earlier month never shortens an active rest window', function () {
+it('relabelling an earlier month keeps the later rest window active', function () {
     $maintainer = stlMaintainer();
     $group = stlGroup();
     $rule = stlNightRule($group);
@@ -333,6 +306,6 @@ it('re-booking an earlier month never shortens an active rest window', function 
         $this->actingAs($maintainer)->putJson('/api/schedule/shift-types', [
             'shift_group_id' => $group->id, 'month' => $month, 'shift_number' => 1, 'shift_type' => 'night',
         ])->assertOk();
-        expect(stlState($employee, $rule)->resting_until->toDateString())->toBe('2027-04-05');
     }
+    expect(app(StreakReplay::class)->forGroup($group, [$employee->id], Carbon::parse('2027-05-01'))->isResting($employee->id, Carbon::parse('2027-04-05')))->toBeTrue();
 });

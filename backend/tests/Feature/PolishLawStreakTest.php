@@ -125,3 +125,32 @@ it('is idempotent: running polishLaw twice over the same already-generated month
     $this->actingAs($maintainer)->postJson('/api/schedule/auto-assign/polish-law', $payload)->assertOk();
     expect($status())->toBe(2);
 });
+
+it('counts existing in-month assignments once: two manual nights then an auto-assigned third completes the streak', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create([
+        'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
+        'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
+    ]);
+    ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+
+    foreach (['2026-09-01', '2026-09-02'] as $date) {
+        $shift = makeStreakShift($group->id, $date, 1, 'night', '22:00', '06:00');
+        \App\Models\ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
+    }
+    makeStreakShift($group->id, '2026-09-03', 1, 'night', '22:00', '06:00');
+
+    $response = $this->actingAs($maintainer)->postJson('/api/schedule/auto-assign/polish-law', [
+        'month' => '2026-09',
+        'shift_group_id' => $group->id,
+        'users_per_shift_weekday' => 1,
+        'users_per_shift_weekend' => 1,
+        'rotation_days' => 7,
+        'player_mode' => 'include',
+        'player_ids' => [$employee->id],
+    ])->assertOk();
+
+    // Double-counted existing nights would already have triggered rest on day 3.
+    expect($response->json('total_assigned'))->toBe(1);
+});

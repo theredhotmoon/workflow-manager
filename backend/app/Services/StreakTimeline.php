@@ -39,7 +39,7 @@ final class StreakTimeline
         return $this->rules->isNotEmpty();
     }
 
-    public function append(int $userId, ?string $shiftType, Carbon $date, int $shiftNumber, ?string $restPolicy = null): void
+    public function append(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy = null): void
     {
         $this->eventsByUser[$userId][] = [
             'date' => $date->toDateString(),
@@ -50,13 +50,13 @@ final class StreakTimeline
         usort($this->eventsByUser[$userId], [self::class, 'compareEvents']);
     }
 
-    public function isResting(int $userId, Carbon $day): bool
+    public function isResting(int $userId, \Carbon\Carbon $day): bool
     {
         return $this->activeWindow($userId, $day) !== null;
     }
 
     /** @return array{rule: ShiftStreakRule, start: Carbon, end: Carbon}|null the covering window that ends last */
-    public function activeWindow(int $userId, Carbon $day): ?array
+    public function activeWindow(int $userId, \Carbon\Carbon $day): ?array
     {
         $day = $day->copy()->startOfDay();
         $latest = null;
@@ -76,7 +76,7 @@ final class StreakTimeline
      *
      * @return list<array{shift_type: string, current_count: int, streak_length: int, resting_until: ?string}>
      */
-    public function statusAsOf(int $userId, Carbon $until, ?Carbon $windowsFrom = null): array
+    public function statusAsOf(int $userId, \Carbon\Carbon $until, ?\Carbon\Carbon $windowsFrom = null): array
     {
         $state = $this->replay($userId, $until->copy()->startOfDay());
         $from = ($windowsFrom ?? $until)->copy()->startOfDay();
@@ -102,7 +102,7 @@ final class StreakTimeline
     }
 
     /** @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, start: Carbon, end: Carbon}>} */
-    private function replay(int $userId, Carbon $until): array
+    private function replay(int $userId, \Carbon\Carbon $until): array
     {
         $counts = [];
         $windows = [];

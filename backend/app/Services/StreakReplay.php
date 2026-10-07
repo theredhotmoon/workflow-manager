@@ -11,7 +11,7 @@ use Illuminate\Support\Carbon;
 class StreakReplay
 {
     /** @param  list<int>  $userIds */
-    public function forGroup(ShiftGroup $group, array $userIds, Carbon $until): StreakTimeline
+    public function forGroup(ShiftGroup $group, array $userIds, \Carbon\Carbon $until): StreakTimeline
     {
         $rules = $group->streakRules()->get()->keyBy('shift_type');
         if ($rules->isEmpty() || $userIds === []) {

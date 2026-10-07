@@ -8,6 +8,7 @@ use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\UserAvailability;
 use App\Services\StreakReplay;
+use App\Services\StreakTimeline;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Support\Month;
@@ -88,6 +89,10 @@ class ShiftAutoAssignController extends Controller
 
         $blockedMap = $this->buildBlockedMap($employees->pluck('id')->toArray(), $request->month);
 
+        $streakTimeline = ($group = ShiftGroup::find($groupId))
+            ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all(), $end->copy()->addDay())
+            : null;
+
         $totalAssigned = 0;
         $warnings = [];
         $shiftsArray = $shifts->toArray();
@@ -124,7 +129,8 @@ class ShiftAutoAssignController extends Controller
                 $employees,
                 $blockedMap,
                 $assignmentTracker,
-                $alreadyAssigned
+                $alreadyAssigned,
+                $streakTimeline
             );
 
             // Shuffle for randomness
@@ -141,6 +147,8 @@ class ShiftAutoAssignController extends Controller
                 ]);
 
                 $assignmentTracker[$currentKey][] = $userId;
+                if ($streakTimeline !== null)
+                    $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
                 $assigned++;
                 $totalAssigned++;
             }
@@ -202,6 +210,10 @@ class ShiftAutoAssignController extends Controller
         }
 
         $blockedMap = $this->buildBlockedMap($employees->pluck('id')->toArray(), $request->month);
+
+        $streakTimeline = ($group = ShiftGroup::find($groupId))
+            ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all(), $end->copy()->addDay())
+            : null;
 
         // Group shifts by date
         $shiftsByDate = [];
@@ -298,6 +310,8 @@ class ShiftAutoAssignController extends Controller
                             continue;
                         if ($this->isUserBlockedOnDate($userId, $dateStr, $blockedMap))
                             continue;
+                        if ($streakTimeline !== null && $streakTimeline->isResting($userId, $shift->date))
+                            continue;
                         if ($this->isAdjacentAssigned($userId, $dateStr, $shift->shift_number, $assignmentTracker))
                             continue;
                         if ($this->isAlreadyAssignedOnDate($userId, $dateStr, $shift->shift_number, $assignmentTracker))
@@ -319,6 +333,8 @@ class ShiftAutoAssignController extends Controller
                         ]);
 
                         $assignmentTracker[$currentKey][] = $userId;
+                        if ($streakTimeline !== null)
+                            $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
                         $assigned++;
                         $totalAssigned++;
                     }
@@ -331,7 +347,8 @@ class ShiftAutoAssignController extends Controller
                             $employees,
                             $blockedMap,
                             $assignmentTracker,
-                            $assignmentTracker[$currentKey]
+                            $assignmentTracker[$currentKey],
+                            $streakTimeline
                         );
                         shuffle($fallbackAvailable);
 
@@ -345,6 +362,8 @@ class ShiftAutoAssignController extends Controller
                             ]);
 
                             $assignmentTracker[$currentKey][] = $userId;
+                            if ($streakTimeline !== null)
+                                $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
                             $assigned++;
                             $totalAssigned++;
                         }
@@ -469,7 +488,8 @@ class ShiftAutoAssignController extends Controller
         $employees,
         array $blockedMap,
         array $assignmentTracker,
-        array $excludeUserIds = []
+        array $excludeUserIds = [],
+        ?StreakTimeline $streakTimeline = null
     ): array {
         $available = [];
 
@@ -481,6 +501,8 @@ class ShiftAutoAssignController extends Controller
             if ($this->isAdjacentAssigned($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
                 continue;
             if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
+                continue;
+            if ($streakTimeline !== null && $streakTimeline->isResting($emp->id, $shift->date))
                 continue;
 
             $available[] = $emp->id;

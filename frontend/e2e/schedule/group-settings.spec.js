@@ -9,8 +9,13 @@ test.describe('Shift group settlement + streak-rule settings', () => {
     await createShiftGroupWithStreakRule(context, { group: { name: 'Support Team' } });
 
     await adminPage.goto('/schedule/2027-03');
+    // Scope the gear to this group's tab: it only renders on the active tab, so an unscoped click
+    // could open whichever group is active at that instant.
     await adminPage.getByRole('button', { name: /Support Team/ }).click();
-    await adminPage.getByTitle('Settlement period settings').click();
+    await adminPage
+      .getByRole('button', { name: /Support Team/ })
+      .getByTitle('Settlement period settings')
+      .click();
 
     await expect(adminPage.getByText('Settlement Period Settings')).toBeVisible();
 
@@ -25,7 +30,10 @@ test.describe('Shift group settlement + streak-rule settings', () => {
     // Modal stays open after Save, so reload to read back what the server persisted
     await adminPage.reload();
     await adminPage.getByRole('button', { name: /Support Team/ }).click();
-    await adminPage.getByTitle('Settlement period settings').click();
+    await adminPage
+      .getByRole('button', { name: /Support Team/ })
+      .getByTitle('Settlement period settings')
+      .click();
     await expect(adminPage.getByLabel('Mode')).toBeVisible();
     await expect(adminPage.getByLabel('Mode')).toHaveValue('quarterly');
     await expect(adminPage.getByLabel('Weekly Hour Cap')).toHaveValue('40');
@@ -38,7 +46,10 @@ test.describe('Shift group settlement + streak-rule settings', () => {
 
     await adminPage.goto('/schedule/2027-03');
     await adminPage.getByRole('button', { name: /Cleanup Team/ }).click();
-    await adminPage.getByTitle('Settlement period settings').click();
+    await adminPage
+      .getByRole('button', { name: /Cleanup Team/ })
+      .getByTitle('Settlement period settings')
+      .click();
 
     await expect(adminPage.getByPlaceholder('shift type (e.g. night)')).toHaveValue('night');
     await adminPage.getByTitle('Remove rule').click();
@@ -48,7 +59,10 @@ test.describe('Shift group settlement + streak-rule settings', () => {
     // Modal stays open after Save, so reload to read back what the server persisted
     await adminPage.reload();
     await adminPage.getByRole('button', { name: /Cleanup Team/ }).click();
-    await adminPage.getByTitle('Settlement period settings').click();
+    await adminPage
+      .getByRole('button', { name: /Cleanup Team/ })
+      .getByTitle('Settlement period settings')
+      .click();
     await expect(adminPage.getByLabel('Mode')).toBeVisible();
     await expect(adminPage.getByPlaceholder('shift type (e.g. night)')).toHaveCount(0);
   });

@@ -4,6 +4,19 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 🐛 Schedule no longer snaps back to the default group
+
+Opening a deep link such as `/schedule/2027-03` and switching group tabs right away could jump the view back to the default group. The page's first schedule request goes out before the groups have loaded, without a group, and the server answers with the default group. When that slower response arrived after the switch, it overwrote the user's choice. This was also the cause of the intermittently failing `group-settings` e2e test, whose gear click then opened the default group's settings.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Fixed | `ScheduleView.vue` `fetchSchedule()` only applies the latest request's response (request sequence guard); an older response can no longer change the active group, the schedule, or clear the loading state |
+| Tests | New e2e regression test in `schedule/navigation.spec.js` that holds the initial request until after the tab switch (fails without the fix); `group-settings.spec.js` now clicks the gear inside the edited group's own tab |
+| Tests | `manual-assignment.spec.js` waits for the assign/unassign requests to finish before reloading — the drop handler fetches availability before POSTing, so an immediate reload could abort the save (second intermittent CI failure, reproduced deterministically with a delayed availability response) |
+
+---
+
 ## 2026-10-07 — 🏷️ Shift Type Labelling
 
 Shift Streaks can now actually trigger: shifts get a type (e.g. `night`), set per slot when generating a month, per shift, or per slot in bulk. Previously nothing wrote `shifts.shift_type`, so streak rules could be configured but never matched.

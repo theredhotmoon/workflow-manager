@@ -6,6 +6,7 @@ import {
   getEmployeeIdByEmail,
   getShiftGroupsAndShifts,
   setShiftTypes,
+  updateShiftGroup,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 
@@ -79,6 +80,12 @@ test.describe('Rest-day policy prompt', () => {
       '2029-01',
     );
 
+    // A weekly period ending inside the rest window, so the report can show the extended rest.
+    await updateShiftGroup(context, groupId, {
+      settlement_mode: 'weekly',
+      settlement_anchor_date: '2028-12-28',
+    });
+
     await adminPage.goto('/schedule/2029-01');
     await adminPage.getByRole('button', { name: /Rest Prompt Team/ }).click();
     const day3 = adminPage.locator('[data-date="2029-01-03"]');
@@ -104,6 +111,28 @@ test.describe('Rest-day policy prompt', () => {
     const { schedule } = await getShiftGroupsAndShifts(context, '2029-01', groupId);
     const a = schedule['2029-01-03'][0].assignments.find((x) => x.user_id === employeeId);
     expect(a.rest_policy).toBe('extends_rest');
+
+    // Settlement report: period 2028-12-28..2029-01-03. "Extends the rest" pushes the rest window to
+    // 2 days after the -03 shift (2029-01-05); "doesn't count" would leave it at 2029-01-04.
+    const current = (
+      await (
+        await context.request.get('/api/settlement-periods', {
+          params: { shift_group_id: groupId, offset: 0 },
+        })
+      ).json()
+    ).period;
+    const dayMs = 24 * 60 * 60 * 1000;
+    const offset = Math.round(
+      (Date.parse('2028-12-28T12:00:00Z') - Date.parse(`${current.start}T12:00:00Z`)) / (7 * dayMs),
+    );
+    const report = await (
+      await context.request.get('/api/settlement-periods', {
+        params: { shift_group_id: groupId, offset },
+      })
+    ).json();
+    expect(report.period.start).toBe('2028-12-28');
+    const me = report.employees.find((e) => e.id === employeeId);
+    expect(me.streak_status.find((r) => r.shift_type === 'night').resting_until).toBe('2029-01-05');
 
     await adminPage.reload();
     await adminPage.getByRole('button', { name: /Rest Prompt Team/ }).click();
@@ -134,6 +163,7 @@ test.describe('Rest-day policy prompt', () => {
     await expect(zone.locator('div', { hasText: EMPLOYEE })).not.toHaveCount(0);
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
+    await expect(adminPage.getByText('Assigned to back-to-back shift.')).toHaveCount(0);
     await expect(zone).toBeVisible();
     await expect(zone.locator('div', { hasText: EMPLOYEE })).toHaveCount(0);
 

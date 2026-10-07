@@ -27,16 +27,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 
-defineProps({
+const props = defineProps({
   userName: { type: String, required: true },
   restingUntil: { type: String, required: true },
   rule: { type: Object, required: true },
 });
 const emit = defineEmits(['choose', 'cancel']);
 
-const options = [
+const options = computed(() => [
   {
     value: 'not_counted',
     label: "Doesn't count",
@@ -50,8 +50,14 @@ const options = [
   {
     value: 'extends_rest',
     label: 'Extends the rest',
-    hint: 'The rest window ends rest-days after this shift.',
+    hint: 'The rest window ends ' + props.rule.rest_days + ' days after this shift.',
   },
-];
+]);
 const policy = ref('not_counted');
+
+function onKeydown(e) {
+  if (e.key === 'Escape') emit('cancel');
+}
+onMounted(() => document.addEventListener('keydown', onKeydown));
+onUnmounted(() => document.removeEventListener('keydown', onKeydown));
 </script>

@@ -2058,6 +2058,7 @@ let scheduleRequestSeq = 0;
 
 async function fetchSchedule() {
   const requestSeq = ++scheduleRequestSeq;
+  restPrompt.value = null; // its shift/chip objects are about to be replaced
   loading.value = true;
   try {
     const params = { month: monthKey.value };
@@ -2538,6 +2539,7 @@ async function onDrop(evt, shift, dateStr) {
   await proceedWithDelegationCheck(shift, item, evt.newIndex, dateStr);
 }
 
+// Resolves to 'assigned', 'prompted' (waiting on the rest-day dialog) or 'failed'.
 async function doAssign(shift, item, index, restPolicy = null) {
   try {
     const response = await api.post('/api/schedule/assign', {
@@ -2548,15 +2550,18 @@ async function doAssign(shift, item, index, restPolicy = null) {
     item.id = response.data.id;
     item.user_name = response.data.user_name;
     item.rest_policy = response.data.rest_policy;
+    return 'assigned';
   } catch (err) {
     // A rest day needs the manager's decision; keep the chip while asking.
     if (err.response?.status === 409 && err.response.data?.code === 'rest_window_conflict') {
       restPrompt.value = { shift, item, index, conflict: err.response.data };
-      return;
+      return 'prompted';
     }
-    shift.assignments.splice(index, 1);
+    const i = shift.assignments.indexOf(item);
+    if (i !== -1) shift.assignments.splice(i, 1);
     const msg = err.response?.data?.message || 'Failed to assign user.';
     showToast(msg, 'error');
+    return 'failed';
   }
 }
 
@@ -2565,13 +2570,15 @@ const restPrompt = ref(null); // { shift, item, index, conflict }
 async function chooseRestPolicy(policy) {
   const { shift, item, index } = restPrompt.value;
   restPrompt.value = null;
-  await doAssign(shift, item, index, policy);
+  const status = await doAssign(shift, item, index, policy);
+  if (status === 'assigned') showToast('Assigned during rest.', 'success');
 }
 
 function cancelRestPolicy() {
-  const { shift, index } = restPrompt.value;
+  const { shift, item } = restPrompt.value;
   restPrompt.value = null;
-  shift.assignments.splice(index, 1);
+  const i = shift.assignments.indexOf(item);
+  if (i !== -1) shift.assignments.splice(i, 1);
 }
 
 function cancelAvailConfirm() {
@@ -2689,8 +2696,8 @@ async function confirmAdjacentAssign() {
   const { shift, item, itemIndex } = adjacentConfirm.value;
   adjacentConfirm.value.show = false;
   if (shift && item) {
-    await doAssign(shift, item, itemIndex);
-    showToast('Assigned to back-to-back shift.', 'success');
+    const status = await doAssign(shift, item, itemIndex);
+    if (status === 'assigned') showToast('Assigned to back-to-back shift.', 'success');
   }
   adjacentConfirm.value = {
     show: false,

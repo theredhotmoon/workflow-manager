@@ -308,3 +308,23 @@ it('auto-assign respects a streak once shifts are labelled through the bulk endp
     // 3 nights, then rest on 09-04 and 09-05 (rest_days 2). Without types, all 5 would be assigned.
     expect($response->json('total_assigned'))->toBe(3);
 });
+
+it('re-booking an earlier month never shortens an active rest window', function () {
+    $maintainer = stlMaintainer();
+    $group = stlGroup();
+    $rule = stlNightRule($group);
+    $employee = stlEmployee();
+    foreach (['2027-04', '2027-03'] as $month) {
+        foreach ([1, 2, 3] as $day) {
+            $shift = Shift::create(['date' => "{$month}-0{$day}", 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'day']);
+            stlAssign($this, $maintainer, $shift, $employee);
+        }
+    }
+
+    foreach (['2027-04', '2027-03'] as $month) {
+        $this->actingAs($maintainer)->putJson('/api/schedule/shift-types', [
+            'shift_group_id' => $group->id, 'month' => $month, 'shift_number' => 1, 'shift_type' => 'night',
+        ])->assertOk();
+        expect(stlState($employee, $rule)->resting_until->toDateString())->toBe('2027-04-05');
+    }
+});

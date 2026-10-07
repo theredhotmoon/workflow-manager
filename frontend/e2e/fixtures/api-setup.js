@@ -1,7 +1,8 @@
 // frontend/e2e/fixtures/api-setup.js
 import { getXsrfHeader } from './auth.js';
 
-// The backend throttles /api to 60 req/min per user; on a 429, wait out Retry-After and retry once.
+// The API throttles per user (API_RATE_LIMIT, 60/min by default, 1000 in the dev stack); on a 429,
+// wait out Retry-After and retry once.
 async function send(context, method, url, options) {
   let res = await context.request[method](url, options);
   if (res.status() === 429) {

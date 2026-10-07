@@ -47,6 +47,7 @@ Copy the printed `base64:...` string and paste it as `APP_KEY` in your `.env`.
 | `DB_USERNAME`               | Postgres username                                |
 | `DB_PASSWORD`               | Postgres password                                |
 | `SANCTUM_STATEFUL_DOMAINS`  | Domain/IP of the frontend (e.g. `localhost`)     |
+| `API_RATE_LIMIT`            | Max API requests per minute, per user (default `60`) |
 
 ### 4. Build and start the stack
 
@@ -156,8 +157,12 @@ Notes:
 - The suite starts its own dev server. A plain `npm run dev` already listening on `:5173` would be
   reused by Playwright and serve the wrong page (no `/api` proxy), so stop it first.
 - New specs must import `test` and `expect` from `e2e/fixtures/auth.js` (not `@playwright/test`).
-  That file provides the `adminPage` / `employeePage` fixtures and a per-test reset of the API rate
-  limiter (the backend allows 60 requests/minute per user and all specs share one admin).
+  That file provides the `adminPage` / `employeePage` fixtures.
+- The API rate limit (`API_RATE_LIMIT`, default 60 requests/minute per user) is raised to 1000 by
+  `docker-compose.dev.yml`, so the specs, which all share one admin user, are not throttled. Global
+  setup still clears the cache (and with it the limiter counters) once per run. If you see 429s,
+  rebuild the backend with both compose files (`docker compose -f docker-compose.yml -f
+  docker-compose.dev.yml up -d --build backend`) so the dev limit is applied.
 - Specs share one database per run, so give every group a unique name and use a month no other spec
   uses. Do not enable Playwright `retries` or `--repeat-each`.
 

@@ -60,6 +60,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | API Rate Limit
+    |--------------------------------------------------------------------------
+    |
+    | Maximum requests per minute, per user (or per IP when guest), allowed by
+    | the "api" rate limiter. Read through config() rather than env() so it
+    | still works once the configuration is cached.
+    |
+    */
+
+    'api_rate_limit' => (int) env('API_RATE_LIMIT', 60),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

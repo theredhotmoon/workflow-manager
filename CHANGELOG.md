@@ -4,6 +4,26 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 🚦 A throttled API no longer logs you out; the API rate limit is configurable
+
+The SPA treated any failure of `GET /api/user` as "not logged in", so a 429 from the rate limiter sent a still-logged-in user to `/login` (the router guard and the dashboard both did this). Only 401/419 now mean logged out; a 429 is retried once after `Retry-After` (capped at 3 s) and other failures (5xx, network) keep the current session. The per-user API limit, previously hardcoded at 60 requests/minute, is now configurable.
+
+> **Operator note:** set `API_RATE_LIMIT` (in the root `.env`) to change the per-user API limit. The default is 60 requests/minute, so nothing changes unless you set it. `docker-compose.dev.yml` (local dev and the e2e CI job) defaults it to 1000.
+
+### Backend
+| What | Details |
+|------|---------|
+| Added | `config('app.api_rate_limit')` (`API_RATE_LIMIT` env, default 60), used by the `api` limiter in `RouteServiceProvider`; passed through `docker-compose.yml`, documented in `.env.example` and `backend/.env.example` |
+| Tests | New `ApiRateLimitTest`: with the limit set to 3, the 4th request returns 429 with `Retry-After`; default stays 60 |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Fixed | New `fetchCurrentUser.js` (`fetchCurrentUser()`, `isLoggedOut()`); the router guard and `DashboardView` only log out on 401/419 and otherwise keep the session |
+| Tests | New `e2e/auth/session.spec.js`: a 429 on the guard's `/api/user` call and on the dashboard's call no longer logs out (both failed before the fix). The per-test `resetRateLimit` e2e fixture is removed now that the dev stack has a high limit; the once-per-run `cache:clear` and the fixtures' 429 retry stay as safety nets |
+
+---
+
 ## 2026-10-07 — 🐛 My Shifts no longer shows the previous month's shifts after switching
 
 On My Shifts, moving to another month while the current one was still loading could end with the earlier month's shifts (often none) displayed under the new month's heading — `fetchMyShifts()` waits for both `/my-shifts` and `/my-delegations`, so a slow earlier load could finish last. Found as an intermittent CI failure.

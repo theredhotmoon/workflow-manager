@@ -52,10 +52,17 @@ test.describe('Manual shift assignment (drag and drop)', () => {
     const employeeChip = adminPage.locator('div.cursor-grab', { hasText: EMPLOYEE });
     await expect(employeeChip).toBeVisible();
 
+    // The chip appears as soon as Sortable drops the clone, but onDrop() first fetches the
+    // employee's availability and only then POSTs the assignment. Wait for the save itself before
+    // reloading, or the reload can abort it (seen in CI: no assign request ever reached the server).
+    const assignSaved = adminPage.waitForResponse(
+      (res) => res.url().includes('/api/schedule/assign') && res.request().method() === 'POST',
+    );
     await dragToShiftDropzone(adminPage, employeeChip, dropzone);
 
     const assignedChip = dropzone.locator('div', { hasText: EMPLOYEE });
     await expect(assignedChip.first()).toBeVisible({ timeout: 5000 });
+    expect((await assignSaved).ok()).toBe(true);
 
     // Persisted on the server
     await adminPage.reload();
@@ -63,12 +70,16 @@ test.describe('Manual shift assignment (drag and drop)', () => {
     await expect(dropzone.locator('div', { hasText: EMPLOYEE }).first()).toBeVisible();
 
     // Remove via the x button
+    const unassignSaved = adminPage.waitForResponse(
+      (res) => res.url().includes('/api/schedule/unassign/') && res.request().method() === 'DELETE',
+    );
     await dropzone
       .locator('div', { hasText: EMPLOYEE })
       .first()
       .getByText('×', { exact: true })
       .click();
     await expect(dropzone.locator('div', { hasText: EMPLOYEE })).toHaveCount(0);
+    expect((await unassignSaved).ok()).toBe(true);
 
     // Removal persisted
     await adminPage.reload();

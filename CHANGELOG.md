@@ -13,6 +13,7 @@ Opening a deep link such as `/schedule/2027-03` and switching group tabs right a
 |------|---------|
 | Fixed | `ScheduleView.vue` `fetchSchedule()` only applies the latest request's response (request sequence guard); an older response can no longer change the active group, the schedule, or clear the loading state |
 | Tests | New e2e regression test in `schedule/navigation.spec.js` that holds the initial request until after the tab switch (fails without the fix); `group-settings.spec.js` now clicks the gear inside the edited group's own tab |
+| Tests | `manual-assignment.spec.js` waits for the assign/unassign requests to finish before reloading — the drop handler fetches availability before POSTing, so an immediate reload could abort the save (second intermittent CI failure, reproduced deterministically with a delayed availability response) |
 
 ---
 

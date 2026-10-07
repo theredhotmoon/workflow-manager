@@ -18,7 +18,7 @@ Shift Streaks can now actually trigger: shifts get a type (e.g. `night`), set pe
 ### Frontend
 | View | Change |
 |------|--------|
-| **Schedule** | Type field per slot in the Generate Month template and in the shift edit modal (suggestions come from the group's streak-rule types and the types already used in the month); new **Set shift types** bulk editor; chips show `S1 · night` |
+| **Schedule** | Type field per slot in the Generate Month template and in the shift edit modal (suggestions come from the group's streak-rule types and the types already used in the month); new **Set shift types** bulk editor; chips show `S1 · night`; **Set shift types** is disabled while the month loads, and the editor fills in if the schedule arrives after it opened |
 | **Tests** | New `e2e/schedule/shift-types.spec.js`; the settlement report streak test now asserts real `night: 2/3` and `night: resting until …` states |
 
 > **Deploy note:** the normalisation migration aborts the backend start if two streak rules in one group differ only by case or whitespace. Before deploying, run `SELECT shift_group_id, lower(trim(shift_type)) AS t, count(*) FROM shift_streak_rules GROUP BY 1, 2 HAVING count(*) > 1;`. If it returns rows, merge or delete the duplicates in psql, then restart the backend.

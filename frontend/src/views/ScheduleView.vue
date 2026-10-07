@@ -39,8 +39,8 @@
           </button>
 
           <!-- Set shift types (requires canManageSchedule, not in all-groups mode) -->
-          <button v-if="canManageSchedule && !isAllGroupsMode" @click="showShiftTypeEditor = true"
-            class="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-semibold rounded-xl transition-all duration-200 text-sm">
+          <button v-if="canManageSchedule && !isAllGroupsMode" @click="showShiftTypeEditor = true" :disabled="loading"
+            class="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-semibold rounded-xl transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
             Set shift types
           </button>
 

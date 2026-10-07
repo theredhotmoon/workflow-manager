@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import api from '../axios.js';
 
 const props = defineProps({
@@ -54,6 +54,14 @@ function buildRows() {
 }
 
 const rows = ref(buildRows());
+
+// The schedule can arrive (or be refreshed) after the editor opened; follow it until the user has typed something.
+watch(
+  () => props.schedule,
+  () => {
+    if (rows.value.every((r) => r.value === r.initial)) rows.value = buildRows();
+  },
+);
 const saving = ref(false);
 const error = ref('');
 

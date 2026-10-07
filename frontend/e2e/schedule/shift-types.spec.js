@@ -6,7 +6,7 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, test } from '../fixtures/auth.js';
 
-// Months reserved for this file: 2028-02 (template), 2028-03 (single edit), 2028-04 (bulk editor), 2028-05 (mixed slot left blank).
+// Months reserved for this file: 2028-02 (template), 2028-03 (single edit), 2028-04 (bulk editor), 2028-05 (mixed slot left blank), 2028-06 (editor opened while the schedule loads).
 
 test.describe('Shift types', () => {
   test('a type set in the Generate Month template shows on every generated chip', async ({
@@ -90,6 +90,7 @@ test.describe('Shift types', () => {
 
     await adminPage.goto('/schedule/2028-04');
     await adminPage.getByRole('button', { name: /Types Bulk Team/ }).click();
+    await expect(adminPage.locator('[data-date="2028-04-01"]').getByText(/^S1/)).toBeVisible();
     await adminPage.getByRole('button', { name: 'Set shift types' }).click();
     const dialog = adminPage.getByRole('dialog', { name: 'Set shift types' });
     await expect(dialog).toBeVisible();
@@ -142,6 +143,7 @@ test.describe('Shift types', () => {
 
     await adminPage.goto('/schedule/2028-05');
     await adminPage.getByRole('button', { name: /Types Mixed Team/ }).click();
+    await expect(adminPage.locator('[data-date="2028-05-01"]').getByText(/^S1/)).toBeVisible();
     await adminPage.getByRole('button', { name: 'Set shift types' }).click();
     const dialog = adminPage.getByRole('dialog', { name: 'Set shift types' });
     await expect(dialog.getByLabel('Slot 1 type')).toHaveAttribute('placeholder', 'mixed');
@@ -151,5 +153,52 @@ test.describe('Shift types', () => {
     await expect(dialog).toBeHidden();
 
     expect(await slot1Types()).toEqual(expected);
+  });
+
+  test('the bulk editor is disabled while the schedule loads and fills in if opened mid-load', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'Types Slow Team' },
+    });
+    await generateMonthShifts(context, { monthKey: '2028-06', shiftGroupId: groupId });
+    await setShiftTypes(context, {
+      shiftGroupId: groupId,
+      month: '2028-06',
+      shiftNumber: 1,
+      shiftType: 'night',
+    });
+
+    await adminPage.goto('/schedule/2028-06');
+    // Delay only the group's month response, so the click below lands while it is still loading.
+    await adminPage.route(
+      (url) =>
+        url.pathname === '/api/schedule' &&
+        url.searchParams.get('month') === '2028-06' &&
+        url.searchParams.get('shift_group_id') === String(groupId),
+      async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await route.continue();
+      },
+    );
+    await adminPage.getByRole('button', { name: /Types Slow Team/ }).click();
+
+    const openButton = adminPage.getByRole('button', { name: 'Set shift types' });
+    await expect(openButton).toBeDisabled();
+
+    // The button guard makes the race unreachable by clicking, so lift it by hand to drive the editor's own
+    // handling of data that arrives after it opened (the component must not rely on the button guard alone).
+    await openButton.evaluate((el) => el.removeAttribute('disabled'));
+    await openButton.click();
+    const dialog = adminPage.getByRole('dialog', { name: 'Set shift types' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('No shifts in this month yet.')).toBeVisible();
+
+    // Without reopening, the rows appear once the schedule arrives.
+    await expect(dialog.getByLabel('Slot 1 type')).toBeVisible();
+    await expect(dialog.getByLabel('Slot 1 type')).toHaveValue('night');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(openButton).toBeEnabled();
   });
 });

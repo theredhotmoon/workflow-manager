@@ -173,3 +173,14 @@ it('loads only the group\'s assignments before $until, with their rest_policy', 
     // Unassigning the window-starting night clears the window (old tracker kept it forever).
     expect($timeline->isResting($employee->id, Carbon::parse('2029-01-03')))->toBeFalse();
 });
+
+it('treats a later slot on the day the window opens as a normal shift, not a rest-day event', function () {
+    $t = srlTimeline([['night', 2, 1]], [
+        srlEvent('2029-01-01', 'night'),
+        srlEvent('2029-01-02', 'night', null, 1),
+        srlEvent('2029-01-02', 'night', null, 2),
+    ]);
+
+    expect($t->statusAsOf(1, Carbon::parse('2029-01-03'))[0]['current_count'])->toBe(1);
+    expect($t->isResting(1, Carbon::parse('2029-01-03')))->toBeTrue();
+});

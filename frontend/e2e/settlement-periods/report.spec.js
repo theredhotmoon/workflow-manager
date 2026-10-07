@@ -19,18 +19,15 @@ async function getPeriod(context, groupId, offset) {
   return (await res.json()).period;
 }
 
-// SettlementPeriodsView fires a report fetch for the default group on mount, and another when the
-// select changes, with no stale-response guard. On a slow runner the default group's response can
-// land last and overwrite the selected group's report, so settle the initial load first and then
-// wait for the selected group's own response.
+// Opens the report and selects a group, waiting for that group's report to arrive. (The view ignores
+// stale responses, so a slower on-load fetch for the default group can't overwrite it — see the
+// "slow initial report" test.)
 async function openReportFor(page, groupName, groupId) {
-  const isReport = (res) => res.url().includes('/api/settlement-periods');
-  const initial = page.waitForResponse(isReport);
   await page.goto('/settlement-periods');
-  await initial;
-  await expect(page.getByText('Loading…')).toHaveCount(0);
   const selected = page.waitForResponse(
-    (res) => isReport(res) && res.url().includes(`shift_group_id=${groupId}`),
+    (res) =>
+      res.url().includes('/api/settlement-periods') &&
+      res.url().includes(`shift_group_id=${groupId}`),
   );
   await page.getByRole('combobox').selectOption({ label: groupName });
   await selected;
@@ -45,6 +42,57 @@ function shiftHours({ start_time, end_time }) {
 }
 
 test.describe('Settlement Periods report', () => {
+  test('a slow initial report for the default group does not overwrite the group the user picked', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'Race Report Team' },
+    });
+    const current = await getPeriod(context, groupId, 0);
+    const monthKey = current.start.slice(0, 7);
+    await generateMonthShifts(context, { monthKey, shiftGroupId: groupId });
+    const employeeId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    const { schedule } = await getShiftGroupsAndShifts(context, monthKey, groupId);
+    await assignShift(context, { shiftId: schedule[current.start][0].id, userId: employeeId });
+
+    // The page fetches the default group's report on load. Hold that first request until the user
+    // has picked another group and its report has arrived, so the default group's response lands last.
+    const isReport = (url) => url.pathname === '/api/settlement-periods';
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    let firstSeen = false;
+    await adminPage.route(isReport, async (route) => {
+      if (!firstSeen) {
+        firstSeen = true;
+        await held;
+      }
+      await route.continue();
+    });
+
+    await adminPage.goto('/settlement-periods');
+    const picked = adminPage.waitForResponse(
+      (res) => isReport(new URL(res.url())) && res.url().includes(`shift_group_id=${groupId}`),
+    );
+    await adminPage.getByRole('combobox').selectOption({ label: 'Race Report Team' });
+    await picked;
+    const row = adminPage.getByRole('row', { name: /Regular Employee/ });
+    await expect(row).toBeVisible();
+
+    const late = adminPage.waitForResponse(
+      (res) => isReport(new URL(res.url())) && !res.url().includes(`shift_group_id=${groupId}`),
+    );
+    release();
+    await late;
+    await adminPage.waitForLoadState('networkidle');
+
+    // Still the picked group's report: its employee row is shown and the select still says so.
+    await expect(row).toBeVisible();
+    await expect(adminPage.getByRole('combobox')).toHaveValue(String(groupId));
+  });
+
   test('loads groups and shows the report for the selected group, with prev-period navigation', async ({
     adminPage,
   }) => {

@@ -4,6 +4,18 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 🐛 Settlement report no longer shows another group's data
+
+On the Settlement Periods page, picking a group (or stepping periods) while an earlier report request was still in flight could end with the earlier response replacing the report — e.g. the default group's report loaded on page open arriving after the user had already switched to another group, while the selector still showed the chosen one.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Fixed | `SettlementPeriodsView.vue` `fetchReport()` only applies the latest request's response (same request-sequence guard as the schedule page); older responses can no longer replace the report, null it on error, or clear the loading state |
+| Tests | New e2e test in `settlement-periods/report.spec.js` holds the on-load request until after the group switch (fails without the fix); the spec's `openReportFor()` helper no longer needs its workaround |
+
+---
+
 ## 2026-10-07 — 📅 Month views no longer jump to the next month on the 29th–31st
 
 Every endpoint that takes a `month` (`YYYY-MM`) parsed it with `Carbon::createFromFormat('Y-m', …)`, which fills in *today's* day of the month. On the 31st, any 30-day month or February rolled over into the next month (`2027-02` became March); on the 29th–30th, February did. On those days the schedule, auto-assign, generate, on-call, delegations, newbie periods, office closures, change requests, availability and My Shifts silently showed — or wrote to — the wrong month.

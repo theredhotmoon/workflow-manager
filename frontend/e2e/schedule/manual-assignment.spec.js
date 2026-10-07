@@ -11,6 +11,19 @@ async function dragToShiftDropzone(page, sourceLocator, targetLocator) {
   const source = await sourceLocator.boundingBox();
   const target = await targetLocator.boundingBox();
   if (!source || !target) throw new Error('drag source/target not visible');
+  // A mouse drag can't scroll the page, so both ends must already be on screen — otherwise the drop
+  // silently never happens. Fail loudly instead.
+  const viewport = page.viewportSize();
+  for (const [name, box] of [
+    ['source', source],
+    ['target', target],
+  ]) {
+    if (box.y < 0 || box.y + box.height > viewport.height) {
+      throw new Error(
+        `drag ${name} is outside the ${viewport.width}x${viewport.height} viewport (y=${Math.round(box.y)}); use a taller viewport`,
+      );
+    }
+  }
 
   await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
   await page.mouse.down();
@@ -29,6 +42,9 @@ test.describe('Manual shift assignment (drag and drop)', () => {
   test('assigns an employee by dragging from the roster, persists it, then unassigns via the remove button', async ({
     adminPage,
   }) => {
+    // Keep the default 1280 px width (chip fit is covered there) but make the window tall enough for
+    // the roster and the target day to be on screen together: on CI's fonts the day sits below 720 px.
+    await adminPage.setViewportSize({ width: 1280, height: 1000 });
     const context = adminPage.context();
     const groupId = await createShiftGroupWithStreakRule(context, { group: { name: GROUP_NAME } });
     await generateMonthShifts(context, { monthKey: MONTH, shiftGroupId: groupId });

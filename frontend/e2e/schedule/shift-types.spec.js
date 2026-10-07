@@ -2,8 +2,9 @@ import {
   createShiftGroupWithStreakRule,
   generateMonthShifts,
   getShiftGroupsAndShifts,
+  setShiftTypes,
 } from '../fixtures/api-setup.js';
-import { expect, test } from '../fixtures/auth.js';
+import { expect, getXsrfHeader, test } from '../fixtures/auth.js';
 
 // Months reserved for this file: 2028-02 (template), 2028-03 (single edit), 2028-04 (bulk editor).
 
@@ -63,5 +64,50 @@ test.describe('Shift types', () => {
     await expect(
       adminPage.locator('[data-date="2028-03-16"]').getByText('S1', { exact: true }),
     ).toBeVisible();
+  });
+
+  test('the bulk editor relabels every shift in a slot for the month', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'Types Bulk Team' },
+    });
+    await generateMonthShifts(context, { monthKey: '2028-04', shiftGroupId: groupId });
+    // One day pre-labelled differently, so the slot starts as "mixed".
+    await setShiftTypes(context, {
+      shiftGroupId: groupId,
+      month: '2028-04',
+      shiftNumber: 1,
+      shiftType: 'night',
+    });
+    const { schedule: before } = await getShiftGroupsAndShifts(context, '2028-04', groupId);
+    const firstShift = before['2028-04-01'][0];
+    const headers = await getXsrfHeader(context);
+    const typeRes = await context.request.put(`/api/schedule/shifts/${firstShift.id}/type`, {
+      data: { shift_type: 'day' },
+      headers,
+    });
+    expect(typeRes.ok()).toBe(true);
+
+    await adminPage.goto('/schedule/2028-04');
+    await adminPage.getByRole('button', { name: /Types Bulk Team/ }).click();
+    await adminPage.getByRole('button', { name: 'Set shift types' }).click();
+    const dialog = adminPage.getByRole('dialog', { name: 'Set shift types' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel('Slot 1 type')).toHaveAttribute('placeholder', 'mixed');
+
+    await dialog.getByLabel('Slot 1 type').fill('Evening');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(adminPage.getByText(/30 shifts? updated/)).toBeVisible();
+
+    const { schedule: after } = await getShiftGroupsAndShifts(context, '2028-04', groupId);
+    const types = Object.values(after).map(
+      (shifts) => shifts.find((s) => s.shift_number === 1)?.shift_type,
+    );
+    expect(types.length).toBe(30);
+    expect(new Set(types)).toEqual(new Set(['evening']));
+
+    await adminPage.reload();
+    await adminPage.getByRole('button', { name: /Types Bulk Team/ }).click();
+    await expect(adminPage.getByText('S1 · evening', { exact: true })).toHaveCount(30);
   });
 });

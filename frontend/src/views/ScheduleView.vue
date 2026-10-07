@@ -38,6 +38,12 @@
             Generate Month
           </button>
 
+          <!-- Set shift types (admin only, not in all-groups mode) -->
+          <button v-if="canManageSchedule && !isAllGroupsMode" @click="showShiftTypeEditor = true"
+            class="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 font-semibold rounded-xl transition-all duration-200 text-sm">
+            Set shift types
+          </button>
+
           <!-- Delete Schedule Button (admin only, not in all-groups mode) -->
           <button v-if="canManageSchedule && !isAllGroupsMode" @click="deleteStep = 1"
             class="px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/40 font-semibold rounded-xl transition-all duration-200 flex items-center gap-2 text-sm">
@@ -975,6 +981,9 @@
       </div>
     </Transition>
 
+    <ShiftTypeBulkEditor v-if="showShiftTypeEditor" :group-id="activeGroupId" :month-key="monthKey" :schedule="schedule"
+      @close="showShiftTypeEditor = false" @saved="onShiftTypesSaved" />
+
     <!-- Generate Month Config Modal -->
     <Transition
       enter-active-class="transition-all duration-300 ease-out"
@@ -1293,6 +1302,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import AutoFillPanel from '../components/AutoFillPanel.vue';
+import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';
 import { currentUser } from '../router/index.js';
@@ -1306,6 +1316,7 @@ const generating = ref(false);
 const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth()); // 0-indexed
 const schedule = ref({});
+const showShiftTypeEditor = ref(false);
 const sideAccordion = ref({ employees: true, autoFill: false, overlays: false });
 const hasScheduleShifts = computed(() =>
   Object.values(schedule.value).some((shifts) => shifts.length > 0),
@@ -2019,6 +2030,16 @@ function nextMonth() {
   } else {
     currentMonth.value++;
   }
+}
+
+async function onShiftTypesSaved({ updated, rebooked }) {
+  showShiftTypeEditor.value = false;
+  const counters =
+    rebooked > 0
+      ? `; streak counters adjusted for ${rebooked} assignment${rebooked === 1 ? '' : 's'}`
+      : '';
+  showToast(`${updated} shift${updated === 1 ? '' : 's'} updated${counters}.`);
+  await fetchSchedule();
 }
 
 async function fetchSchedule() {

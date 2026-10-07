@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ShiftAssignment extends Model
 {
-    protected $fillable = ['shift_id', 'user_id'];
+    protected $fillable = ['shift_id', 'user_id', 'rest_policy'];
 
     public function shift()
     {

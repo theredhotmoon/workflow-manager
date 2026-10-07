@@ -39,10 +39,12 @@ return new class extends Migration
                 }
             }
 
-            DB::table('shifts')->whereNotNull('shift_type')->orderBy('id')->each(function ($shift) {
-                $normalized = ShiftType::normalize($shift->shift_type);
-                if ($normalized !== $shift->shift_type) {
-                    DB::table('shifts')->where('id', $shift->id)->update(['shift_type' => $normalized]);
+            DB::table('shifts')->whereNotNull('shift_type')->chunkById(1000, function ($shifts) {
+                foreach ($shifts as $shift) {
+                    $normalized = ShiftType::normalize($shift->shift_type);
+                    if ($normalized !== $shift->shift_type) {
+                        DB::table('shifts')->where('id', $shift->id)->update(['shift_type' => $normalized]);
+                    }
                 }
             });
         });

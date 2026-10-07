@@ -52,3 +52,58 @@ it('migration aborts without deleting when two rules in a group collide after no
 
     expect(DB::table('shift_streak_rules')->where('shift_group_id', $groupId)->count())->toBe(2);
 });
+
+it('migration normalises every shift across more than one chunk', function () {
+    $groupId = DB::table('shift_groups')->insertGetId(['name' => 'Main', 'is_default' => true, 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now()]);
+
+    $now = now();
+    $shifts = [];
+
+    // Insert 300 shifts with blank shift_type (will become NULL)
+    for ($i = 0; $i < 300; $i++) {
+        $dayOffset = intdiv($i, 10);
+        $date = \Carbon\Carbon::parse('2027-01-01')->addDays($dayOffset)->format('Y-m-d');
+        $shifts[] = [
+            'date' => $date,
+            'shift_number' => ($i % 10) + 1,
+            'shift_group_id' => $groupId,
+            'shift_type' => '   ',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+        // Batch inserts in groups of 250 for speed
+        if (count($shifts) === 250) {
+            DB::table('shifts')->insert($shifts);
+            $shifts = [];
+        }
+    }
+
+    // Insert 800 shifts with 'Night ' (will become 'night')
+    for ($i = 0; $i < 800; $i++) {
+        $dayOffset = 30 + intdiv($i, 10);
+        $date = \Carbon\Carbon::parse('2027-01-01')->addDays($dayOffset)->format('Y-m-d');
+        $shifts[] = [
+            'date' => $date,
+            'shift_number' => ($i % 10) + 1,
+            'shift_group_id' => $groupId,
+            'shift_type' => 'Night ',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+        // Batch inserts in groups of 250 for speed
+        if (count($shifts) === 250) {
+            DB::table('shifts')->insert($shifts);
+            $shifts = [];
+        }
+    }
+    // Insert remaining shifts
+    if (count($shifts) > 0) {
+        DB::table('shifts')->insert($shifts);
+    }
+
+    (require database_path('migrations/2026_10_06_120000_normalize_shift_types.php'))->up();
+
+    expect(DB::table('shifts')->where('shift_type', 'Night ')->count())->toBe(0);
+    expect(DB::table('shifts')->whereNull('shift_type')->count())->toBe(300);
+    expect(DB::table('shifts')->where('shift_type', 'night')->count())->toBe(800);
+});

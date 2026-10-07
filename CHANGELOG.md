@@ -8,7 +8,7 @@ All notable changes to the Shift Changer application are documented here.
 
 The SPA treated any failure of `GET /api/user` as "not logged in", so a 429 from the rate limiter sent a still-logged-in user to `/login` (the router guard and the dashboard both did this). Only 401/419 now mean logged out; a 429 is retried once after `Retry-After` (capped at 3 s) and other failures (5xx, network) keep the current session. The per-user API limit, previously hardcoded at 60 requests/minute, is now configurable.
 
-> **Operator note:** set `API_RATE_LIMIT` (in the root `.env`) to change the per-user API limit. The default is 60 requests/minute, so nothing changes unless you set it. `docker-compose.dev.yml` (local dev and the e2e CI job) defaults it to 1000.
+> **Operator note:** set `API_RATE_LIMIT` (in the root `.env`) to change the per-user API limit. The default is 60 requests/minute, so nothing changes unless you set it. `docker-compose.dev.yml` (local dev and the e2e CI job) defaults it to 1000 — a value in the root `.env` overrides that, so leave it unset for local development. Known limitation: if `/api/user` is still throttled after the one retry on first load, navigation is cancelled (the page stays on its current route until reload) rather than logging the user out.
 
 ### Backend
 | What | Details |

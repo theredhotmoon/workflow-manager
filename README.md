@@ -159,7 +159,9 @@ Notes:
 - New specs must import `test` and `expect` from `e2e/fixtures/auth.js` (not `@playwright/test`).
   That file provides the `adminPage` / `employeePage` fixtures.
 - The API rate limit (`API_RATE_LIMIT`, default 60 requests/minute per user) is raised to 1000 by
-  `docker-compose.dev.yml`, so the specs, which all share one admin user, are not throttled. Global
+  `docker-compose.dev.yml`, so the specs, which all share one admin user, are not throttled. A value
+  set in your root `.env` takes precedence over that default — leave it unset (as in `.env.example`)
+  for local development. Global
   setup still clears the cache (and with it the limiter counters) once per run. If you see 429s,
   rebuild the backend with both compose files (`docker compose -f docker-compose.yml -f
   docker-compose.dev.yml up -d --build backend`) so the dev limit is applied.

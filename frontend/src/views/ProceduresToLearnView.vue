@@ -57,7 +57,7 @@
                   class="px-3 py-1.5 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 hover:text-white transition-all">
                   Open full page →
                 </router-link>
-                <button @click="closeModal" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button @click="closeModal" aria-label="Close procedure" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -88,13 +88,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { currentUser } from '../router/index.js';
-import { computed } from 'vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -115,48 +115,48 @@ function fmtDate(d) {
   });
 }
 
-async function openProcedure(p) {
+// Opening a procedure sets the hash, which fires `hashchange` -> checkHash, so loads overlap even
+// for one click; closing and opening another adds more. Both paths share one channel: only the
+// latest load may fill the modal, close it on error or clear `modalLoading`.
+const previewRequests = useLatestRequest();
+
+async function loadPreview(id) {
+  const token = previewRequests.begin();
   showModal.value = true;
   modalLoading.value = true;
-  modalProcedure.value = null;
-  // Update hash
-  window.location.hash = `procedure-${p.id}`;
   try {
-    const res = await api.get(`/api/procedures/${p.id}`);
+    const res = await api.get(`/api/procedures/${id}`);
+    if (!previewRequests.isCurrent(token)) return;
     modalProcedure.value = res.data;
   } catch {
-    showModal.value = false;
+    if (previewRequests.isCurrent(token)) showModal.value = false;
   } finally {
-    modalLoading.value = false;
+    if (previewRequests.isCurrent(token)) modalLoading.value = false;
   }
 }
 
+async function openProcedure(p) {
+  modalProcedure.value = null;
+  // Update hash
+  window.location.hash = `procedure-${p.id}`;
+  await loadPreview(p.id);
+}
+
 function closeModal() {
+  previewRequests.invalidate();
   showModal.value = false;
   modalProcedure.value = null;
   window.location.hash = '';
 }
 
-// Open modal from hash URL on mount
+// Open modal from hash URL on mount and on back/forward
 async function checkHash() {
-  const hash = window.location.hash;
-  const match = hash.match(/^#procedure-(\d+)$/);
-  if (match) {
-    const id = parseInt(match[1]);
-    showModal.value = true;
-    modalLoading.value = true;
-    try {
-      const res = await api.get(`/api/procedures/${id}`);
-      modalProcedure.value = res.data;
-    } catch {
-      showModal.value = false;
-    } finally {
-      modalLoading.value = false;
-    }
-  }
+  const match = window.location.hash.match(/^#procedure-(\d+)$/);
+  if (match) await loadPreview(parseInt(match[1]));
 }
 
 onMounted(async () => {
+  window.addEventListener('hashchange', checkHash);
   try {
     procedures.value = (await api.get('/api/procedures-to-learn')).data;
   } catch {
@@ -166,6 +166,7 @@ onMounted(async () => {
   await checkHash();
 });
 
-// Watch for hash changes (back/forward)
-window.addEventListener('hashchange', checkHash);
+onUnmounted(() => {
+  window.removeEventListener('hashchange', checkHash);
+});
 </script>

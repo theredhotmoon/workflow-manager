@@ -5,6 +5,7 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use App\Models\User;
+use App\Services\StreakReplay;
 
 function aasSetup(): array
 {
@@ -102,4 +103,32 @@ it('skips rest days that the back-to-back rule cannot explain', function (string
 })->with([
     'random' => ['/api/schedule/auto-assign/random', []],
     'rotating' => ['/api/schedule/auto-assign/rotating', ['rotation_days' => 7]],
+]);
+
+it('does not assign a shift that would turn the employee\'s existing later shift into a rest day', function (string $endpoint, array $extra) {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create([
+        'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
+        'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2029-01-01', 'weekly_hour_cap' => 168,
+    ]);
+    ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 3]);
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    // Empty nights on 01-01 and 01-03 (not adjacent, so the back-to-back rules allow both); the employee already
+    // works 01-05. Nights 01-01 + 01-03 would complete the streak and rest 01-04..01-06, covering 01-05.
+    foreach (['2029-01-01', '2029-01-03', '2029-01-05'] as $date) {
+        $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
+            'start_time' => '22:00', 'end_time' => '06:00']);
+        if ($date === '2029-01-05') {
+            ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
+        }
+    }
+
+    $this->actingAs($maintainer)->postJson($endpoint, aasPayload($group, $employee, $extra))->assertOk();
+
+    expect(aasAssignedDates($group, $employee))->toBe(['2029-01-01', '2029-01-05']);
+    expect(app(StreakReplay::class)->forGroup($group, [$employee->id])->restingAssignments($employee->id))->toBe([]);
+})->with([
+    'random' => ['/api/schedule/auto-assign/random', []],
+    'rotating' => ['/api/schedule/auto-assign/rotating', ['rotation_days' => 7]],
+    'polish-law' => ['/api/schedule/auto-assign/polish-law', ['rotation_days' => 7]],
 ]);

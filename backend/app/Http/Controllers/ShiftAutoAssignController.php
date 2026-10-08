@@ -90,7 +90,7 @@ class ShiftAutoAssignController extends Controller
         $blockedMap = $this->buildBlockedMap($employees->pluck('id')->toArray(), $request->month);
 
         $streakTimeline = ($group = ShiftGroup::find($groupId))
-            ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all(), $end->copy()->addDay())
+            ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all())
             : null;
 
         $totalAssigned = 0;
@@ -212,7 +212,7 @@ class ShiftAutoAssignController extends Controller
         $blockedMap = $this->buildBlockedMap($employees->pluck('id')->toArray(), $request->month);
 
         $streakTimeline = ($group = ShiftGroup::find($groupId))
-            ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all(), $end->copy()->addDay())
+            ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all())
             : null;
 
         // Group shifts by date
@@ -310,7 +310,7 @@ class ShiftAutoAssignController extends Controller
                             continue;
                         if ($this->isUserBlockedOnDate($userId, $dateStr, $blockedMap))
                             continue;
-                        if ($streakTimeline !== null && $streakTimeline->isResting($userId, $shift->date))
+                        if ($streakTimeline !== null && $streakTimeline->wouldConflict($userId, $shift->shift_type, $shift->date, $shift->shift_number))
                             continue;
                         if ($this->isAdjacentAssigned($userId, $dateStr, $shift->shift_number, $assignmentTracker))
                             continue;
@@ -502,7 +502,7 @@ class ShiftAutoAssignController extends Controller
                 continue;
             if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
                 continue;
-            if ($streakTimeline !== null && $streakTimeline->isResting($emp->id, $shift->date))
+            if ($streakTimeline !== null && $streakTimeline->wouldConflict($emp->id, $shift->shift_type, $shift->date, $shift->shift_number))
                 continue;
 
             $available[] = $emp->id;
@@ -636,7 +636,7 @@ class ShiftAutoAssignController extends Controller
 
         // Everything already assigned before the month's end is part of the replay; days are processed in
         // date order below and every new assignment is appended, so eligibility stays exact.
-        $streakTimeline = app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all(), $end->copy()->addDay());
+        $streakTimeline = app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all());
 
         // Build shift time info
         $shiftTimes = [];
@@ -790,7 +790,7 @@ class ShiftAutoAssignController extends Controller
                 }
 
                 // Rule: shift-streak mandatory rest (see StreakTimeline)
-                if ($streakTimeline->isResting($emp->id, $shift->date)) {
+                if ($streakTimeline->wouldConflict($emp->id, $shift->shift_type, $shift->date, $shift->shift_number)) {
                     continue;
                 }
 

@@ -26,6 +26,9 @@ final class StreakTimeline
     /** @var array<int, list<array{day: int, shift_number: int, shift_type: ?string, rest_policy: ?string, assignment_id: ?int}>> */
     private array $eventsByUser = [];
 
+    /** @var array<int, array<int, int>> userId => covered positions of the user's current events (cleared by append) */
+    private array $coveredCache = [];
+
     /** @var array<string, int> */
     private array $streakLength = [];
 
@@ -79,6 +82,7 @@ final class StreakTimeline
             usort($events, [self::class, 'compareEvents']);
         }
         $this->eventsByUser[$userId] = $events;
+        unset($this->coveredCache[$userId]);
     }
 
     public function isResting(int $userId, \Carbon\Carbon $day): bool
@@ -144,21 +148,31 @@ final class StreakTimeline
             return [];
         }
 
-        $before = $this->replayEvents($events, PHP_INT_MAX)['covered'];
+        $before = $this->coveredCache[$userId] ??= $this->replayEvents($events, PHP_INT_MAX)['covered'];
 
-        $with = [];
+        // Insert the candidate after every event that sorts before or equal to it (what a stable sort
+        // would do with it appended last). An event at position $pos afterwards was at $pos, or $pos - 1
+        // when it sits behind the candidate, before.
+        $candidate = ['day' => $day, 'shift_number' => $shiftNumber, 'shift_type' => $shiftType,
+            'rest_policy' => $restPolicy, 'assignment_id' => null];
+        $insertAt = count($events);
         foreach ($events as $i => $event) {
-            $with[] = $event + ['origin' => $i];
+            if (self::compareEvents($event, $candidate) > 0) {
+                $insertAt = $i;
+                break;
+            }
         }
-        $with[] = ['day' => $day, 'shift_number' => $shiftNumber, 'shift_type' => $shiftType,
-            'rest_policy' => $restPolicy, 'assignment_id' => null, 'origin' => -1];
-        usort($with, [self::class, 'compareEvents']);
+        $with = $events;
+        array_splice($with, $insertAt, 0, [$candidate]);
         $after = $this->replayEvents($with, PHP_INT_MAX);
 
         $affected = [];
         foreach ($after['covered'] as $pos => $_) {
-            $origin = $with[$pos]['origin'];
-            if ($origin < 0 || isset($before[$origin])) {
+            if ($pos === $insertAt) {
+                continue;
+            }
+            $origin = $pos < $insertAt ? $pos : $pos - 1;
+            if (isset($before[$origin])) {
                 continue;
             }
             $window = self::longestCovering($after['windows'], $with[$pos]['day']);

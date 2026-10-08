@@ -254,3 +254,23 @@ export async function archiveDelegation(context, delegationId) {
   if (!res.ok()) throw new Error(`archive delegation failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+// Publishes a new version through the draft flow, which also stores a version snapshot.
+export async function publishProcedureVersion(
+  context,
+  procedureId,
+  { title, content = `<p>${title}</p>`, changeReason },
+) {
+  const headers = await getXsrfHeader(context);
+  const draft = await send(context, 'put', `/api/procedures/${procedureId}/draft`, {
+    data: { title, content },
+    headers,
+  });
+  if (!draft.ok()) throw new Error(`save draft failed: ${draft.status()} ${await draft.text()}`);
+  const res = await send(context, 'post', `/api/procedures/${procedureId}/publish`, {
+    data: { change_reason: changeReason },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`publish failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

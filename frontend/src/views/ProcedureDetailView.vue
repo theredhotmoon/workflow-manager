@@ -159,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
@@ -167,6 +167,7 @@ import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import ProcedureDiffModal from '../components/procedure/ProcedureDiffModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { currentUser as authUser } from '../router/index.js';
 
 const route = useRoute();
@@ -190,6 +191,16 @@ const users = ref([]);
 const viewingVersion = ref(0);
 const versionData = ref(null); // null = viewing latest, otherwise historical snapshot
 const versionCache = {};
+// Clicking through versions faster than they load overlaps loads; only the version the user asked
+// for last may be shown — including when it came from the cache or is the latest (no request).
+const versionRequests = useLatestRequest();
+// The compare dialog loads snapshots before opening; switching versions meanwhile supersedes it.
+const diffRequests = useLatestRequest();
+
+function showLatestVersion() {
+  versionRequests.invalidate();
+  versionData.value = null;
+}
 
 const currentUserId = computed(() => authUser.value?.id);
 const isAdmin = computed(() => authUser.value?.is_admin);
@@ -263,11 +274,11 @@ async function fetchProcedure() {
       if (urlVersion < procedure.value.version) {
         await loadVersionData(urlVersion);
       } else {
-        versionData.value = null;
+        showLatestVersion();
       }
     } else {
       viewingVersion.value = procedure.value.version;
-      versionData.value = null;
+      showLatestVersion();
     }
     // Cache the latest version
     if (procedure.value.change_reason) {
@@ -298,6 +309,8 @@ function goToVersion(v) {
 }
 
 async function loadVersionData(v) {
+  // Taken before the cache check: a cache hit also supersedes an older request still in flight.
+  const token = versionRequests.begin();
   // Check cache
   if (versionCache[v]) {
     versionData.value = versionCache[v];
@@ -307,9 +320,10 @@ async function loadVersionData(v) {
   try {
     const res = await api.get(`/api/procedures/${procedure.value.id}/versions/${v}`);
     versionCache[v] = res.data;
+    if (!versionRequests.isCurrent(token)) return;
     versionData.value = res.data;
   } catch {
-    versionData.value = null;
+    if (versionRequests.isCurrent(token)) versionData.value = null;
   }
 }
 
@@ -317,6 +331,7 @@ async function openDiffModal() {
   const newV = viewingVersion.value;
   const oldV = newV - 1;
   if (oldV < 1) return;
+  const token = diffRequests.begin();
 
   // Get new version data
   let newData;
@@ -359,6 +374,7 @@ async function openDiffModal() {
     }
   }
 
+  if (!diffRequests.isCurrent(token)) return;
   diffOldVersion.value = oldV;
   diffNewVersion.value = newV;
   diffOldData.value = oldData;
@@ -374,11 +390,12 @@ watch(
     if (!procedure.value) return;
     const v = newVer ? parseInt(newVer) : procedure.value.version;
     if (v === viewingVersion.value) return;
+    diffRequests.invalidate();
     viewingVersion.value = v;
     if (v < procedure.value.version) {
       await loadVersionData(v);
     } else {
-      versionData.value = null;
+      showLatestVersion();
     }
   },
 );

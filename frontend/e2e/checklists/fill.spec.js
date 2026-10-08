@@ -9,7 +9,8 @@ import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
 
 // Dates in 2097-05/2097-06 are reserved for the checklist specs: 2097-05 has no shifts,
-// 2097-06 is generated for 'Fill Race Team'.
+// 2097-06 is generated for 'Fill Race Team' only (its test counts the 'Shift 1' options).
+// 2096-01 is generated for 'Fill Date Team'.
 test.describe('Fill shift checklist', () => {
   test('a slow shift list for the previous date does not replace the chosen date’s shifts', async ({
     adminPage,
@@ -47,19 +48,19 @@ test.describe('Fill shift checklist', () => {
     const groupId = await createShiftGroupWithStreakRule(context, {
       group: { name: 'Fill Date Team' },
     });
-    await generateMonthShifts(context, { monthKey: '2097-06', shiftGroupId: groupId });
+    await generateMonthShifts(context, { monthKey: '2096-01', shiftGroupId: groupId });
 
     await adminPage.goto('/checklist/fill');
     await expect(adminPage.getByRole('heading', { name: 'Fill Shift Checklist' })).toBeVisible();
     await adminPage.waitForLoadState('networkidle');
     const date = adminPage.locator('input[type="date"]');
-    await date.fill('2097-06-12');
+    await date.fill('2096-01-12');
     const shiftSelect = adminPage.locator('select', { hasText: 'No shift selected' });
     await expect(shiftSelect.locator('option')).not.toHaveCount(1);
     await shiftSelect.selectOption({ index: 1 });
     await expect(shiftSelect.locator('option:checked')).toContainText('Shift 1');
 
-    await date.fill('2097-06-13');
+    await date.fill('2096-01-13');
     await expect(shiftSelect.locator('option')).not.toHaveCount(1);
     await expect(shiftSelect.locator('option:checked')).toHaveText('No shift selected');
   });

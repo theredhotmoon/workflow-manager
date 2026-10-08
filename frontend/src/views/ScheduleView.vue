@@ -1316,6 +1316,7 @@ import AutoFillPanel from '../components/AutoFillPanel.vue';
 import RestDayPolicyModal from '../components/RestDayPolicyModal.vue';
 import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
 import { confirm } from '../composables/useConfirm.js';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 import { currentUser } from '../router/index.js';
 
@@ -2057,18 +2058,18 @@ async function onShiftTypesSaved({ updated, rebooked }) {
 // Several fetches can overlap (e.g. a deep link fires one before the groups have loaded, then the
 // user switches tabs). Only the latest one may apply its response — otherwise a slower, older
 // response (which also reports a shift_group_id) snaps the view back to the wrong group.
-let scheduleRequestSeq = 0;
+const scheduleRequests = useLatestRequest();
 
 // quiet: refresh in place (no spinner, the grid keeps its scroll position).
 async function fetchSchedule({ quiet = false } = {}) {
-  const requestSeq = ++scheduleRequestSeq;
+  const token = scheduleRequests.begin();
   restPrompt.value = null; // its shift/chip objects are about to be replaced
   if (!quiet) loading.value = true;
   try {
     const params = { month: monthKey.value };
     if (activeGroupId.value) params.shift_group_id = activeGroupId.value;
     const response = await api.get('/api/schedule', { params });
-    if (requestSeq !== scheduleRequestSeq) return;
+    if (!scheduleRequests.isCurrent(token)) return;
     schedule.value = response.data.schedule;
     employees.value = response.data.employees;
     employeePool.value = response.data.employees.map((e) => ({
@@ -2083,9 +2084,9 @@ async function fetchSchedule({ quiet = false } = {}) {
     fetchNewbies(); // Always fetch for newbie star display
     fetchShiftColors(); // Load global color definitions
   } catch (err) {
-    if (requestSeq === scheduleRequestSeq) showToast('Failed to load schedule.', 'error');
+    if (scheduleRequests.isCurrent(token)) showToast('Failed to load schedule.', 'error');
   } finally {
-    if (requestSeq === scheduleRequestSeq) loading.value = false;
+    if (scheduleRequests.isCurrent(token)) loading.value = false;
   }
 }
 

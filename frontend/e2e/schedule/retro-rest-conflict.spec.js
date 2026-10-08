@@ -150,17 +150,23 @@ test.describe('Retroactive rest conflicts', () => {
 
     // The chip is updated in place, before any reload.
     await expect(
-      adminPage
-        .locator('[data-date="2029-03-05"]')
-        .getByTitle(/Assigned during rest: extends rest/),
+      adminPage.locator('[data-date="2029-03-05"]').getByTitle(/^On a rest day: extends rest$/),
     ).toBeVisible();
     await adminPage.reload();
     await adminPage.getByRole('button', { name: /Retro Prompt Team/ }).click();
     await expect(
-      adminPage
-        .locator('[data-date="2029-03-05"]')
-        .getByTitle(/Assigned during rest: extends rest/),
+      adminPage.locator('[data-date="2029-03-05"]').getByTitle(/^On a rest day: extends rest$/),
     ).toBeVisible();
+
+    // Removing the 03-03 shift ends that rest window: the 03-05 shift keeps its policy but is no
+    // longer on a rest day, so its ⏸ goes away — without a reload.
+    const day3 = adminPage.locator('[data-date="2029-03-03"]');
+    const day5 = adminPage.locator('[data-date="2029-03-05"]');
+    await expect(day3.getByText(EMPLOYEE)).toBeVisible();
+    await day3.getByRole('button', { name: '×' }).click();
+    await expect(day3.getByText(EMPLOYEE)).toHaveCount(0);
+    await expect(day5.getByText(EMPLOYEE)).toBeVisible();
+    await expect(day5.getByTitle(/^On a rest day/)).toHaveCount(0);
   });
 
   test('Cancel leaves the drop and the later shift untouched', async ({ adminPage }) => {

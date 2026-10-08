@@ -247,3 +247,10 @@ export async function createChecklistSubmission(
   if (!res.ok()) throw new Error(`create submission failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function archiveDelegation(context, delegationId) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', `/api/delegations/${delegationId}/archive`, { headers });
+  if (!res.ok()) throw new Error(`archive delegation failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

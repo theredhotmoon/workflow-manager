@@ -97,4 +97,60 @@ test.describe('Procedure detail', () => {
     await expect(title(adminPage, 'Diff Race v2')).toBeVisible();
     await expect(adminPage.getByRole('dialog', { name: /Changes: v2 → v3/ })).toHaveCount(0);
   });
+
+  test('a slow unfiltered access log does not replace the filtered one', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    const procedure = await createProcedure(context, {
+      title: 'Access Log Race',
+      ownerId: adminId,
+    });
+    const unfiltered = await holdRequests(
+      adminPage,
+      (url) => url.pathname === `/api/procedures/${procedure.id}/access-log` && url.search === '',
+    );
+
+    await adminPage.goto(`/procedures/${procedure.id}`);
+    await expect(title(adminPage, 'Access Log Race')).toBeVisible();
+    await adminPage.getByRole('button', { name: 'Access Log' }).click();
+    await unfiltered.seen;
+    // "To" date filter: nothing was accessed before 2000, so the filtered log is empty.
+    await adminPage.locator('input[type="date"]').last().fill('2000-01-01');
+    const empty = adminPage.getByText('No access logs found.');
+    await expect(empty).toBeVisible();
+
+    await unfiltered.releaseAndSettle();
+
+    await expect(empty).toBeVisible();
+    await expect(adminPage.getByText(/^\d+ entries$/)).toHaveCount(0);
+  });
+
+  test('a slow editor load from before reopening does not overwrite what the user typed', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    const procedure = await createProcedure(context, { title: 'Editor Race', ownerId: adminId });
+    // The page's own load is the first GET of the procedure; the editor's first load is the second.
+    const firstEditorLoad = await holdRequests(
+      adminPage,
+      (url) => url.pathname === `/api/procedures/${procedure.id}`,
+      { skip: 1, times: 1 },
+    );
+
+    await adminPage.goto(`/procedures/${procedure.id}`);
+    await expect(title(adminPage, 'Editor Race')).toBeVisible();
+    const edit = adminPage.getByRole('button', { name: 'Edit', exact: true });
+    await edit.click();
+    await firstEditorLoad.seen;
+    await adminPage.getByLabel('Close editor').click();
+    await edit.click();
+    const titleInput = adminPage.getByPlaceholder('e.g. Password Reset via Database');
+    await expect(titleInput).toHaveValue('Editor Race');
+    await titleInput.fill('Editor Race (typed)');
+
+    await firstEditorLoad.releaseAndSettle();
+
+    await expect(titleInput).toHaveValue('Editor Race (typed)');
+  });
 });

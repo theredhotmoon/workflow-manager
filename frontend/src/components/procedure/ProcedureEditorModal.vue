@@ -260,17 +260,18 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onBeforeUnmount, toRef } from 'vue';
-import { useRouter } from 'vue-router';
-import { confirm } from '../../composables/useConfirm.js';
-import { useFocusTrap } from '../../composables/useFocusTrap.js';
-import { useEditor, EditorContent } from '@tiptap/vue-3';
-import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
-import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
+import Underline from '@tiptap/extension-underline';
+import StarterKit from '@tiptap/starter-kit';
+import { EditorContent, useEditor } from '@tiptap/vue-3';
+import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import api from '../../axios.js';
+import { confirm } from '../../composables/useConfirm.js';
+import { useFocusTrap } from '../../composables/useFocusTrap.js';
+import { useLatestRequest } from '../../composables/useLatestRequest.js';
 import { currentUser as authUser } from '../../router/index.js';
 
 const props = defineProps({
@@ -596,20 +597,29 @@ function resetForm() {
   editor.value?.commands.setContent('');
 }
 
+// Closing and reopening the editor mid-load starts a second load. Only the latest may fill the
+// form, mark it loaded or close the modal on error — otherwise a stale response overwrites what the
+// user already typed, or a stale failure closes the freshly opened editor.
+const loadRequests = useLatestRequest();
+
 async function loadData() {
   if (loaded.value) return;
+  const token = loadRequests.begin();
   try {
     const [usersRes, tagsRes] = await Promise.all([
       api.get('/api/users'),
       api.get('/api/procedure-tags'),
     ]);
+    if (!loadRequests.isCurrent(token)) return;
     users.value = usersRes.data;
     allTags.value = tagsRes.data;
   } catch {}
+  if (!loadRequests.isCurrent(token)) return;
 
   if (isEdit.value) {
     try {
       const res = await api.get(`/api/procedures/${props.procedureId}`);
+      if (!loadRequests.isCurrent(token)) return;
       // Owner check
       if (res.data.owner_id !== authUser.value?.id && !authUser.value?.is_admin) {
         emit('close');
@@ -617,6 +627,7 @@ async function loadData() {
       }
       loadFromResponse(res.data);
     } catch {
+      if (!loadRequests.isCurrent(token)) return;
       emit('close');
     }
   } else {
@@ -632,6 +643,8 @@ watch(
     if (newVal) {
       resetForm();
       await loadData();
+    } else {
+      loadRequests.invalidate();
     }
   },
 );

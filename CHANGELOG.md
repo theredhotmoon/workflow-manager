@@ -4,6 +4,28 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-08 — 🐛 Checklist templates can link any procedure, not just the first 100
+
+The checklist builder only loaded the first 100 procedures for the "Link a procedure" dropdown (the API caps a page at 100), so with more procedures the rest couldn't be linked, and an item already linked to one of them showed an empty selection when the template was edited. It now loads every procedure, sorted by title. Separately, the procedures list had no tie-break in its sort, so procedures sharing a timestamp could come back in a different order on each request and paging through them could repeat one and skip another.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Added | `src/fetchAllPages.js` — loads every page of a paginated list endpoint (100 per request); used by the checklist builder and the procedure tree editor |
+| Fixed | Checklist builder offers every procedure for linking, sorted by title (was: first 100, newest first) |
+
+### Backend
+| What | Details |
+|------|---------|
+| Fixed | `GET /api/procedures` breaks sort ties by `id` in the sort's direction, so the order is the same on every request and pages never overlap or leave gaps |
+
+### Tests
+| What | Details |
+|------|---------|
+| Added | `fetchAllPages.test.js` (unit), `ProcedureIndexOrderTest` (Pest), and a builder e2e test linking a procedure that sits beyond the first 100 |
+
+---
+
 ## 2026-10-08 — 🐛 Opening another procedure from a procedure page shows it
 
 Going from one procedure's page straight to another without leaving the page — e.g. through a notification in the bell menu — changed the address but kept showing the first procedure, and an old version viewed on the first one could appear for the second. The procedure page is now rebuilt whenever the procedure changes; switching between versions of the same procedure still keeps the page.

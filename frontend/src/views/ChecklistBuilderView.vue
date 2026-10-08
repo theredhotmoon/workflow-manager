@@ -288,6 +288,7 @@ import { confirm } from '../composables/useConfirm.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { fetchAllPages } from '../fetchAllPages.js';
 
 const router = useRouter();
 
@@ -532,8 +533,12 @@ async function deleteTemplate(tpl) {
 onMounted(async () => {
   await fetchTemplates();
   try {
-    const procResponse = await api.get('/api/procedures', { params: { per_page: 100 } });
-    procedures.value = procResponse.data?.data ?? procResponse.data ?? [];
+    // Every procedure can be linked, not just the first page (the API caps per_page at 100).
+    procedures.value = await fetchAllPages(
+      (url, config) => api.get(url, config),
+      '/api/procedures',
+      { sort_by: 'title', sort_dir: 'asc' },
+    );
   } catch {}
 });
 </script>

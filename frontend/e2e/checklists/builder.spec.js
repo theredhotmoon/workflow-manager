@@ -1,4 +1,8 @@
-import { createChecklistTemplate } from '../fixtures/api-setup.js';
+import {
+  createChecklistTemplate,
+  createProcedure,
+  getEmployeeIdByEmail,
+} from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
 
@@ -69,5 +73,46 @@ test.describe('Checklist templates', () => {
 
     await expect(nameInput).toHaveValue('');
     await expect(adminPage.getByRole('heading', { name: 'Create Template' })).toBeVisible();
+  });
+
+  test('offers procedures beyond the first 100 for linking', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    // The API returns at most 100 per page. With more than 100 procedures, whatever it puts on
+    // page 2 is exactly what a single-page load would never offer — link the template to that one.
+    for (let i = 1; i <= 101; i++) {
+      await createProcedure(context, {
+        title: `Builder Cap ${String(i).padStart(3, '0')}`,
+        ownerId: adminId,
+      });
+    }
+    const page2 = await (
+      await context.request.get('/api/procedures', { params: { per_page: 100, page: 2 } })
+    ).json();
+    const beyond = page2.data[0];
+    expect(beyond).toBeTruthy();
+    await createChecklistTemplate(context, {
+      name: 'Builder Cap Template',
+      procedureIds: [beyond.id],
+    });
+
+    await adminPage.goto('/checklists');
+    await adminPage
+      .locator('div.rounded-2xl')
+      .filter({
+        has: adminPage.getByRole('heading', {
+          level: 3,
+          name: 'Builder Cap Template',
+          exact: true,
+        }),
+      })
+      .getByRole('button', { name: 'Edit' })
+      .click();
+    await expect(adminPage.getByPlaceholder('e.g. Daily Shift Handover')).toHaveValue(
+      'Builder Cap Template',
+    );
+
+    const linked = adminPage.locator('select[title="Link a procedure"]').first();
+    await expect(linked.locator('option:checked')).toContainText(beyond.title);
   });
 });

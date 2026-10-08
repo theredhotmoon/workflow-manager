@@ -4,6 +4,22 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-08 — 🐛 Views no longer show stale data after fast clicks
+
+Clicking faster than a screen loads — stepping months, switching groups, filters, sort or pages, opening one item and then another — could end with an older, slower response replacing what you had just asked for: another month's data, results that didn't match the filter bar, a cleared loading indicator, a blanked list or a selection snapping back. All of these screens now share one guard, so only the latest request for a piece of state can apply its result. Closing a dialog or panel also drops its pending loads.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Added | `useLatestRequest()` composable: only the latest request for a piece of state may apply its result, clear `loading` or report an error |
+| Changed | Schedule, Settlement report and My Shifts use it instead of their hand-written guards |
+| Fixed | Schedule (delegation, newbie and closure overlays; employee availability, including deselecting an employee), On-Call, Office Availability, My Availability, Alarms, Checklist History, Checklist Fill, Checklist Builder, Delegation Archive, Procedures list (search, filters, sort, paging, "Updating results…"), Procedure detail (version browsing, compare), procedure access log, procedure editor, Procedures to learn (preview), procedure tree editor (tree refresh), Users (newbie dialog) |
+| Fixed | Checklist Fill: changing the date no longer keeps the previous date's shift selected |
+| Fixed | Procedures to learn no longer leaves a `hashchange` listener behind |
+| Tests | New e2e fixture `holdRequests` (`e2e/fixtures/hold.js`) and race tests for each screen |
+
+---
+
 ## 2026-10-08 — ⏳ Assigning a shift can no longer silently put a later shift on a rest day
 
 Manual assign now also asks when a new shift would turn the employee's existing **later** shift into a mandatory rest day (for example, assigning the 2nd night of a streak when they already work a night inside the coming rest). The prompt offers the same three choices — **Doesn't count**, **Counts toward the next streak** or **Extends the rest** — applied to that later shift — and to any further shifts the choice itself pushes into rest (counting a shift can complete a new streak, extending the rest can reach the next shift); a further shift that already had its own rest-day answer keeps it, and only shifts that end up on a rest day are updated. Cancel changes nothing. On success the toast reads "Assigned; later shift updated." (or "Assigned; later shifts updated." when several were updated). If the employee's schedule changed while the prompt was open, the server asks again with the fresh list instead of applying the old answer.

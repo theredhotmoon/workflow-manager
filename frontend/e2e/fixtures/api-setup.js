@@ -115,3 +115,50 @@ export async function setShiftType(context, { shiftId, shiftType }) {
   if (!res.ok()) throw new Error(`set shift type failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function createDelegation(context, { name, destination, start, end, userIds = [] }) {
+  const headers = await getXsrfHeader(context);
+  const data = {
+    name,
+    destination,
+    start_datetime: `${start} 08:00:00`,
+    end_datetime: `${end} 18:00:00`,
+  };
+  if (userIds.length) data.user_ids = userIds;
+  const res = await send(context, 'post', '/api/delegations', { data, headers });
+  if (!res.ok()) throw new Error(`create delegation failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createNewbiePeriod(context, { userId, startDate, endDate }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/newbie-periods', {
+    data: { user_id: userId, start_date: startDate, end_date: endDate },
+    headers,
+  });
+  if (!res.ok())
+    throw new Error(`create newbie period failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createOfficeClosure(context, { startDate, endDate = startDate, title }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/office-closures', {
+    data: { start_date: startDate, end_date: endDate, title },
+    headers,
+  });
+  if (!res.ok())
+    throw new Error(`create office closure failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Availability entries always belong to the logged-in user of `context`.
+export async function createAvailability(context, { type, startDate, endDate = startDate }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/user-availabilities', {
+    data: { type, start_date: startDate, end_date: endDate },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create availability failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

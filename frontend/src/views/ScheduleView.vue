@@ -1558,13 +1558,19 @@ async function clearMonth() {
   }
 }
 
-// Fetch delegations for schedule overlay
+// Fetch delegations for the schedule overlay (also read by the drop-time delegation-conflict check).
+// It runs after every schedule load and when the overlay is switched on; only the latest call may
+// apply, so a slow previous month's list can't replace the month on screen.
+const delegationRequests = useLatestRequest();
+
 async function fetchDelegations() {
+  const token = delegationRequests.begin();
   try {
     const res = await api.get('/api/delegations/month', { params: { month: monthKey.value } });
+    if (!delegationRequests.isCurrent(token)) return;
     monthDelegations.value = res.data;
   } catch {
-    monthDelegations.value = [];
+    if (delegationRequests.isCurrent(token)) monthDelegations.value = [];
   }
 }
 
@@ -1590,12 +1596,16 @@ watch(showDelegations, (val) => {
 const showNewbies = ref(false);
 const monthNewbies = ref([]);
 
+const newbieRequests = useLatestRequest();
+
 async function fetchNewbies() {
+  const token = newbieRequests.begin();
   try {
     const res = await api.get('/api/newbie-periods/month', { params: { month: monthKey.value } });
+    if (!newbieRequests.isCurrent(token)) return;
     monthNewbies.value = res.data;
   } catch {
-    monthNewbies.value = [];
+    if (newbieRequests.isCurrent(token)) monthNewbies.value = [];
   }
 }
 
@@ -1617,12 +1627,16 @@ watch(showNewbies, (val) => {
 });
 
 // Office closures fetch + helpers
+const closureRequests = useLatestRequest();
+
 async function fetchClosures() {
+  const token = closureRequests.begin();
   try {
     const res = await api.get('/api/office-closures', { params: { month: monthKey.value } });
+    if (!closureRequests.isCurrent(token)) return;
     monthClosures.value = res.data;
   } catch {
-    monthClosures.value = [];
+    if (closureRequests.isCurrent(token)) monthClosures.value = [];
   }
 }
 
@@ -2083,6 +2097,7 @@ async function fetchSchedule({ quiet = false } = {}) {
     fetchDelegations(); // Always fetch for conflict checks
     fetchNewbies(); // Always fetch for newbie star display
     fetchShiftColors(); // Load global color definitions
+    if (showClosures.value) fetchClosures(); // Keep the closure overlay on the displayed month
   } catch (err) {
     if (scheduleRequests.isCurrent(token)) showToast('Failed to load schedule.', 'error');
   } finally {
@@ -2877,7 +2892,11 @@ onMounted(async () => {
   }
 });
 
-// Availability highlighting
+// Availability highlighting. Clicking employees (or changing month) faster than their availability
+// loads overlaps requests; only the latest may paint the calendar. Deselecting drops the in-flight
+// one so it can't repopulate the highlight for whoever is selected next.
+const availabilityRequests = useLatestRequest();
+
 function toggleEmployeeSelect(emp) {
   if (selectedEmployee.value?.id === emp.id) {
     deselectEmployee();
@@ -2888,18 +2907,21 @@ function toggleEmployeeSelect(emp) {
 }
 
 function deselectEmployee() {
+  availabilityRequests.invalidate();
   selectedEmployee.value = null;
   selectedAvailability.value = [];
 }
 
 async function fetchAvailability(userId) {
+  const token = availabilityRequests.begin();
   try {
     const res = await api.get(`/api/user-availabilities/${userId}/month`, {
       params: { month: monthKey.value },
     });
+    if (!availabilityRequests.isCurrent(token)) return;
     selectedAvailability.value = res.data;
   } catch {
-    selectedAvailability.value = [];
+    if (availabilityRequests.isCurrent(token)) selectedAvailability.value = [];
   }
 }
 

@@ -634,8 +634,9 @@ class ShiftAutoAssignController extends Controller
             ], 422);
         }
 
-        // Everything already assigned before the month's end is part of the replay; days are processed in
-        // date order below and every new assignment is appended, so eligibility stays exact.
+        // The replay holds every assignment in the group, including ones after this month, so
+        // wouldConflict() can see later shifts a new one would turn into rest days. Days are processed
+        // in date order below and every new assignment is appended, so eligibility stays exact.
         $streakTimeline = app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all());
 
         // Build shift time info

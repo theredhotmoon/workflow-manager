@@ -12,9 +12,10 @@ use Illuminate\Support\Collection;
  * group's streak rules. Nothing is stored, so it can't drift and needs no locking. Rules:
  * docs/superpowers/specs/2026-10-07-streak-replay-design.md ("Semantics").
  *
- * Auto-fill asks isResting() once per (employee, shift), so the replay works on integer day
+ * Auto-fill asks wouldConflict() once per (employee, shift), so the replay works on integer day
  * numbers (days since 1970-01-01) and only scans still-open windows; Carbon is built only for
- * returned values.
+ * returned values. newlyResting() replays the full history with the candidate; the "without"
+ * coverage is cached per user and cleared by append().
  */
 final class StreakTimeline
 {

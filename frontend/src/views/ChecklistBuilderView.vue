@@ -80,8 +80,8 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="showModal" class="fixed inset-0 z-50 flex items-start justify-center pt-10 px-4" @click.self="showModal = false">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="showModal = false"></div>
+      <div v-if="showModal" class="fixed inset-0 z-50 flex items-start justify-center pt-10 px-4" @click.self="closeModal()">
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeModal()"></div>
         <div ref="templateModalRef"
           role="dialog"
           aria-modal="true"
@@ -90,7 +90,7 @@
           <!-- Modal Header -->
           <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
             <h2 id="template-modal-title" class="text-lg font-bold text-white">{{ editingTemplate ? 'Edit Template' : 'Create Template' }}</h2>
-            <button @click="showModal = false"
+            <button @click="closeModal()"
               aria-label="Close modal"
               class="text-slate-400 hover:text-white transition-colors">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -256,7 +256,7 @@
 
           <!-- Modal Footer -->
           <div class="sticky bottom-0 bg-slate-800/95 backdrop-blur-xl border-t border-white/10 px-6 py-4 flex items-center justify-end gap-3">
-            <button @click="showModal = false"
+            <button @click="closeModal()"
               class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
               Cancel
             </button>
@@ -279,14 +279,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { confirm } from '../composables/useConfirm.js';
-import { useToast } from '../composables/useToast.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import { confirm } from '../composables/useConfirm.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { useToast } from '../composables/useToast.js';
 
 const router = useRouter();
 
@@ -300,9 +301,7 @@ const editingTemplate = ref(null);
 // Focus trap for the Create/Edit Template modal
 const templateModalRef = ref(null);
 useFocusTrap(templateModalRef, showModal, {
-  onEscape: () => {
-    showModal.value = false;
-  },
+  onEscape: () => closeModal(),
 });
 
 const defaultItem = () => ({
@@ -348,8 +347,19 @@ async function fetchTemplates() {
   }
 }
 
+// Opening a template for edit loads it first. Clicking Edit on another template (or New Template)
+// before it arrives supersedes the load, otherwise the late form content would be saved over the
+// template now being edited.
+const editRequests = useLatestRequest();
+
 // Modal helpers
+function closeModal() {
+  editRequests.invalidate();
+  showModal.value = false;
+}
+
 function openCreateModal() {
+  editRequests.invalidate();
   editingTemplate.value = null;
   form.value = defaultForm();
   touchedName.value = false;
@@ -358,9 +368,11 @@ function openCreateModal() {
 }
 
 async function editTemplate(tpl) {
+  const token = editRequests.begin();
   editingTemplate.value = tpl;
   try {
     const response = await api.get(`/api/checklist-templates/${tpl.id}`);
+    if (!editRequests.isCurrent(token)) return;
     const data = response.data;
     touchedName.value = false;
     collapsedGroups.clear();
@@ -382,7 +394,7 @@ async function editTemplate(tpl) {
     };
     showModal.value = true;
   } catch {
-    showToast('Failed to load template.', 'error');
+    if (editRequests.isCurrent(token)) showToast('Failed to load template.', 'error');
   }
 }
 
@@ -489,7 +501,7 @@ async function saveTemplate() {
       await api.post('/api/checklist-templates', payload);
       showToast('Template created successfully.');
     }
-    showModal.value = false;
+    closeModal();
     await fetchTemplates();
   } catch (err) {
     const msg = err.response?.data?.message || 'Failed to save template.';

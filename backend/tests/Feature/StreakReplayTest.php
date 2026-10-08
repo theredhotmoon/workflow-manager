@@ -344,3 +344,35 @@ it('answers a month of auto-fill wouldConflict calls quickly with history before
     expect($calls)->toBe(2700);
     expect($elapsed)->toBeLessThan(3.0);
 });
+
+it('answers a month of auto-fill wouldConflict calls quickly over dense history before and after the month', function () {
+    // 30 users, an event every day (night/day alternating) from 2026-07 to 2031-06: five years around 2029-01.
+    // Locally ~0.45 s (it took ~6.2 s before the replay resumed from checkpoints).
+    // Every user gets the same history; sharing one array keeps the suite under PHP 8.0's 128M limit.
+    $history = [];
+    $d = Carbon::parse('2026-07-01');
+    for ($i = 0; $i < 1826; $i++) {
+        $history[] = srlEvent($d->toDateString(), $i % 2 === 0 ? 'night' : 'day', null, 1 + $i % 3);
+        $d->addDay();
+    }
+    $t = new StreakTimeline(srlRules([['night', 3, 2], ['day', 5, 1]]), array_fill(1, 30, $history));
+    unset($history);
+
+    $day = Carbon::parse('2029-01-01');
+    $calls = 0;
+    $started = microtime(true);
+    for ($d = 0; $d < 30; $d++) {
+        for ($slot = 1; $slot <= 3; $slot++) {
+            for ($u = 1; $u <= 30; $u++) {
+                $t->wouldConflict($u, 'night', $day, $slot);
+                $calls++;
+            }
+            $t->append(($d * 3 + $slot) % 30 + 1, 'night', $day, $slot);
+        }
+        $day->addDay();
+    }
+    $elapsed = microtime(true) - $started;
+
+    expect($calls)->toBe(2700);
+    expect($elapsed)->toBeLessThan(3.0);
+});

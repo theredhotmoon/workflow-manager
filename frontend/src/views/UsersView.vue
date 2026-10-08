@@ -707,6 +707,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 
 const { showToast } = useToast();
@@ -1155,7 +1156,12 @@ async function assignToExisting(del) {
 }
 
 // ── Newbie ─────────────────────────────────────────────
+// Closing the dialog and opening it for another user before the first user's periods arrived
+// overlaps loads; only the latest may fill the list (the post-create refetch shares the channel).
+const newbieRequests = useLatestRequest();
+
 async function openNewbieModal(user) {
+  const token = newbieRequests.begin();
   newbieUser.value = user;
   newbieForm.start_date = '';
   newbieForm.end_date = '';
@@ -1163,7 +1169,7 @@ async function openNewbieModal(user) {
   showNewbieModal.value = true;
   try {
     const res = await api.get(`/api/newbie-periods/user/${user.id}`);
-    userNewbiePeriods.value = res.data;
+    if (newbieRequests.isCurrent(token)) userNewbiePeriods.value = res.data;
   } catch {}
 }
 
@@ -1176,8 +1182,9 @@ async function createNewbiePeriod() {
       end_date: newbieForm.end_date,
     });
     showToast(`${newbieUser.value.name} marked as newbie.`);
+    const token = newbieRequests.begin();
     const res = await api.get(`/api/newbie-periods/user/${newbieUser.value.id}`);
-    userNewbiePeriods.value = res.data;
+    if (newbieRequests.isCurrent(token)) userNewbiePeriods.value = res.data;
     newbieForm.start_date = '';
     newbieForm.end_date = '';
   } catch (err) {

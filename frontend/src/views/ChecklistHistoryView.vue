@@ -282,8 +282,8 @@
         leave-from-class="opacity-100"
         leave-to-class="opacity-0"
       >
-        <div v-if="detailData" class="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4" @click.self="detailData = null">
-          <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="detailData = null"></div>
+        <div v-if="detailData" class="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4" @click.self="closeDetail">
+          <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeDetail"></div>
           <div class="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50">
             <!-- Modal header -->
             <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
@@ -311,7 +311,7 @@
                   <span :class="statusBadgeClass(detailData.status)">{{ statusLabel(detailData.status) }}</span>
                 </div>
               </div>
-              <button @click="detailData = null" class="text-slate-400 hover:text-white transition-colors p-1">
+              <button @click="closeDetail" class="text-slate-400 hover:text-white transition-colors p-1">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -405,7 +405,7 @@
       <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
         <div v-if="showProcedureModal" class="fixed inset-0 z-[70] flex items-start justify-center pt-4 px-4">
-          <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="showProcedureModal = false"></div>
+          <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeProcedureModal"></div>
           <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
             <!-- Header -->
             <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
@@ -422,7 +422,7 @@
                   class="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-all" title="Open full page">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                 </router-link>
-                <button @click="showProcedureModal = false" aria-label="Close procedure preview" class="p-2 text-slate-400 hover:text-white transition-colors">
+                <button @click="closeProcedureModal" aria-label="Close procedure preview" class="p-2 text-slate-400 hover:text-white transition-colors">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -654,6 +654,12 @@ async function viewDetail(id) {
   } catch {}
 }
 
+// Closing invalidates a still-loading detail so it cannot reopen the panel.
+function closeDetail() {
+  detailRequests.invalidate();
+  detailData.value = null;
+}
+
 // Helpers
 function getInitials(name) {
   if (!name) return '?';
@@ -760,6 +766,11 @@ onMounted(fetchData);
 // Opening another procedure before the previous preview arrived supersedes it; a stale failure
 // must not close the preview the user is now looking at.
 const previewRequests = useLatestRequest();
+
+function closeProcedureModal() {
+  previewRequests.invalidate();
+  showProcedureModal.value = false;
+}
 
 async function openProcedureModal(procedureId) {
   const token = previewRequests.begin();

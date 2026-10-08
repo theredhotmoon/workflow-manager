@@ -132,4 +132,45 @@ test.describe('Checklist archive', () => {
       0,
     );
   });
+
+  test('closing a slow procedure preview keeps it closed, and the next one shows its own', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    const one = await createProcedure(context, { title: 'Hist Close One', ownerId: adminId });
+    const two = await createProcedure(context, { title: 'Hist Close Two', ownerId: adminId });
+    const template = await createChecklistTemplate(context, {
+      name: 'Hist Race Close',
+      procedureIds: [one.id, two.id],
+    });
+    await createChecklistSubmission(context, {
+      template,
+      date: '2097-05-04',
+      outgoingUserId: adminId,
+    });
+
+    const slowOne = await holdRequests(
+      adminPage,
+      (url) => url.pathname === `/api/procedures/${one.id}`,
+    );
+
+    await adminPage.goto('/checklist/history');
+    await adminPage.getByRole('cell', { name: 'Hist Race Close' }).click();
+    await adminPage.getByTitle(/Hist Close One$/).click();
+    await slowOne.seen;
+    await adminPage.getByLabel('Close procedure preview').click();
+    await expect(adminPage.getByLabel('Close procedure preview')).toHaveCount(0);
+
+    await slowOne.releaseAndSettle();
+
+    await expect(adminPage.getByLabel('Close procedure preview')).toHaveCount(0);
+    await adminPage.getByTitle(/Hist Close Two$/).click();
+    await expect(
+      adminPage.getByRole('heading', { level: 2, name: 'Hist Close Two' }),
+    ).toBeVisible();
+    await expect(adminPage.getByRole('heading', { level: 2, name: 'Hist Close One' })).toHaveCount(
+      0,
+    );
+  });
 });

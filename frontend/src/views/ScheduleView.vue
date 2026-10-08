@@ -2602,7 +2602,17 @@ async function chooseRestPolicy(policy) {
     conflict.code === 'creates_rest_conflict'
       ? await doAssign(shift, item, index, restPolicy, policy)
       : await doAssign(shift, item, index, policy);
-  if (status === 'assigned') showToast('Assigned during rest.', 'success');
+  if (status === 'assigned') {
+    const later = conflict.code === 'creates_rest_conflict' ? conflict.affected?.length || 1 : 0;
+    showToast(
+      later === 0
+        ? 'Assigned during rest.'
+        : later === 1
+          ? 'Assigned; later shift updated.'
+          : 'Assigned; later shifts updated.',
+      'success',
+    );
+  }
 }
 
 function cancelRestPolicy() {

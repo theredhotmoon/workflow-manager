@@ -69,9 +69,12 @@ async function dragToShiftDropzone(page, sourceLocator, targetLocator) {
 // shifts; the rest-day question comes only after the manager confirms that one.
 async function dropEmployeeOn(page, groupName, month, day) {
   await page.goto(`/schedule/${month}`);
+  // Let the group's schedule load before dragging; a drag started mid-render never lands.
+  const loaded = page.waitForResponse(
+    (res) => res.url().includes('/api/schedule?') && res.url().includes('shift_group_id'),
+  );
   await page.getByRole('button', { name: new RegExp(groupName) }).click();
-  // Let the group's schedule and roster settle; a drag started mid-render never lands.
-  await page.waitForLoadState('networkidle');
+  await loaded;
   const zone = page.locator(`[data-date="${month}-${day}"]`).locator('[data-shift-id]').first();
   await expect(zone).toBeVisible();
   const chip = page.locator('div.cursor-grab.rounded-xl', { hasText: EMPLOYEE });
@@ -79,16 +82,32 @@ async function dropEmployeeOn(page, groupName, month, day) {
   // An occasional drag only registers as a click on the chip (it opens the availability preview and
   // shifts the layout); re-measure and drag again instead of waiting out the test timeout.
   const anyway = page.getByRole('button', { name: 'Assign Anyway' });
+  let assignPosts = 0;
+  page.on('request', (req) => {
+    if (req.url().includes('/api/schedule/assign') && req.method() === 'POST') assignPosts++;
+  });
   let confirmed = false;
   for (let attempt = 0; attempt < 3 && !confirmed; attempt++) {
+    const before = assignPosts;
     await dragToShiftDropzone(page, chip, zone);
     confirmed = await anyway
       .waitFor({ timeout: 5000 })
       .then(() => true)
       .catch(() => false);
+    // A mis-aimed drop that already hit the API must not be retried: it left an assignment behind.
+    if (!confirmed && assignPosts > before) throw new Error('drop was sent to the wrong day');
   }
   await anyway.click();
   return zone;
+}
+
+function employeeDays(schedule, employeeId) {
+  return Object.entries(schedule)
+    .filter(([, shifts]) =>
+      shifts.some((sh) => sh.assignments.some((a) => a.user_id === employeeId)),
+    )
+    .map(([date]) => date)
+    .sort();
 }
 
 test.describe('Retroactive rest conflicts', () => {
@@ -127,7 +146,14 @@ test.describe('Retroactive rest conflicts', () => {
     );
     const later = after['2029-03-05'][0].assignments.find((x) => x.user_id === employeeId);
     expect(later.rest_policy).toBe('extends_rest');
+    expect(employeeDays(after, employeeId)).toEqual(['2029-03-02', '2029-03-03', '2029-03-05']);
 
+    // The chip is updated in place, before any reload.
+    await expect(
+      adminPage
+        .locator('[data-date="2029-03-05"]')
+        .getByTitle(/Assigned during rest: extends rest/),
+    ).toBeVisible();
     await adminPage.reload();
     await adminPage.getByRole('button', { name: /Retro Prompt Team/ }).click();
     await expect(
@@ -165,6 +191,7 @@ test.describe('Retroactive rest conflicts', () => {
     );
     const later = after['2029-03-23'][0].assignments.find((x) => x.user_id === employeeId);
     expect(later.rest_policy).toBeNull();
+    expect(employeeDays(after, employeeId)).toEqual(['2029-03-20', '2029-03-23']);
   });
 
   test('marks a shift that became a rest day after a retype', async ({ adminPage }) => {

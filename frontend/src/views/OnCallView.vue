@@ -149,6 +149,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 
 const { showToast } = useToast();
@@ -214,7 +215,13 @@ async function fetchEmployees() {
   }
 }
 
+// Group changes and month steps overlap fetches. Only the latest may apply its list or clear
+// `loading` — otherwise an older response shows another month's or group's on-call periods under
+// the current label. The early return also takes a token so it supersedes older requests.
+const assignmentRequests = useLatestRequest();
+
 async function fetchAssignments() {
+  const token = assignmentRequests.begin();
   if (!selectedGroupId.value) {
     loading.value = false;
     return;
@@ -224,11 +231,12 @@ async function fetchAssignments() {
     const res = await api.get('/api/on-call-assignments', {
       params: { shift_group_id: selectedGroupId.value, month: monthKey.value },
     });
+    if (!assignmentRequests.isCurrent(token)) return;
     assignments.value = res.data;
   } catch {
-    assignments.value = [];
+    if (assignmentRequests.isCurrent(token)) assignments.value = [];
   } finally {
-    loading.value = false;
+    if (assignmentRequests.isCurrent(token)) loading.value = false;
   }
 }
 

@@ -162,3 +162,13 @@ export async function createAvailability(context, { type, startDate, endDate = s
   if (!res.ok()) throw new Error(`create availability failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function createOnCallAssignment(context, { shiftGroupId, userId, startsAt, endsAt }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/on-call-assignments', {
+    data: { shift_group_id: shiftGroupId, user_id: userId, starts_at: startsAt, ends_at: endsAt },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create on-call failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

@@ -1,7 +1,25 @@
-import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
+import {
+  createOnCallAssignment,
+  createShiftGroupWithStreakRule,
+  getEmployeeIdByEmail,
+} from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { holdRequests } from '../fixtures/hold.js';
 
 const GROUP = 'On-Call Team';
+
+// Months 2098-08/2098-09 are reserved for the stale-response tests below (each uses its own group).
+const isAssignments = (groupId, month) => (url) =>
+  url.pathname === '/api/on-call-assignments' &&
+  url.searchParams.get('shift_group_id') === String(groupId) &&
+  url.searchParams.get('month') === month;
+
+async function openOnCallInAugust2098(page, groupName) {
+  await page.clock.setFixedTime(new Date('2098-08-15T12:00:00Z'));
+  await page.goto('/on-call');
+  await expect(page.getByText('August 2098', { exact: true })).toBeVisible();
+  await page.getByRole('combobox').first().selectOption({ label: groupName });
+}
 
 test.describe('On-Call Duty', () => {
   test('creates an on-call assignment, logs a callback, then removes both', async ({
@@ -69,6 +87,106 @@ test.describe('On-Call Duty', () => {
     await selectGroup();
     await expect(
       adminPage.getByText('No on-call periods for this group in July 2027.'),
+    ).toBeVisible();
+  });
+
+  test('a slow response for the previous month does not replace the month the user moved to', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'On-Call Month Race' },
+    });
+    const regularId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    await createOnCallAssignment(context, {
+      shiftGroupId: groupId,
+      userId: regularId,
+      startsAt: '2098-08-05 08:00:00',
+      endsAt: '2098-08-05 20:00:00',
+    });
+
+    const august = await holdRequests(adminPage, isAssignments(groupId, '2098-08'));
+    await openOnCallInAugust2098(adminPage, 'On-Call Month Race');
+    await august.seen;
+    await adminPage.getByLabel('Next month').click();
+    const septemberEmpty = adminPage.getByText(
+      'No on-call periods for this group in September 2098.',
+    );
+    await expect(septemberEmpty).toBeVisible();
+
+    await august.releaseAndSettle();
+
+    await expect(septemberEmpty).toBeVisible();
+    await expect(adminPage.locator('p', { hasText: 'Regular Employee' })).toHaveCount(0);
+  });
+
+  test('a slow response for the previous group does not replace the group the user picked', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const groupA = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'On-Call Group Race A' },
+    });
+    const groupB = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'On-Call Group Race B' },
+    });
+    const regularId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    await createOnCallAssignment(context, {
+      shiftGroupId: groupA,
+      userId: regularId,
+      startsAt: '2098-08-06 08:00:00',
+      endsAt: '2098-08-06 20:00:00',
+    });
+
+    const groupALoad = await holdRequests(adminPage, isAssignments(groupA, '2098-08'));
+    await openOnCallInAugust2098(adminPage, 'On-Call Group Race A');
+    await groupALoad.seen;
+    await adminPage.getByRole('combobox').first().selectOption({ label: 'On-Call Group Race B' });
+    const groupBEmpty = adminPage.getByText('No on-call periods for this group in August 2098.');
+    await expect(groupBEmpty).toBeVisible();
+
+    await groupALoad.releaseAndSettle();
+
+    await expect(groupBEmpty).toBeVisible();
+    await expect(adminPage.locator('p', { hasText: 'Regular Employee' })).toHaveCount(0);
+    await expect(adminPage.getByRole('combobox').first()).toHaveValue(String(groupB));
+  });
+
+  // Review Focus 2.
+  test('the loading state stays until the newest month has loaded', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const groupId = await createShiftGroupWithStreakRule(context, {
+      group: { name: 'On-Call Loading Race' },
+    });
+    const regularId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    await createOnCallAssignment(context, {
+      shiftGroupId: groupId,
+      userId: regularId,
+      startsAt: '2098-08-07 08:00:00',
+      endsAt: '2098-08-07 20:00:00',
+    });
+
+    const august = await holdRequests(adminPage, isAssignments(groupId, '2098-08'));
+    const september = await holdRequests(adminPage, isAssignments(groupId, '2098-09'));
+    await openOnCallInAugust2098(adminPage, 'On-Call Loading Race');
+    await august.seen;
+    await adminPage.getByLabel('Next month').click();
+    await september.seen;
+    const loadingText = adminPage.getByText('Loading…');
+    await expect(loadingText).toBeVisible();
+
+    // Let only August (older) finish; September is still in flight.
+    const augustDone = adminPage.waitForResponse((res) =>
+      isAssignments(groupId, '2098-08')(new URL(res.url())),
+    );
+    august.release();
+    await (await augustDone).finished();
+    await adminPage.evaluate(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    await expect(loadingText).toBeVisible();
+
+    await september.releaseAndSettle();
+    await expect(
+      adminPage.getByText('No on-call periods for this group in September 2098.'),
     ).toBeVisible();
   });
 });

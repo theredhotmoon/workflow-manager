@@ -189,16 +189,31 @@ async function fetchTree() {
   } catch {}
 }
 
+// /api/procedures is paginated (at most 100 per page); "unassigned" needs every procedure.
+async function fetchAllProcedures() {
+  const all = [];
+  let page = 1;
+  let lastPage = 1;
+  do {
+    const res = await api.get('/api/procedures', { params: { per_page: 100, page } });
+    all.push(...res.data.data);
+    lastPage = res.data.last_page;
+    page++;
+  } while (page <= lastPage);
+  return all;
+}
+
 async function fetchData() {
   const token = treeRequests.begin();
   loadingTree.value = true;
   try {
-    const [treeRes, procRes] = await Promise.all([
+    const [treeRes, procedures] = await Promise.all([
       api.get('/api/procedures-tree'),
-      api.get('/api/procedures'),
+      fetchAllProcedures(),
     ]);
-    if (treeRequests.isCurrent(token)) treeData.value = treeRes.data;
-    allProcedures.value = procRes.data;
+    if (!treeRequests.isCurrent(token)) return;
+    treeData.value = treeRes.data;
+    allProcedures.value = procedures;
   } catch {
   } finally {
     loadingTree.value = false;

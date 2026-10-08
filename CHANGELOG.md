@@ -4,6 +4,23 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-08 — 🧹 Tree editor: the always-empty "Unassigned Procedures" panel is gone
+
+Every procedure belongs to the procedure tree (one without a parent is a top-level node), so the "Unassigned Procedures" panel in the tree editor could never list anything. It is removed; "All Assigned" now takes the right-hand column, and the page no longer loads the full procedures list just to compute an empty panel.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Removed | The "Unassigned Procedures" panel and its search box in `ProcedureTreeEditorView`; the page loads only `/api/procedures-tree` |
+| Changed | "All Assigned" fills the right-hand column (taller scroll area) |
+
+### Tests
+| What | Details |
+|------|---------|
+| Changed | `e2e/procedures/tree-editor.spec.js` — the page renders without errors, a new procedure shows in "All Assigned", and the old panel is absent |
+
+---
+
 ## 2026-10-08 — ⏳ Rest-day answers that no longer apply are cleared; one "resting until" everywhere
 
 A shift's rest-day answer (**Doesn't count**, **Counts toward the next streak** or **Extends the rest**) only means something while the shift is on a rest day. When a change takes a shift out of rest — removing an assignment, assigning another shift that moves the streak (by hand or by auto-fill), changing a shift's or a slot's type, clearing a month, removing a day's slot, or editing the streak rules — the answer is now cleared. If a later change puts the shift on a rest day again, it shows ⚠ and the manager is asked again instead of the old answer applying silently.

@@ -159,6 +159,8 @@ test.describe('Schedule overlays ignore stale responses', () => {
 
     await adminPage.goto('/schedule/2098-07');
     await expect(adminPage.getByText('July 2098')).toBeVisible();
+    // Same reason as the deselect test below: no colour fade, so the CSS checks see the final paint.
+    await adminPage.addStyleTag({ content: '* { transition: none !important; }' });
     await poolCard(adminPage, 'Admin User').click();
     await adminAvailability.seen;
     await poolCard(adminPage, 'Regular Employee').click();

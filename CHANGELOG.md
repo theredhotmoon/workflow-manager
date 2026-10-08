@@ -6,7 +6,7 @@ All notable changes to the Shift Changer application are documented here.
 
 ## 2026-10-08 — ⏳ Rest-day answers that no longer apply are cleared; one "resting until" everywhere
 
-A shift's rest-day answer (**Doesn't count**, **Counts toward the next streak** or **Extends the rest**) only means something while the shift is on a rest day. When a change takes a shift out of rest — removing an assignment, assigning another shift that moves the streak, changing a shift's or a slot's type, clearing a month, removing a day's slot, or editing the streak rules — the answer is now cleared. If a later change puts the shift on a rest day again, it shows ⚠ and the manager is asked again instead of the old answer applying silently.
+A shift's rest-day answer (**Doesn't count**, **Counts toward the next streak** or **Extends the rest**) only means something while the shift is on a rest day. When a change takes a shift out of rest — removing an assignment, assigning another shift that moves the streak (by hand or by auto-fill), changing a shift's or a slot's type, clearing a month, removing a day's slot, or editing the streak rules — the answer is now cleared. If a later change puts the shift on a rest day again, it shows ⚠ and the manager is asked again instead of the old answer applying silently.
 
 The "This employee is resting until …" prompt (dropping a shift on a rest day) now reports the same date as the ⚠ tooltip and the later-shift prompt: the end of the rest including later shifts that extend it (it used to report the end as known before that day).
 
@@ -15,7 +15,7 @@ Auto-fill's rest checks are much faster on long, dense histories (a month of aut
 ### Backend
 | What | Details |
 |------|---------|
-| Added | `RestPolicyJanitor::clearUncovered()` nulls `rest_policy` on the affected employees' assignments that no rest window covers (one pass is enough: the replay ignores an uncovered assignment's policy); called by unassign, assign, both shift-type endpoints (`ShiftTypeChanger`), clear-month, `PUT /api/schedule/day-shifts` when it removes slots, and `PUT /api/shift-groups/{id}/streak-rules` |
+| Added | `RestPolicyJanitor::clearUncovered()` nulls `rest_policy` on the affected employees' assignments that no rest window covers (one pass is enough: the replay ignores an uncovered assignment's policy); called by unassign, assign, both shift-type endpoints (`ShiftTypeChanger`), clear-month, `PUT /api/schedule/day-shifts` when it removes slots, `PUT /api/shift-groups/{id}/streak-rules`, and the three auto-fill modes (for the employees each run assigned); unassign, clear-month and day-slot removal now delete and clear in one transaction |
 | Added | `StreakTimeline::uncoveredWithPolicy()` and `StreakTimeline::finalWindowAt()` |
 | Changed | `409 rest_window_conflict` reports `resting_until` / `rule` from the window's final end (later `extends_rest` included); whether the day is a rest day is decided as before |
 | Changed | `StreakTimeline` caches each employee's replay with a checkpoint every 16 assignments: `isResting` resumes from the checkpoint before the day, `newlyResting` from the one before the candidate and stops once its state matches the cached replay again, and `wouldConflict` stops at the first shift put into rest |
@@ -23,7 +23,7 @@ Auto-fill's rest checks are much faster on long, dense histories (a month of aut
 ### Tests
 | What | Details |
 |------|---------|
-| Added | `StreakFollowupsTest` (Pest): every clearing entry point, a policy on a still-covered shift is kept, the one-pass property, and the 409's final end |
+| Added | `StreakFollowupsTest` (Pest): every clearing entry point (auto-fill for all three modes), the no-rules clear leaving other groups alone, a policy on a still-covered shift is kept, the one-pass property, and the 409's final end |
 | Added | Dense perf guard in `StreakReplayTest`: 30 users × 5 years of daily shifts, 2,700 `wouldConflict` calls in < 3 s |
 
 ---

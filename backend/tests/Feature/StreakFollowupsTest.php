@@ -114,13 +114,18 @@ it('editing the streak rules clears the policies of shifts no longer on a rest d
     expect($stamped->fresh()->rest_policy)->toBeNull();
 });
 
-it('removing every streak rule clears every policy in the group', function () {
+it('removing every streak rule clears every policy in the group, and only in that group', function () {
     [, , $stamped] = sfuStampedRestDay($this);
     $admin = User::factory()->create(['role' => 'admin']);
+    // The same employee's answer in another group (no rules there either) is not this edit's business.
+    $otherGroup = ShiftGroup::create(['name' => 'Other', 'sort_order' => 1]);
+    $otherShift = Shift::create(['date' => '2029-01-03', 'shift_number' => 1, 'shift_group_id' => $otherGroup->id, 'shift_type' => 'day']);
+    $elsewhere = ShiftAssignment::create(['shift_id' => $otherShift->id, 'user_id' => $this->employee->id, 'rest_policy' => StreakTimeline::COUNTS]);
 
     $this->actingAs($admin)->putJson("/api/shift-groups/{$this->group->id}/streak-rules", ['rules' => []])->assertOk();
 
     expect($stamped->fresh()->rest_policy)->toBeNull();
+    expect($elsewhere->fresh()->rest_policy)->toBe(StreakTimeline::COUNTS);
 });
 
 it('removing a day\'s slot clears the policy of a shift it takes out of rest', function () {
@@ -187,3 +192,35 @@ it('reports the final end of the rest window in the rest-day 409, including late
         'rule' => ['shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 2],
     ]);
 });
+
+it('auto-fill clears the policy of a later shift whose window its new shift dissolves', function (string $endpoint, array $extra) {
+    // Rule night 2 -> 1. Worked nights 01-05 and 01-10 complete a streak → rest 01-11, where a day
+    // shift is stamped not_counted.
+    $this->group->update(['settlement_mode' => 'monthly', 'settlement_anchor_date' => '2029-01-01', 'weekly_hour_cap' => 168]);
+    ShiftStreakRule::where('shift_group_id', $this->group->id)->update(['rest_days' => 1]);
+    $times = ['night' => ['22:00', '06:00'], 'day' => ['08:00', '16:00']];
+    $make = function (string $date, string $type) use ($times) {
+        return Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $this->group->id, 'shift_type' => $type,
+            'start_time' => $times[$type][0], 'end_time' => $times[$type][1]]);
+    };
+    $make('2029-01-03', 'night'); // empty: auto-fill assigns it
+    foreach (['2029-01-05' => 'night', '2029-01-10' => 'night'] as $date => $type) {
+        ShiftAssignment::create(['shift_id' => $make($date, $type)->id, 'user_id' => $this->employee->id]);
+    }
+    $stamped = ShiftAssignment::create(['shift_id' => $make('2029-01-11', 'day')->id, 'user_id' => $this->employee->id, 'rest_policy' => StreakTimeline::NOT_COUNTED]);
+
+    // Night 01-03 puts nothing new into rest (01-03 + 01-05 → rest 01-06, an empty day), but 01-10 now starts a
+    // new count, so the 01-11 window is gone and its answer no longer applies.
+    $this->actingAs($this->maintainer)->postJson($endpoint, array_merge([
+        'month' => '2029-01', 'shift_group_id' => $this->group->id,
+        'users_per_shift_weekday' => 1, 'users_per_shift_weekend' => 1,
+        'player_mode' => 'include', 'player_ids' => [$this->employee->id],
+    ], $extra))->assertOk();
+
+    expect(ShiftAssignment::where('user_id', $this->employee->id)->whereHas('shift', fn ($q) => $q->where('date', '2029-01-03'))->exists())->toBeTrue();
+    expect($stamped->fresh()->rest_policy)->toBeNull();
+})->with([
+    'random' => ['/api/schedule/auto-assign/random', []],
+    'rotating' => ['/api/schedule/auto-assign/rotating', ['rotation_days' => 7]],
+    'polish-law' => ['/api/schedule/auto-assign/polish-law', ['rotation_days' => 7]],
+]);

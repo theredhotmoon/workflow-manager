@@ -12,6 +12,7 @@ use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Support\Month;
 
 class ShiftAutoAssignController extends Controller
@@ -37,20 +38,22 @@ class ShiftAutoAssignController extends Controller
 
         $totalShifts = $shifts->count();
         $totalAssignments = 0;
-        $userIds = [];
 
-        foreach ($shifts as $shift) {
-            $totalAssignments += $shift->assignments->count();
-            array_push($userIds, ...$shift->assignments->pluck('user_id')->all());
-            $shift->assignments()->delete();
-            $shift->delete();
-        }
+        DB::transaction(function () use ($shifts, $groupId, $janitor, &$totalAssignments) {
+            $userIds = [];
+            foreach ($shifts as $shift) {
+                $totalAssignments += $shift->assignments->count();
+                array_push($userIds, ...$shift->assignments->pluck('user_id')->all());
+                $shift->assignments()->delete();
+                $shift->delete();
+            }
 
-        // Shifts after the month that its streaks kept in rest lose their policy.
-        $group = ShiftGroup::find($groupId);
-        if ($group) {
-            $janitor->clearUncovered($group, $userIds);
-        }
+            // Shifts after the month that its streaks kept in rest lose their policy.
+            $group = ShiftGroup::find($groupId);
+            if ($group) {
+                $janitor->clearUncovered($group, $userIds);
+            }
+        });
 
         return response()->json([
             'message' => "Deleted {$totalShifts} shifts and {$totalAssignments} assignments for {$request->month}.",
@@ -61,7 +64,7 @@ class ShiftAutoAssignController extends Controller
      * Random Coverage Mode
      * Assigns random users to each shift, respecting availability and no back-to-back rule.
      */
-    public function random(Request $request)
+    public function random(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -103,6 +106,7 @@ class ShiftAutoAssignController extends Controller
             : null;
 
         $totalAssigned = 0;
+        $runUserIds = [];
         $warnings = [];
         $shiftsArray = $shifts->toArray();
         $shiftsById = [];
@@ -156,6 +160,7 @@ class ShiftAutoAssignController extends Controller
                 ]);
 
                 $assignmentTracker[$currentKey][] = $userId;
+                $runUserIds[] = $userId;
                 if ($streakTimeline !== null)
                     $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
                 $assigned++;
@@ -165,6 +170,11 @@ class ShiftAutoAssignController extends Controller
             if ($assigned < $spotsToFill) {
                 $warnings[] = "Could only assign {$assigned}/{$spotsToFill} users to {$dateStr} Shift {$shift->shift_number}";
             }
+        }
+
+        // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
+        if ($group) {
+            $janitor->clearUncovered($group, $runUserIds);
         }
 
         $message = "Auto-assigned {$totalAssigned} slots.";
@@ -183,7 +193,7 @@ class ShiftAutoAssignController extends Controller
      * Rotating Subteam Mode
      * Builds subteams that rotate every N days.
      */
-    public function rotating(Request $request)
+    public function rotating(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -243,6 +253,7 @@ class ShiftAutoAssignController extends Controller
         }
 
         $totalAssigned = 0;
+        $runUserIds = [];
         $warnings = [];
 
         // Pool of employee IDs we cycle through for building subteams
@@ -342,6 +353,7 @@ class ShiftAutoAssignController extends Controller
                         ]);
 
                         $assignmentTracker[$currentKey][] = $userId;
+                        $runUserIds[] = $userId;
                         if ($streakTimeline !== null)
                             $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
                         $assigned++;
@@ -371,6 +383,7 @@ class ShiftAutoAssignController extends Controller
                             ]);
 
                             $assignmentTracker[$currentKey][] = $userId;
+                            $runUserIds[] = $userId;
                             if ($streakTimeline !== null)
                                 $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
                             $assigned++;
@@ -383,6 +396,11 @@ class ShiftAutoAssignController extends Controller
                     }
                 }
             }
+        }
+
+        // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
+        if ($group) {
+            $janitor->clearUncovered($group, $runUserIds);
         }
 
         $message = "Auto-assigned {$totalAssigned} slots using {$rotationDays}-day rotation.";
@@ -550,7 +568,7 @@ class ShiftAutoAssignController extends Controller
      * - No same-day double shifts
      * - Respects user unavailability
      */
-    public function polishLaw(Request $request)
+    public function polishLaw(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -724,6 +742,7 @@ class ShiftAutoAssignController extends Controller
         }
 
         $totalAssigned = 0;
+        $runUserIds = [];
         $warnings = [];
 
         foreach ($shifts as $shift) {
@@ -826,6 +845,7 @@ class ShiftAutoAssignController extends Controller
                 ]);
 
                 $assignmentTracker[$currentKey][] = $userId;
+                $runUserIds[] = $userId;
                 $employeeState[$userId]['last_shift_end'] = $st['end'];
                 $employeeState[$userId]['total_hours'] += $st['duration_hours'];
                 $employeeState[$userId]['total_shifts']++;
@@ -850,6 +870,9 @@ class ShiftAutoAssignController extends Controller
                 $nightShiftCount++;
             }
         }
+
+        // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
+        $janitor->clearUncovered($group, $runUserIds);
 
         $message = "Auto-assigned {$totalAssigned} slots (Polish Labor Code mode). {$nightShiftCount} night shifts identified.";
         if (count($warnings) > 0) {

@@ -251,15 +251,17 @@ class ScheduleController extends Controller
         } elseif ($desiredCount < $currentCount) {
             // Remove excess shift slots (from the end, unassigned first)
             $toRemove = $currentShifts->slice($desiredCount);
-            $userIds = ShiftAssignment::whereIn('shift_id', $toRemove->pluck('id'))->pluck('user_id')->all();
-            foreach ($toRemove as $shift) {
-                $shift->delete(); // cascades to assignments
-            }
-            // Later shifts the removed assignments kept in rest lose their policy.
-            $group = ShiftGroup::find($groupId);
-            if ($group) {
-                $janitor->clearUncovered($group, $userIds);
-            }
+            DB::transaction(function () use ($toRemove, $groupId, $janitor) {
+                $userIds = ShiftAssignment::whereIn('shift_id', $toRemove->pluck('id'))->pluck('user_id')->all();
+                foreach ($toRemove as $shift) {
+                    $shift->delete(); // cascades to assignments
+                }
+                // Later shifts the removed assignments kept in rest lose their policy.
+                $group = ShiftGroup::find($groupId);
+                if ($group) {
+                    $janitor->clearUncovered($group, $userIds);
+                }
+            });
         }
 
         // Return updated shifts for that day
@@ -461,17 +463,19 @@ class ScheduleController extends Controller
      */
     public function unassign(ShiftAssignment $assignment, RestPolicyJanitor $janitor)
     {
-        // Auto-acknowledge any pending change requests for this assignment
-        ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
-            ->where('status', 'pending')
-            ->update(['status' => 'acknowledged']);
-
         $group = $assignment->shift?->shiftGroup;
-        $assignment->delete();
-        // Later shifts this one kept in rest lose their policy.
-        if ($group) {
-            $janitor->clearUncovered($group, [(int) $assignment->user_id]);
-        }
+        DB::transaction(function () use ($assignment, $group, $janitor) {
+            // Auto-acknowledge any pending change requests for this assignment
+            ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
+                ->where('status', 'pending')
+                ->update(['status' => 'acknowledged']);
+
+            $assignment->delete();
+            // Later shifts this one kept in rest lose their policy.
+            if ($group) {
+                $janitor->clearUncovered($group, [(int) $assignment->user_id]);
+            }
+        });
 
         return response()->json([
             'message' => 'Assignment removed successfully.',

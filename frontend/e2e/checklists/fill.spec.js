@@ -1,6 +1,7 @@
 import {
   createChecklistSubmission,
   createChecklistTemplate,
+  createProcedure,
   createShiftGroupWithStreakRule,
   generateMonthShifts,
   getEmployeeIdByEmail,
@@ -111,5 +112,48 @@ test.describe('Fill shift checklist', () => {
     await expect(adminPage.getByRole('heading', { level: 1, name: 'Confirm Race A' })).toHaveCount(
       0,
     );
+  });
+
+  test('a slow read-status check for the previous template does not gate the next one', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    const procA = await createProcedure(context, {
+      title: 'Read Race Proc Alpha',
+      ownerId: adminId,
+    });
+    const procB = await createProcedure(context, {
+      title: 'Read Race Proc Beta',
+      ownerId: adminId,
+    });
+    await createChecklistTemplate(context, { name: 'Read Race A', procedureIds: [procA.id] });
+    await createChecklistTemplate(context, { name: 'Read Race B', procedureIds: [procB.id] });
+
+    const slowA = await holdRequests(
+      adminPage,
+      (url) => url.pathname === '/api/procedures/check-read-status',
+      { method: 'POST', times: 1 },
+    );
+
+    await adminPage.goto('/checklist/fill');
+    await expect(adminPage.getByRole('heading', { name: 'Fill Shift Checklist' })).toBeVisible();
+    await adminPage.waitForLoadState('networkidle');
+    await adminPage.locator('input[type="date"]').fill('2097-05-12');
+    await adminPage.locator('select').first().selectOption({ label: 'Read Race A' });
+    await adminPage.locator('select').nth(2).selectOption({ index: 1 });
+    const start = adminPage.getByRole('button', { name: 'Start Filling Checklist' });
+    await start.click();
+    await slowA.seen;
+
+    await adminPage.getByRole('button', { name: '← Back' }).click();
+    await adminPage.locator('select').first().selectOption({ label: 'Read Race B' });
+    await start.click();
+    await expect(adminPage.getByText('Read Race Proc Beta')).toBeVisible();
+
+    await slowA.releaseAndSettle();
+
+    await expect(adminPage.getByText('Read Race Proc Beta')).toBeVisible();
+    await expect(adminPage.getByText('Read Race Proc Alpha')).toHaveCount(0);
   });
 });

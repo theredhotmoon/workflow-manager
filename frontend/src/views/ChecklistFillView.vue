@@ -277,7 +277,7 @@
           </div>
 
           <!-- Submit -->
-          <button @click="submitChecklist" :disabled="submitting || unreadProcedures.length > 0"
+          <button @click="submitChecklist" :disabled="submitting || checkingReads || unreadProcedures.length > 0"
             :title="unreadProcedures.length ? 'Read all linked procedures first' : ''"
             class="w-full px-5 py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
             <svg v-if="submitting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -601,6 +601,7 @@ const procedureContentRef = ref(null);
 
 // Procedure read status
 const unreadProcedures = ref([]);
+const checkingReads = ref(false);
 const recheckingProcedures = ref(false);
 
 // Toast
@@ -692,6 +693,7 @@ function getUserName(id) {
 
 function backToSetup() {
   shiftInfoRequests.invalidate();
+  readStatusRequests.invalidate();
   step.value = 'setup';
 }
 
@@ -707,11 +709,14 @@ function closeProcedureModal() {
 
 // Going back and starting again before the shift info arrived supersedes the earlier start.
 const shiftInfoRequests = useLatestRequest();
+// Only the latest read-status check may decide whether Submit is blocked.
+const readStatusRequests = useLatestRequest();
 
 async function startFilling() {
   const tpl = activeTemplates.value.find((t) => t.id === Number(setup.templateId));
   if (!tpl) return;
   const token = shiftInfoRequests.begin();
+  shiftInfo.value = null;
   selectedTemplate.value = tpl;
 
   // Initialize responses
@@ -750,6 +755,7 @@ async function startFilling() {
 }
 
 async function checkProcedureReads(tpl) {
+  const token = readStatusRequests.begin();
   const procIds = [];
   for (const group of tpl.groups) {
     for (const item of group.items) {
@@ -760,13 +766,18 @@ async function checkProcedureReads(tpl) {
   }
   if (!procIds.length) {
     unreadProcedures.value = [];
+    checkingReads.value = false;
     return;
   }
+  checkingReads.value = true;
   try {
     const res = await api.post('/api/procedures/check-read-status', { procedure_ids: procIds });
+    if (!readStatusRequests.isCurrent(token)) return;
     unreadProcedures.value = res.data;
   } catch {
-    unreadProcedures.value = [];
+    if (readStatusRequests.isCurrent(token)) unreadProcedures.value = [];
+  } finally {
+    if (readStatusRequests.isCurrent(token)) checkingReads.value = false;
   }
 }
 

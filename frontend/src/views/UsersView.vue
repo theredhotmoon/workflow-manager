@@ -1202,6 +1202,7 @@ async function createNewbiePeriod() {
 async function deleteNewbiePeriod(period) {
   try {
     await api.delete(`/api/newbie-periods/${period.id}`);
+    newbieRequests.invalidate();
     userNewbiePeriods.value = userNewbiePeriods.value.filter((p) => p.id !== period.id);
     showToast('Newbie period removed.');
   } catch {

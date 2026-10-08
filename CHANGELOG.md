@@ -13,8 +13,10 @@ Clicking faster than a screen loads — stepping months, switching groups, filte
 |------|---------|
 | Added | `useLatestRequest()` composable: only the latest request for a piece of state may apply its result, clear `loading` or report an error |
 | Changed | Schedule, Settlement report and My Shifts use it instead of their hand-written guards |
-| Fixed | Schedule (delegation, newbie and closure overlays; employee availability, including deselecting an employee), On-Call, Office Availability, My Availability, Alarms, Checklist History, Checklist Fill, Checklist Builder, Delegation Archive, Procedures list (search, filters, sort, paging, "Updating results…"), Procedure detail (version browsing, compare), procedure access log, procedure editor, Procedures to learn (preview), procedure tree editor (tree refresh), Users (newbie dialog) |
+| Fixed | Schedule (delegation, newbie and closure overlays; employee availability, including deselecting an employee), On-Call, Office Availability, My Availability, Alarms, Checklist History, Checklist Fill, Checklist Builder, Delegation Archive, Procedures list (search, filters, sort, paging, "Updating results…"), Procedure detail (version browsing, compare), procedure access log, procedure editor, Procedures to learn (preview), Users (newbie dialog; deleting a period also drops an in-flight reload) |
 | Fixed | Checklist Fill: changing the date no longer keeps the previous date's shift selected |
+| Fixed | Checklist Fill: a slow "unread procedures" check for a previous template can no longer block (or unblock) Submit for the current one; Submit stays disabled while the check runs, and the previous shift's info no longer flashes |
+| Changed | The procedure tree editor has the same guard on its tree refresh; the page itself currently has a separate, known rendering bug, so this is not yet visible to users |
 | Fixed | Procedures to learn no longer leaves a `hashchange` listener behind |
 | Tests | New e2e fixture `holdRequests` (`e2e/fixtures/hold.js`) and race tests for each screen |
 

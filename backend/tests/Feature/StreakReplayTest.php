@@ -215,3 +215,132 @@ it('answers a month of auto-fill isResting calls quickly over years of history',
     expect($calls)->toBe(2700);
     expect($elapsed)->toBeLessThan(3.0);
 });
+
+function rrcEvent(int $id, string $date, ?string $type, ?string $policy = null, int $slot = 1): array
+{
+    return ['assignment_id' => $id, 'date' => $date, 'shift_number' => $slot, 'shift_type' => $type, 'rest_policy' => $policy];
+}
+
+it('reports an existing later shift that a new earlier shift would put into rest', function () {
+    // night 2 in a row → 2 days off. Existing: night 01-02, night 01-05.
+    $t = new StreakTimeline(srlRules([['night', 2, 2]]), [1 => [
+        rrcEvent(10, '2029-01-02', 'night'), rrcEvent(11, '2029-01-05', 'night'),
+    ]]);
+
+    // Adding night 01-03 → second night on 01-03 → rest 01-04..01-05 → covers 01-05.
+    $affected = $t->newlyResting(1, 'night', Carbon::parse('2029-01-03'), 1);
+
+    expect($affected)->toHaveCount(1);
+    expect($affected[0])->toMatchArray(['assignment_id' => 11, 'date' => '2029-01-05', 'resting_until' => '2029-01-05']);
+    expect($affected[0]['rule']->shift_type)->toBe('night');
+    expect($t->wouldConflict(1, 'night', Carbon::parse('2029-01-03'), 1))->toBeTrue();
+});
+
+it('follows chain effects far beyond the candidate day', function () {
+    // Rule night 3 → 2. Existing nights 01-10, 01-24, 01-25, 01-26.
+    //   without: 01-10 c1, 01-24 c2, 01-25 c3 → rest 01-26..01-27 → 01-26 covered.
+    //   with night 01-09: 01-09 c1, 01-10 c2, 01-24 c3 → rest 01-25..01-26 → 01-25 and 01-26 covered.
+    // Only 01-25 is NEWLY covered (two weeks after the candidate); 01-26 already was.
+    $t = new StreakTimeline(srlRules([['night', 3, 2]]), [1 => [
+        rrcEvent(20, '2029-01-10', 'night'), rrcEvent(21, '2029-01-24', 'night'),
+        rrcEvent(22, '2029-01-25', 'night'), rrcEvent(23, '2029-01-26', 'night'),
+    ]]);
+
+    $affected = $t->newlyResting(1, 'night', Carbon::parse('2029-01-09'), 1);
+
+    expect(array_column($affected, 'assignment_id'))->toBe([22]);
+    expect($affected[0]['resting_until'])->toBe('2029-01-26');
+});
+
+it('never reports assignments on or before the candidate day', function () {
+    $t = new StreakTimeline(srlRules([['night', 1, 1]]), [1 => [
+        rrcEvent(30, '2029-01-03', 'night', null, 2), rrcEvent(31, '2029-01-02', 'night'),
+    ]]);
+
+    // A night on 01-03 slot 1 opens 01-04; slot 2 on the same day and 01-02 are untouched.
+    expect($t->newlyResting(1, 'night', Carbon::parse('2029-01-03'), 1))->toBe([]);
+});
+
+it('takes the candidate rest_policy into account', function () {
+    // night 2 → 2. Existing nights 01-01, 01-02 (rest 01-03..01-04), 01-06.
+    $events = [rrcEvent(40, '2029-01-01', 'night'), rrcEvent(41, '2029-01-02', 'night'), rrcEvent(42, '2029-01-06', 'night')];
+    $t = new StreakTimeline(srlRules([['night', 2, 2]]), [1 => $events]);
+
+    // Candidate on rest day 01-04: not_counted changes nothing; extends_rest → end 01-06 → covers 01-06.
+    expect($t->newlyResting(1, 'night', Carbon::parse('2029-01-04'), 1, StreakTimeline::NOT_COUNTED))->toBe([]);
+    expect(array_column($t->newlyResting(1, 'night', Carbon::parse('2029-01-04'), 1, StreakTimeline::EXTENDS_REST), 'assignment_id'))->toBe([42]);
+});
+
+it('lists the assignments currently covered by a rest window', function () {
+    $t = new StreakTimeline(srlRules([['night', 2, 2]]), [1 => [
+        rrcEvent(50, '2029-01-01', 'night'), rrcEvent(51, '2029-01-02', 'night'),
+        rrcEvent(52, '2029-01-03', 'day'), rrcEvent(53, '2029-01-05', 'night'),
+    ]]);
+
+    expect($t->restingAssignments(1))->toBe([52 => '2029-01-04']);
+    expect($t->restingAssignments(2))->toBe([]);
+});
+
+it('loads every date when until is null, with assignment ids', function () {
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 2]);
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $ids = [];
+    foreach (['2029-01-01', '2029-01-02', '2031-06-01', '2031-06-02'] as $date) {
+        $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);
+        $ids[$date] = ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id])->id;
+    }
+    $rest = Shift::create(['date' => '2029-01-03', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'day']);
+    $restId = ShiftAssignment::create(['shift_id' => $rest->id, 'user_id' => $employee->id])->id;
+
+    $timeline = app(StreakReplay::class)->forGroup($group, [$employee->id]);
+
+    expect($timeline->restingAssignments($employee->id))->toBe([$restId => '2029-01-04']);
+    // Far-future assignments are loaded: without the candidate, 2031-06-01 c1, 06-02 c2 (nothing covered);
+    // with a night on 2031-05-31: 05-31 c1, 06-01 c2 → rest 06-02..06-03 → 06-02 newly covered.
+    expect(array_column($timeline->newlyResting($employee->id, 'night', Carbon::parse('2031-05-31'), 1), 'assignment_id'))
+        ->toBe([$ids['2031-06-02']]);
+    expect($timeline->wouldConflict($employee->id, 'day', Carbon::parse('2029-01-04'), 1))->toBeTrue();
+});
+
+it('reports the final end of the longest covering window even when a later extension lengthens another one', function () {
+    $t = new StreakTimeline(srlRules([['night', 1, 3], ['late', 1, 2]]), [1 => [
+        rrcEvent(1, '2029-01-01', 'night'),
+        rrcEvent(2, '2029-01-03', 'late', StreakTimeline::COUNTS),
+        rrcEvent(3, '2029-01-04', 'day'),
+        rrcEvent(4, '2029-01-04', 'day', StreakTimeline::EXTENDS_REST, 2),
+    ]]);
+
+    expect($t->restingAssignments(1)[3])->toBe('2029-01-07');
+});
+
+it('answers a month of auto-fill wouldConflict calls quickly with history before and after the month', function () {
+    // 30 users, an event every 4 days from 2026-01 to 2029-08: three years before and ~7 months after 2029-01.
+    $events = [];
+    for ($u = 1; $u <= 30; $u++) {
+        $d = Carbon::parse('2026-01-01');
+        for ($i = 0; $i < 330; $i++) {
+            $events[$u][] = srlEvent($d->toDateString(), $i % 3 === 2 ? 'night' : 'day', null, 1 + $i % 3);
+            $d->addDays(4);
+        }
+    }
+    $t = new StreakTimeline(srlRules([['night', 3, 2], ['day', 5, 1]]), $events);
+
+    $day = Carbon::parse('2029-01-01');
+    $calls = 0;
+    $started = microtime(true);
+    for ($d = 0; $d < 30; $d++) {
+        for ($slot = 1; $slot <= 3; $slot++) {
+            for ($u = 1; $u <= 30; $u++) {
+                $t->wouldConflict($u, 'night', $day, $slot);
+                $calls++;
+            }
+            $t->append(($d * 3 + $slot) % 30 + 1, 'night', $day, $slot);
+        }
+        $day->addDay();
+    }
+    $elapsed = microtime(true) - $started;
+
+    expect($calls)->toBe(2700);
+    expect($elapsed)->toBeLessThan(3.0);
+});

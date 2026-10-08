@@ -4,13 +4,39 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-08 — ⏳ Assigning a shift can no longer silently put a later shift on a rest day
+
+Manual assign now also asks when a new shift would turn the employee's existing **later** shift into a mandatory rest day (for example, assigning the 2nd night of a streak when they already work a night inside the coming rest). The prompt offers the same three choices — **Doesn't count**, **Counts toward the next streak** or **Extends the rest** — applied to that later shift — and to any further shifts the choice itself pushes into rest (counting a shift can complete a new streak, extending the rest can reach the next shift); a further shift that already had its own rest-day answer keeps it, and only shifts that end up on a rest day are updated. Cancel changes nothing. On success the toast reads "Assigned; later shift updated." (or "Assigned; later shifts updated." when several were updated). If the employee's schedule changed while the prompt was open, the server asks again with the fresh list instead of applying the old answer.
+
+Auto-fill (Random Coverage, Rotating Subteam and Polish Law) never does this: it skips such candidates, looking at the employee's whole schedule including later months. Shifts that end up on a rest day anyway (through a shift-type change or a streak-rule edit) now show ⚠ "Now on a rest day (resting until …): nobody chose how it counts". The ⚠ and ⏸ markers are part of the shared schedule view, so everyone who can see the schedule sees them. ⏸ ("On a rest day: counts toward next streak" / "On a rest day: extends rest") now shows only while the shift is actually on a rest day, and the schedule refreshes the markers after every assign and after removing an assignment.
+
+### Backend
+| What | Details |
+|------|---------|
+| Added | `POST /api/schedule/assign` answers `409 creates_rest_conflict` (`affected[]`, `rule`) and accepts `later_rest_policy` plus `expected_affected_ids` (the ids the manager was shown; a mismatch answers the 409 again with the fresh list); the 201 response includes `updated_assignment_ids` / `updated_rest_policy` |
+| Added | The chosen `later_rest_policy` is also stamped on shifts that it pushes into rest in turn (`StreakTimeline::cascadePolicy`); all of them are listed in `updated_assignment_ids` |
+| Changed | The streak replay loads plain rows instead of models |
+| Added | Schedule payload carries `in_rest` / `resting_until` per assignment |
+| Changed | Auto-fill skips candidates whose new shift would put a later shift on a rest day |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Added | Retroactive rest-day prompt on manual assign (Doesn't count / Counts toward the next streak / Extends the rest), noting that the choice also applies to further shifts it pushes into rest; "Assigned; later shift updated." / "Assigned; later shifts updated." toast, based on what the server updated |
+| Added | ⚠ marker "Now on a rest day (resting until …): nobody chose how it counts" on affected chips, visible to everyone in the shared schedule view |
+| Changed | ⏸ shows only while the assignment is on a rest day; tooltips read "On a rest day: counts toward next streak" / "On a rest day: extends rest" |
+| Changed | The schedule refreshes after every successful assign and after removing an assignment, so other chips' markers stay current |
+| Fixed | The prompt lists several dates as "A and B rest days" (deduplicated) |
+
+---
+
 ## 2026-10-07 — 🔁 Streaks are replayed from real assignments
 
 Streak status is no longer kept in stored counters; it is replayed from the real assignments every time it is needed. This fixes: unassigning or retyping the shift that started a rest window now clears it; no more drift on night→day→night retypes; edits to past shifts and to streak rules apply immediately and retroactively; and concurrent assigns no longer lose updates.
 
 Manually assigning a shift on an employee's rest day now asks how it counts: **Doesn't count**, **Counts toward the next streak** or **Extends the rest**. The choice is stored on the assignment, and chips whose rest-day assignment counts or extends the rest show a ⏸ marker with a tooltip. Random Coverage and Rotating Subteam auto-fill now skip employees on rest days (previously only Polish Law did), and every auto-fill counts its own assignments as it goes. The settlement report shows streak status as of the end of the displayed period. The back-to-back "Assigned" toast no longer appears when the rest-day prompt follows it.
 
-> **Deploy note:** statuses are recomputed from real history on deploy. Drifted counters are corrected and Random/Rotating assignments (never counted before) now count, so some employees' streak status may change. The `shift_streak_states` table is dropped (its `down()` recreates it empty). Existing rest-day assignments have no policy and don't count. Because Random/Rotating assignments now count, some already-planned future assignments may now fall on a rest day; they are kept, aren't counted, and aren't flagged.
+> **Deploy note:** statuses are recomputed from real history on deploy. Drifted counters are corrected and Random/Rotating assignments (never counted before) now count, so some employees' streak status may change. The `shift_streak_states` table is dropped (its `down()` recreates it empty). Existing rest-day assignments have no policy and don't count. Because Random/Rotating assignments now count, some already-planned future assignments may now fall on a rest day; they are kept and aren't counted, and the schedule flags them (see the 2026-10-08 entry).
 
 ### Backend
 | What | Details |

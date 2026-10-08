@@ -2,8 +2,14 @@
   <div class="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="emit('cancel')">
     <div role="dialog" aria-modal="true" aria-labelledby="rest-day-title"
       class="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl">
-      <h2 id="rest-day-title" class="text-lg font-semibold text-white mb-1">Assign on a rest day?</h2>
-      <p class="text-sm text-slate-300 mb-4">
+      <h2 id="rest-day-title" class="text-lg font-semibold text-white mb-1">{{ affected ? 'This makes a later shift a rest day' : 'Assign on a rest day?' }}</h2>
+      <p v-if="affected" class="text-sm text-slate-300 mb-4">
+        Assigning {{ userName }} here makes their {{ affectedType }} on {{ affectedDates }} {{ restDayNoun }}
+        ({{ rule.shift_type }}: {{ rule.streak_length }} in a row, then {{ rule.rest_days }} days off).
+        How should {{ affectedCount > 1 ? 'those shifts' : 'that shift' }} count? The choice also applies to
+        any further shifts it pushes into rest.
+      </p>
+      <p v-else class="text-sm text-slate-300 mb-4">
         {{ userName }} is resting until {{ restingUntil }}
         ({{ rule.shift_type }}: {{ rule.streak_length }} in a row, then {{ rule.rest_days }} days off).
         How should this shift count?
@@ -31,7 +37,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 const props = defineProps({
   userName: { type: String, required: true },
-  restingUntil: { type: String, required: true },
+  restingUntil: { type: String, default: '' },
+  affected: { type: Array, default: null },
   rule: { type: Object, required: true },
 });
 const emit = defineEmits(['choose', 'cancel']);
@@ -54,6 +61,18 @@ const options = computed(() => [
   },
 ]);
 const policy = ref('not_counted');
+
+const uniqueDates = computed(() => [...new Set((props.affected || []).map((a) => a.date))]);
+// "A", "A and B", "A, B and C" (as the server's message).
+const affectedDates = computed(() => {
+  const dates = uniqueDates.value;
+  return dates.length < 2 ? dates.join('') : `${dates.slice(0, -1).join(', ')} and ${dates.at(-1)}`;
+});
+const restDayNoun = computed(() => (uniqueDates.value.length > 1 ? 'rest days' : 'a rest day'));
+const affectedCount = computed(() => (props.affected || []).length);
+const affectedType = computed(
+  () => [...new Set((props.affected || []).map((a) => a.shift_type))].join('/') || 'shift',
+);
 
 function onKeydown(e) {
   if (e.key === 'Escape') emit('cancel');

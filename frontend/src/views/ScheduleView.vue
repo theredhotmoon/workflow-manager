@@ -522,8 +522,11 @@
                           <!-- The chip shrinks to its day column (min-w-0/max-w-full above); the name
                                truncates instead of pushing the × into the next day's drop-zone. -->
                           <span class="truncate min-w-0" :title="assignment.user_name">{{ assignment.user_name }}</span>
-                          <span v-if="assignment.rest_policy && assignment.rest_policy !== 'not_counted'" class="shrink-0 text-[9px] text-amber-300"
-                            :title="assignment.rest_policy === 'extends_rest' ? 'Assigned during rest: extends rest' : 'Assigned during rest: counts toward next streak'">⏸</span>
+                          <!-- Only while the shift is still on a rest day: unassigning the shift that opened the window leaves the policy behind. -->
+                          <span v-if="assignment.rest_policy && assignment.rest_policy !== 'not_counted' && assignment.resting_until" class="shrink-0 text-[9px] text-amber-300"
+                            :title="assignment.rest_policy === 'extends_rest' ? 'On a rest day: extends rest' : 'On a rest day: counts toward next streak'">⏸</span>
+                          <span v-if="assignment.in_rest" class="shrink-0 text-[9px] text-red-300"
+                            :title="'Now on a rest day (resting until ' + assignment.resting_until + '): nobody chose how it counts'">⚠</span>
                           <!-- Employee: request day off button -->
                           <button v-if="currentUser && !currentUser.is_admin && currentUser.id === assignment.user_id && !assignment.has_change_request && isShiftFuture(shift, day.dateStr)"
                             @click.stop="openChangeRequestModal(assignment, shift, day.dateStr)"
@@ -1259,7 +1262,7 @@
     </Transition>
 
     <RestDayPolicyModal v-if="restPrompt" :user-name="restPrompt.item.user_name || 'This employee'"
-      :resting-until="restPrompt.conflict.resting_until" :rule="restPrompt.conflict.rule"
+      :resting-until="restPrompt.conflict.resting_until || ''" :affected="restPrompt.conflict.affected || null" :rule="restPrompt.conflict.rule"
       @choose="chooseRestPolicy" @cancel="cancelRestPolicy" />
 
     <!-- Shift Change Request Modal -->
@@ -2056,10 +2059,11 @@ async function onShiftTypesSaved({ updated, rebooked }) {
 // response (which also reports a shift_group_id) snaps the view back to the wrong group.
 let scheduleRequestSeq = 0;
 
-async function fetchSchedule() {
+// quiet: refresh in place (no spinner, the grid keeps its scroll position).
+async function fetchSchedule({ quiet = false } = {}) {
   const requestSeq = ++scheduleRequestSeq;
   restPrompt.value = null; // its shift/chip objects are about to be replaced
-  loading.value = true;
+  if (!quiet) loading.value = true;
   try {
     const params = { month: monthKey.value };
     if (activeGroupId.value) params.shift_group_id = activeGroupId.value;
@@ -2539,39 +2543,85 @@ async function onDrop(evt, shift, dateStr) {
   await proceedWithDelegationCheck(shift, item, evt.newIndex, dateStr);
 }
 
-// Resolves to 'assigned', 'prompted' (waiting on the rest-day dialog) or 'failed'.
-async function doAssign(shift, item, index, restPolicy = null) {
+// The DELETE of a drag-move's source slot (see onRemove); resolved when there is none.
+let pendingMoveRemoval = Promise.resolve();
+
+// Resolves to { status: 'assigned' | 'prompted' (waiting on the rest-day dialog) | 'failed', updatedCount }.
+// laterRestPolicy goes with the ids of the later shifts the manager was shown; if the server's list
+// differs by now, it asks again.
+async function doAssign(
+  shift,
+  item,
+  index,
+  restPolicy = null,
+  laterRestPolicy = null,
+  expectedAffectedIds = null,
+) {
   try {
     const response = await api.post('/api/schedule/assign', {
       shift_id: shift.id,
       user_id: item.user_id,
       ...(restPolicy ? { rest_policy: restPolicy } : {}),
+      ...(laterRestPolicy
+        ? { later_rest_policy: laterRestPolicy, expected_affected_ids: expectedAffectedIds || [] }
+        : {}),
     });
     item.id = response.data.id;
     item.user_name = response.data.user_name;
     item.rest_policy = response.data.rest_policy;
-    return 'assigned';
+    const updatedIds = response.data.updated_assignment_ids || [];
+    // Any assignment can start, move or end a rest window, so other chips' ⚠ / ⏸ / resting-until
+    // can change: reload them from the server — after a drag-move's DELETE of the old slot, if any.
+    await pendingMoveRemoval;
+    await fetchSchedule({ quiet: true });
+    return { status: 'assigned', updatedCount: updatedIds.length };
   } catch (err) {
     // A rest day needs the manager's decision; keep the chip while asking.
-    if (err.response?.status === 409 && err.response.data?.code === 'rest_window_conflict') {
-      restPrompt.value = { shift, item, index, conflict: err.response.data };
-      return 'prompted';
+    const code = err.response?.data?.code;
+    if (
+      err.response?.status === 409 &&
+      (code === 'rest_window_conflict' || code === 'creates_rest_conflict')
+    ) {
+      restPrompt.value = { shift, item, index, conflict: err.response.data, restPolicy };
+      return { status: 'prompted', updatedCount: 0 };
     }
     const i = shift.assignments.indexOf(item);
     if (i !== -1) shift.assignments.splice(i, 1);
     const msg = err.response?.data?.message || 'Failed to assign user.';
     showToast(msg, 'error');
-    return 'failed';
+    return { status: 'failed', updatedCount: 0 };
   }
 }
 
-const restPrompt = ref(null); // { shift, item, index, conflict }
+const restPrompt = ref(null); // { shift, item, index, conflict, restPolicy }
 
 async function chooseRestPolicy(policy) {
-  const { shift, item, index } = restPrompt.value;
+  const { shift, item, index, conflict, restPolicy } = restPrompt.value;
   restPrompt.value = null;
-  const status = await doAssign(shift, item, index, policy);
-  if (status === 'assigned') showToast('Assigned during rest.', 'success');
+  // A later-shift question carries the answer to the dropped day's own question, if it was asked.
+  const { status, updatedCount } =
+    conflict.code === 'creates_rest_conflict'
+      ? await doAssign(
+          shift,
+          item,
+          index,
+          restPolicy,
+          policy,
+          (conflict.affected || []).map((a) => a.assignment_id),
+        )
+      : await doAssign(shift, item, index, policy);
+  if (status === 'assigned') {
+    showToast(
+      updatedCount === 0
+        ? conflict.code === 'rest_window_conflict' || restPolicy
+          ? 'Assigned during rest.'
+          : 'Assigned.'
+        : updatedCount === 1
+          ? 'Assigned; later shift updated.'
+          : 'Assigned; later shifts updated.',
+      'success',
+    );
+  }
 }
 
 function cancelRestPolicy() {
@@ -2696,7 +2746,7 @@ async function confirmAdjacentAssign() {
   const { shift, item, itemIndex } = adjacentConfirm.value;
   adjacentConfirm.value.show = false;
   if (shift && item) {
-    const status = await doAssign(shift, item, itemIndex);
+    const { status } = await doAssign(shift, item, itemIndex);
     if (status === 'assigned') showToast('Assigned to back-to-back shift.', 'success');
   }
   adjacentConfirm.value = {
@@ -2724,11 +2774,11 @@ async function onRemove(evt, shift) {
   const assignmentId = pendingRemoveAssignmentId.value;
   pendingRemoveAssignmentId.value = null;
   if (assignmentId) {
-    try {
-      await api.delete(`/api/schedule/unassign/${assignmentId}`);
-    } catch {
+    // doAssign() waits for this before reloading, so a move's old slot is gone from the refetch.
+    pendingMoveRemoval = api.delete(`/api/schedule/unassign/${assignmentId}`).catch(() => {
       // silently handle
-    }
+    });
+    await pendingMoveRemoval;
   }
 }
 
@@ -2745,7 +2795,10 @@ async function removeAssignment(assignment, shift) {
     if (idx !== -1) shift.assignments.splice(idx, 1);
   } catch {
     showToast('Failed to remove assignment.', 'error');
+    return;
   }
+  // Removing a shift can end or move a rest window: refresh the other chips' ⚠ / ⏸.
+  await fetchSchedule({ quiet: true });
 }
 
 function getInitials(name) {

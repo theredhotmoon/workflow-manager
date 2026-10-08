@@ -58,6 +58,13 @@ async function dragToShiftDropzone(page, sourceLocator, targetLocator) {
     await page.mouse.move(x, y, { steps: 3 });
   }
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 3 });
+  // Hovering other cells moves the dragged chip and reflows the grid, so the drop-zone can have
+  // shifted under the cursor: re-aim at where it is now before releasing.
+  for (let i = 0; i < 2; i++) {
+    const now = await targetLocator.boundingBox();
+    if (!now) break;
+    await page.mouse.move(now.x + now.width / 2 - 4 + i * 8, now.y + now.height / 2, { steps: 4 });
+  }
   await page.mouse.up();
 }
 
@@ -136,7 +143,7 @@ test.describe('Rest-day policy prompt', () => {
 
     await adminPage.reload();
     await adminPage.getByRole('button', { name: /Rest Prompt Team/ }).click();
-    await expect(day3.getByTitle(/Assigned during rest: extends rest/)).toBeVisible();
+    await expect(day3.getByTitle(/^On a rest day: extends rest$/)).toBeVisible();
   });
 
   test('Cancel leaves nothing assigned', async ({ adminPage }) => {

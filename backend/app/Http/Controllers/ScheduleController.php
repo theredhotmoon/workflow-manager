@@ -13,7 +13,9 @@ use App\Services\ShiftTypeChanger;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Support\Month;
 
 class ScheduleController extends Controller
@@ -56,6 +58,8 @@ class ScheduleController extends Controller
                 ->get();
         }
 
+        $resting = $this->restingAssignmentMap($shifts, $end->copy()->addDay());
+
         // Group shifts by date
         $schedule = [];
         foreach ($shifts as $shift) {
@@ -79,13 +83,15 @@ class ScheduleController extends Controller
                     'deadline_minutes' => $sc->deadline_minutes,
                     'deadline_reference' => $sc->deadline_reference,
                 ]),
-                'assignments' => $shift->assignments->map(function ($a) {
+                'assignments' => $shift->assignments->map(function ($a) use ($resting) {
                     $pendingRequest = $a->changeRequests->first();
                     return [
                         'id' => $a->id,
                         'user_id' => $a->user_id,
                         'user_name' => $a->user->name,
                         'rest_policy' => $a->rest_policy,
+                        'in_rest' => isset($resting[$a->id]) && $a->rest_policy === null,
+                        'resting_until' => $resting[$a->id] ?? null,
                         'has_change_request' => $pendingRequest !== null,
                         'change_request_reason' => $pendingRequest?->reason,
                         'change_request_id' => $pendingRequest?->id,
@@ -250,11 +256,13 @@ class ScheduleController extends Controller
         }
 
         // Return updated shifts for that day
-        $updatedShifts = Shift::with(['assignments.user:id,name', 'shiftChecklists.template:id,name'])
+        $dayShifts = Shift::with(['assignments.user:id,name', 'shiftChecklists.template:id,name'])
             ->where('date', $date)
             ->where('shift_group_id', $groupId)
             ->orderBy('shift_number')
-            ->get()
+            ->get();
+        $resting = $this->restingAssignmentMap($dayShifts, Carbon::parse($date)->addDay());
+        $updatedShifts = $dayShifts
             ->map(fn($s) => [
                 'id' => $s->id,
                 'shift_number' => $s->shift_number,
@@ -276,6 +284,8 @@ class ScheduleController extends Controller
                     'user_id' => $a->user_id,
                     'user_name' => $a->user->name,
                     'rest_policy' => $a->rest_policy,
+                    'in_rest' => isset($resting[$a->id]) && $a->rest_policy === null,
+                    'resting_until' => $resting[$a->id] ?? null,
                 ]),
             ]);
 
@@ -294,6 +304,9 @@ class ScheduleController extends Controller
             'shift_id' => ['required', 'exists:shifts,id'],
             'user_id' => ['required', 'exists:users,id'],
             'rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
+            'later_rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
+            'expected_affected_ids' => ['nullable', 'array'],
+            'expected_affected_ids.*' => ['integer'],
         ]);
 
         // Check if user is already assigned to this shift
@@ -312,9 +325,8 @@ class ScheduleController extends Controller
         $userId = (int) $request->user_id;
 
         // A rest day needs the manager's decision on how it counts (StreakTimeline policies).
-        $window = $shift->shiftGroup
-            ? $streakReplay->forGroup($shift->shiftGroup, [$userId], $shift->date)->activeWindow($userId, $shift->date)
-            : null;
+        $timeline = $shift->shiftGroup ? $streakReplay->forGroup($shift->shiftGroup, [$userId]) : null;
+        $window = $timeline ? $timeline->activeWindow($userId, $shift->date) : null;
         if ($window !== null && !$request->filled('rest_policy')) {
             $rule = $window['rule'];
             $restingUntil = $window['end']->toDateString();
@@ -331,11 +343,66 @@ class ScheduleController extends Controller
             ], 409);
         }
 
-        $assignment = ShiftAssignment::create([
-            'shift_id' => $shift->id,
-            'user_id' => $userId,
-            'rest_policy' => $window !== null ? $request->input('rest_policy') : null,
-        ]);
+        $restPolicy = $window !== null ? $request->input('rest_policy') : null;
+
+        // Would this shift put the employee's existing later shifts into rest?
+        $affected = $timeline
+            ? $timeline->newlyResting($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy)
+            : [];
+        // The confirm carries the shifts the manager was shown; if that list is stale, ask again.
+        $affectedIds = array_map(fn($a) => $a['assignment_id'], $affected);
+        $expectedIds = $request->has('expected_affected_ids')
+            ? array_map('intval', (array) $request->input('expected_affected_ids'))
+            : null;
+        $stale = false;
+        if ($expectedIds !== null) {
+            $fresh = $affectedIds;
+            sort($fresh);
+            sort($expectedIds);
+            $stale = $fresh !== $expectedIds;
+        }
+        if ($affected !== [] && (!$request->filled('later_rest_policy') || $stale)) {
+            $rule = $affected[0]['rule'];
+            $dateList = array_values(array_unique(array_map(fn($a) => $a['date'], $affected)));
+            $last = array_pop($dateList);
+            $dates = $dateList === [] ? $last : implode(', ', $dateList).' and '.$last;
+            $dayNoun = $dateList === [] ? 'a rest day' : 'rest days';
+
+            return response()->json([
+                'code' => 'creates_rest_conflict',
+                'message' => "Assigning this shift makes {$dates} {$dayNoun} for this employee ({$rule->shift_type}: {$rule->streak_length} in a row, then {$rule->rest_days} days off).",
+                'affected' => array_map(fn($a) => [
+                    'assignment_id' => $a['assignment_id'],
+                    'date' => $a['date'],
+                    'shift_type' => $a['shift_type'],
+                    'resting_until' => $a['resting_until'],
+                ], $affected),
+                'rule' => [
+                    'shift_type' => $rule->shift_type,
+                    'streak_length' => (int) $rule->streak_length,
+                    'rest_days' => (int) $rule->rest_days,
+                ],
+            ], 409);
+        }
+
+        // The chosen policy applies to the whole chain: stamping it can push further shifts into rest.
+        $laterPolicy = $affectedIds !== [] ? $request->input('later_rest_policy') : null;
+        $updatedIds = $laterPolicy !== null
+            ? $timeline->cascadePolicy($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy, $laterPolicy)
+            : [];
+
+        $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy) {
+            $created = ShiftAssignment::create([
+                'shift_id' => $shift->id,
+                'user_id' => $userId,
+                'rest_policy' => $restPolicy,
+            ]);
+            if ($updatedIds !== []) {
+                ShiftAssignment::whereIn('id', $updatedIds)->update(['rest_policy' => $laterPolicy]);
+            }
+
+            return $created;
+        });
         $assignment->load('user:id,name');
 
         return response()->json([
@@ -344,7 +411,36 @@ class ScheduleController extends Controller
             'user_id' => $assignment->user_id,
             'user_name' => $assignment->user->name,
             'rest_policy' => $assignment->rest_policy,
+            'updated_assignment_ids' => $updatedIds,
+            'updated_rest_policy' => $laterPolicy,
         ], 201);
+    }
+
+    /**
+     * assignment_id => resting_until for every assignment in $shifts that sits inside a streak rest window.
+     * Coverage of a day depends only on earlier assignments, so replaying up to $until is enough.
+     *
+     * @return array<int, string>
+     */
+    private function restingAssignmentMap(Collection $shifts, Carbon $until): array
+    {
+        $map = [];
+        foreach ($shifts->whereNotNull('shift_group_id')->groupBy('shift_group_id') as $groupId => $groupShifts) {
+            $group = ShiftGroup::find($groupId);
+            if (!$group) {
+                continue;
+            }
+            $userIds = $groupShifts->flatMap(fn($s) => $s->assignments->pluck('user_id'))->unique()->values()->all();
+            if ($userIds === []) {
+                continue;
+            }
+            $timeline = app(StreakReplay::class)->forGroup($group, $userIds, $until);
+            foreach ($userIds as $userId) {
+                $map += $timeline->restingAssignments((int) $userId);
+            }
+        }
+
+        return $map;
     }
 
     /**

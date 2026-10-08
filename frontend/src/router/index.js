@@ -121,13 +121,13 @@ const routes = [
     path: '/procedures/:id',
     name: 'procedure-detail',
     component: ProcedureDetailView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, remountOn: 'id' },
   },
   {
     path: '/procedures/:id/version/:version',
     name: 'procedure-version',
     component: ProcedureDetailView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, remountOn: 'id' },
   },
 
   {

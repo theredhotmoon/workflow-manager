@@ -4,6 +4,22 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-08 — 🐛 Opening another procedure from a procedure page shows it
+
+Going from one procedure's page straight to another without leaving the page — e.g. through a notification in the bell menu — changed the address but kept showing the first procedure, and an old version viewed on the first one could appear for the second. The procedure page is now rebuilt whenever the procedure changes; switching between versions of the same procedure still keeps the page.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Fixed | Routes can set `meta.remountOn` (a route param); `App.vue` keys the routed view by it. `procedure-detail` and `procedure-version` use `remountOn: 'id'`, so their state (data, version cache, tabs, dialogs) starts fresh for each procedure |
+
+### Tests
+| What | Details |
+|------|---------|
+| Added | `e2e/procedures/detail-navigation.spec.js` — in-app navigation to another procedure shows it; an old version viewed on one procedure isn't shown for the next |
+
+---
+
 ## 2026-10-08 — 🐛 The procedure tree editor opens again
 
 The procedure tree editor (`/procedures/tree-editor`) failed to render at all ("allProcedures.value.filter is not a function"). It read the paginated `/api/procedures` response as if it were a plain list, so the page crashed before showing the tree. It now loads every page of procedures (100 per request) and renders the tree, the "Unassigned Procedures" panel and the "All Assigned" list.

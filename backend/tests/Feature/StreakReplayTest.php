@@ -302,3 +302,14 @@ it('loads every date when until is null, with assignment ids', function () {
         ->toBe([$ids['2031-06-02']]);
     expect($timeline->wouldConflict($employee->id, 'day', Carbon::parse('2029-01-04'), 1))->toBeTrue();
 });
+
+it('reports the final end of the longest covering window even when a later extension lengthens another one', function () {
+    $t = new StreakTimeline(srlRules([['night', 1, 3], ['late', 1, 2]]), [1 => [
+        rrcEvent(1, '2029-01-01', 'night'),
+        rrcEvent(2, '2029-01-03', 'late', StreakTimeline::COUNTS),
+        rrcEvent(3, '2029-01-04', 'day'),
+        rrcEvent(4, '2029-01-04', 'day', StreakTimeline::EXTENDS_REST, 2),
+    ]]);
+
+    expect($t->restingAssignments(1)[3])->toBe('2029-01-07');
+});

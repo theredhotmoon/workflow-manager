@@ -156,12 +156,12 @@ final class StreakTimeline
         $after = $this->replayEvents($with, PHP_INT_MAX);
 
         $affected = [];
-        foreach ($after['covered'] as $pos => $windowIndex) {
+        foreach ($after['covered'] as $pos => $_) {
             $origin = $with[$pos]['origin'];
             if ($origin < 0 || isset($before[$origin])) {
                 continue;
             }
-            $window = $after['windows'][$windowIndex];
+            $window = self::longestCovering($after['windows'], $with[$pos]['day']);
             $affected[] = [
                 'assignment_id' => $with[$pos]['assignment_id'],
                 'date' => gmdate('Y-m-d', $with[$pos]['day'] * 86400),
@@ -187,9 +187,10 @@ final class StreakTimeline
         $events = $this->eventsByUser[$userId] ?? [];
         $state = $this->replayEvents($events, PHP_INT_MAX);
         $resting = [];
-        foreach ($state['covered'] as $pos => $windowIndex) {
+        foreach ($state['covered'] as $pos => $_) {
             if ($events[$pos]['assignment_id'] !== null) {
-                $resting[$events[$pos]['assignment_id']] = gmdate('Y-m-d', $state['windows'][$windowIndex]['end'] * 86400);
+                $window = self::longestCovering($state['windows'], $events[$pos]['day']);
+                $resting[$events[$pos]['assignment_id']] = gmdate('Y-m-d', $window['end'] * 86400);
             }
         }
 
@@ -295,6 +296,25 @@ final class StreakTimeline
         }
 
         return ['counts' => $counts, 'windows' => $windows, 'covered' => $covered];
+    }
+
+    /**
+     * The window containing $day with the latest FINAL end. Later extensions can lengthen a window
+     * other than the one that was longest when the event was replayed, so this is read afterwards.
+     *
+     * @param  list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>  $windows
+     * @return array{rule: ShiftStreakRule, type: string, start: int, end: int}
+     */
+    private static function longestCovering(array $windows, int $day): array
+    {
+        $best = null;
+        foreach ($windows as $window) {
+            if ($day >= $window['start'] && $day <= $window['end'] && ($best === null || $window['end'] > $best['end'])) {
+                $best = $window;
+            }
+        }
+
+        return $best;
     }
 
     /** Days since 1970-01-01 for a 'Y-m-d' date. */

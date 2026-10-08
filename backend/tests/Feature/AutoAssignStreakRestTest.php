@@ -78,3 +78,28 @@ it('feeds its own assignments into the replay so later days see the rest', funct
     'random' => ['/api/schedule/auto-assign/random', []],
     'rotating' => ['/api/schedule/auto-assign/rotating', ['rotation_days' => 7]],
 ]);
+
+it('skips rest days that the back-to-back rule cannot explain', function (string $endpoint, array $extra) {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 3]);
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    // Two worked nights → resting 2029-01-03..2029-01-05. No shift on 01-03, so 01-04 has no previous-day
+    // neighbour and 01-05's neighbour (01-04) stays unassigned: only the rest window can exclude them.
+    foreach (['2029-01-01', '2029-01-02'] as $date) {
+        $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
+            'start_time' => '22:00', 'end_time' => '06:00']);
+        ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
+    }
+    foreach (['2029-01-04', '2029-01-05', '2029-01-06'] as $date) {
+        Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'day',
+            'start_time' => '08:00', 'end_time' => '16:00']);
+    }
+
+    $this->actingAs($maintainer)->postJson($endpoint, aasPayload($group, $employee, $extra))->assertOk();
+
+    expect(aasAssignedDates($group, $employee))->toBe(['2029-01-01', '2029-01-02', '2029-01-06']);
+})->with([
+    'random' => ['/api/schedule/auto-assign/random', []],
+    'rotating' => ['/api/schedule/auto-assign/rotating', ['rotation_days' => 7]],
+]);

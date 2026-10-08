@@ -4,6 +4,29 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-07 — 🔁 Streaks are replayed from real assignments
+
+Streak status is no longer kept in stored counters; it is replayed from the real assignments every time it is needed. This fixes: unassigning or retyping the shift that started a rest window now clears it; no more drift on night→day→night retypes; edits to past shifts and to streak rules apply immediately and retroactively; and concurrent assigns no longer lose updates.
+
+Manually assigning a shift on an employee's rest day now asks how it counts: **Doesn't count**, **Counts toward the next streak** or **Extends the rest**. The choice is stored on the assignment, and chips whose rest-day assignment counts or extends the rest show a ⏸ marker with a tooltip. Random Coverage and Rotating Subteam auto-fill now skip employees on rest days (previously only Polish Law did), and every auto-fill counts its own assignments as it goes. The settlement report shows streak status as of the end of the displayed period. The back-to-back "Assigned" toast no longer appears when the rest-day prompt follows it.
+
+> **Deploy note:** statuses are recomputed from real history on deploy. Drifted counters are corrected and Random/Rotating assignments (never counted before) now count, so some employees' streak status may change. The `shift_streak_states` table is dropped (its `down()` recreates it empty). Existing rest-day assignments have no policy and don't count. Because Random/Rotating assignments now count, some already-planned future assignments may now fall on a rest day; they are kept, aren't counted, and aren't flagged.
+
+### Backend
+| What | Details |
+|------|---------|
+| Changed | Streak status is replayed from assignments; `ShiftStreakTracker` and the `shift_streak_states` table are removed |
+| Added | `shift_assignments.rest_policy`; `POST /api/schedule/assign` answers `409 rest_window_conflict` until a `rest_policy` is sent |
+| Changed | Random Coverage and Rotating Subteam auto-fill skip employees on rest days; settlement report streak status is as of the period end |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Added | Rest-day prompt on manual assign (Doesn't count / Counts toward the next streak / Extends the rest); ⏸ marker with tooltip on chips whose rest-day assignment counts or extends the rest |
+| Fixed | The "Assigned" toast is suppressed when the rest-day prompt follows it |
+
+---
+
 ## 2026-10-07 — 🚦 A throttled API no longer logs you out; the API rate limit is configurable
 
 The SPA treated any failure of `GET /api/user` as "not logged in", so a 429 from the rate limiter sent a still-logged-in user to `/login` (the router guard and the dashboard both did this). Only 401/419 now mean logged out; a 429 is retried once after `Retry-After` (capped at 3 s) and other failures (5xx, network) keep the current session. The per-user API limit, previously hardcoded at 60 requests/minute, is now configurable.

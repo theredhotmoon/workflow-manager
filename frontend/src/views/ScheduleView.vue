@@ -522,6 +522,8 @@
                           <!-- The chip shrinks to its day column (min-w-0/max-w-full above); the name
                                truncates instead of pushing the × into the next day's drop-zone. -->
                           <span class="truncate min-w-0" :title="assignment.user_name">{{ assignment.user_name }}</span>
+                          <span v-if="assignment.rest_policy && assignment.rest_policy !== 'not_counted'" class="shrink-0 text-[9px] text-amber-300"
+                            :title="assignment.rest_policy === 'extends_rest' ? 'Assigned during rest: extends rest' : 'Assigned during rest: counts toward next streak'">⏸</span>
                           <!-- Employee: request day off button -->
                           <button v-if="currentUser && !currentUser.is_admin && currentUser.id === assignment.user_id && !assignment.has_change_request && isShiftFuture(shift, day.dateStr)"
                             @click.stop="openChangeRequestModal(assignment, shift, day.dateStr)"
@@ -1256,6 +1258,10 @@
       </div>
     </Transition>
 
+    <RestDayPolicyModal v-if="restPrompt" :user-name="restPrompt.item.user_name || 'This employee'"
+      :resting-until="restPrompt.conflict.resting_until" :rule="restPrompt.conflict.rule"
+      @choose="chooseRestPolicy" @cancel="cancelRestPolicy" />
+
     <!-- Shift Change Request Modal -->
     <Transition
       enter-active-class="transition-all duration-300 ease-out"
@@ -1304,6 +1310,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import AutoFillPanel from '../components/AutoFillPanel.vue';
+import RestDayPolicyModal from '../components/RestDayPolicyModal.vue';
 import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';
@@ -2051,6 +2058,7 @@ let scheduleRequestSeq = 0;
 
 async function fetchSchedule() {
   const requestSeq = ++scheduleRequestSeq;
+  restPrompt.value = null; // its shift/chip objects are about to be replaced
   loading.value = true;
   try {
     const params = { month: monthKey.value };
@@ -2531,19 +2539,46 @@ async function onDrop(evt, shift, dateStr) {
   await proceedWithDelegationCheck(shift, item, evt.newIndex, dateStr);
 }
 
-async function doAssign(shift, item, index) {
+// Resolves to 'assigned', 'prompted' (waiting on the rest-day dialog) or 'failed'.
+async function doAssign(shift, item, index, restPolicy = null) {
   try {
     const response = await api.post('/api/schedule/assign', {
       shift_id: shift.id,
       user_id: item.user_id,
+      ...(restPolicy ? { rest_policy: restPolicy } : {}),
     });
     item.id = response.data.id;
     item.user_name = response.data.user_name;
+    item.rest_policy = response.data.rest_policy;
+    return 'assigned';
   } catch (err) {
-    shift.assignments.splice(index, 1);
+    // A rest day needs the manager's decision; keep the chip while asking.
+    if (err.response?.status === 409 && err.response.data?.code === 'rest_window_conflict') {
+      restPrompt.value = { shift, item, index, conflict: err.response.data };
+      return 'prompted';
+    }
+    const i = shift.assignments.indexOf(item);
+    if (i !== -1) shift.assignments.splice(i, 1);
     const msg = err.response?.data?.message || 'Failed to assign user.';
     showToast(msg, 'error');
+    return 'failed';
   }
+}
+
+const restPrompt = ref(null); // { shift, item, index, conflict }
+
+async function chooseRestPolicy(policy) {
+  const { shift, item, index } = restPrompt.value;
+  restPrompt.value = null;
+  const status = await doAssign(shift, item, index, policy);
+  if (status === 'assigned') showToast('Assigned during rest.', 'success');
+}
+
+function cancelRestPolicy() {
+  const { shift, item } = restPrompt.value;
+  restPrompt.value = null;
+  const i = shift.assignments.indexOf(item);
+  if (i !== -1) shift.assignments.splice(i, 1);
 }
 
 function cancelAvailConfirm() {
@@ -2661,8 +2696,8 @@ async function confirmAdjacentAssign() {
   const { shift, item, itemIndex } = adjacentConfirm.value;
   adjacentConfirm.value.show = false;
   if (shift && item) {
-    await doAssign(shift, item, itemIndex);
-    showToast('Assigned to back-to-back shift.', 'success');
+    const status = await doAssign(shift, item, itemIndex);
+    if (status === 'assigned') showToast('Assigned to back-to-back shift.', 'success');
   }
   adjacentConfirm.value = {
     show: false,

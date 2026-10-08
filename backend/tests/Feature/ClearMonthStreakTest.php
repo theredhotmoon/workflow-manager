@@ -3,68 +3,37 @@
 use App\Models\Shift;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
-use App\Models\ShiftStreakState;
 use App\Models\User;
+use App\Services\StreakReplay;
+use Illuminate\Support\Carbon;
 
-it('reverses streak bookkeeping for assignments deleted by clear-month', function () {
+it('clearing a month removes its assignments from the streak replay', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $rule = ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
+    ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 2]);
     $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    foreach (['2029-01-01', '2029-01-02'] as $date) {
+        $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);
+        $this->actingAs($maintainer)->postJson('/api/schedule/assign', ['shift_id' => $shift->id, 'user_id' => $employee->id])->assertCreated();
+    }
+    $replay = fn () => app(StreakReplay::class)->forGroup($group, [$employee->id], Carbon::parse('2029-02-01'));
+    expect($replay()->isResting($employee->id, Carbon::parse('2029-01-03')))->toBeTrue();
 
-    $shift1 = Shift::create([
-        'date' => '2026-09-01', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
-    ]);
-    $shift2 = Shift::create([
-        'date' => '2026-09-02', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
-    ]);
-
-    $this->actingAs($maintainer)->postJson('/api/schedule/assign', [
-        'shift_id' => $shift1->id,
-        'user_id' => $employee->id,
-    ])->assertCreated();
-
-    $this->actingAs($maintainer)->postJson('/api/schedule/assign', [
-        'shift_id' => $shift2->id,
-        'user_id' => $employee->id,
-    ])->assertCreated();
-
-    $state = ShiftStreakState::where('user_id', $employee->id)->where('shift_streak_rule_id', $rule->id)->first();
-    expect($state->current_count)->toBe(2);
-
-    $response = $this->actingAs($maintainer)->deleteJson('/api/schedule/clear-month', [
-        'month' => '2026-09',
-        'shift_group_id' => $group->id,
-    ]);
-
-    $response->assertOk();
+    $this->actingAs($maintainer)->deleteJson('/api/schedule/clear-month', ['month' => '2029-01', 'shift_group_id' => $group->id])->assertOk();
 
     expect(Shift::where('shift_group_id', $group->id)->count())->toBe(0);
-
-    $state->refresh();
-    expect($state->current_count)->toBe(0);
+    expect($replay()->isResting($employee->id, Carbon::parse('2029-01-03')))->toBeFalse();
 });
 
-it('is a no-op for streak bookkeeping when the group has no streak rules configured', function () {
+it('clears a month for a group with no streak rules configured', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $shift = Shift::create(['date' => '2026-09-01', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);
+    $this->actingAs($maintainer)->postJson('/api/schedule/assign', ['shift_id' => $shift->id, 'user_id' => $employee->id])->assertCreated();
 
-    $shift = Shift::create([
-        'date' => '2026-09-01', 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
-    ]);
+    $this->actingAs($maintainer)->deleteJson('/api/schedule/clear-month', ['month' => '2026-09', 'shift_group_id' => $group->id])
+        ->assertOk();
 
-    $this->actingAs($maintainer)->postJson('/api/schedule/assign', [
-        'shift_id' => $shift->id,
-        'user_id' => $employee->id,
-    ])->assertCreated();
-
-    $response = $this->actingAs($maintainer)->deleteJson('/api/schedule/clear-month', [
-        'month' => '2026-09',
-        'shift_group_id' => $group->id,
-    ]);
-
-    $response->assertOk();
     expect(Shift::where('shift_group_id', $group->id)->count())->toBe(0);
-    expect(ShiftStreakState::count())->toBe(0);
 });

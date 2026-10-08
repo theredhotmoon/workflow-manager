@@ -10,11 +10,11 @@
 
       <!-- Month Navigator -->
       <div class="flex items-center justify-center gap-3 mb-6">
-        <button @click="prevMonth" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+        <button @click="prevMonth" aria-label="Previous month" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
         <span class="text-white font-semibold text-lg min-w-[180px] text-center">{{ monthLabel }}</span>
-        <button @click="nextMonth" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+        <button @click="nextMonth" aria-label="Next month" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
         </button>
       </div>
@@ -152,12 +152,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
-import { confirm } from '../composables/useConfirm.js';
-import { useToast } from '../composables/useToast.js';
+import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { useToast } from '../composables/useToast.js';
 
 const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth());
@@ -260,12 +261,18 @@ function editClosure(c) {
   showModal.value = true;
 }
 
+// Month steps and the refetch after a save/delete overlap; only the latest may apply, so an older
+// month's closures never show under the current month's label.
+const closureRequests = useLatestRequest();
+
 async function fetchClosures() {
+  const token = closureRequests.begin();
   try {
     const res = await api.get('/api/office-closures', { params: { month: monthKey.value } });
+    if (!closureRequests.isCurrent(token)) return;
     closures.value = res.data;
   } catch {
-    closures.value = [];
+    if (closureRequests.isCurrent(token)) closures.value = [];
   }
 }
 

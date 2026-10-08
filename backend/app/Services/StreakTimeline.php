@@ -11,6 +11,10 @@ use Illuminate\Support\Collection;
  * Streak state derived by replaying an employee's assignments, in (date, slot) order, through a
  * group's streak rules. Nothing is stored, so it can't drift and needs no locking. Rules:
  * docs/superpowers/specs/2026-10-07-streak-replay-design.md ("Semantics").
+ *
+ * Auto-fill asks isResting() once per (employee, shift), so the replay works on integer day
+ * numbers (days since 1970-01-01) and only scans still-open windows; Carbon is built only for
+ * returned values.
  */
 final class StreakTimeline
 {
@@ -19,8 +23,14 @@ final class StreakTimeline
     public const EXTENDS_REST = 'extends_rest';
     public const POLICIES = [self::NOT_COUNTED, self::COUNTS, self::EXTENDS_REST];
 
-    /** @var array<int, list<array{date: string, shift_number: int, shift_type: ?string, rest_policy: ?string}>> */
+    /** @var array<int, list<array{day: int, shift_number: int, shift_type: ?string, rest_policy: ?string}>> */
     private array $eventsByUser = [];
+
+    /** @var array<string, int> */
+    private array $streakLength = [];
+
+    /** @var array<string, int> */
+    private array $restDays = [];
 
     /**
      * @param  Collection<string, ShiftStreakRule>  $rules  keyed by shift_type
@@ -28,9 +38,22 @@ final class StreakTimeline
      */
     public function __construct(private Collection $rules, array $eventsByUser)
     {
+        foreach ($rules as $type => $rule) {
+            $this->streakLength[$type] = (int) $rule->streak_length;
+            $this->restDays[$type] = (int) $rule->rest_days;
+        }
         foreach ($eventsByUser as $userId => $events) {
-            usort($events, [self::class, 'compareEvents']);
-            $this->eventsByUser[(int) $userId] = $events;
+            $mapped = [];
+            foreach ($events as $event) {
+                $mapped[] = [
+                    'day' => self::dayNumber($event['date']),
+                    'shift_number' => (int) $event['shift_number'],
+                    'shift_type' => $event['shift_type'],
+                    'rest_policy' => $event['rest_policy'] ?? null,
+                ];
+            }
+            usort($mapped, [self::class, 'compareEvents']);
+            $this->eventsByUser[(int) $userId] = $mapped;
         }
     }
 
@@ -41,33 +64,36 @@ final class StreakTimeline
 
     public function append(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy = null): void
     {
-        $this->eventsByUser[$userId][] = [
-            'date' => $date->toDateString(),
+        $event = [
+            'day' => self::dayNumber($date->toDateString()),
             'shift_number' => $shiftNumber,
             'shift_type' => $shiftType,
             'rest_policy' => $restPolicy,
         ];
-        usort($this->eventsByUser[$userId], [self::class, 'compareEvents']);
+        $events = $this->eventsByUser[$userId] ?? [];
+        $last = end($events);
+        $events[] = $event;
+        if ($last !== false && self::compareEvents($last, $event) > 0) {
+            usort($events, [self::class, 'compareEvents']);
+        }
+        $this->eventsByUser[$userId] = $events;
     }
 
     public function isResting(int $userId, \Carbon\Carbon $day): bool
     {
-        return $this->activeWindow($userId, $day) !== null;
+        return $this->latestCovering($userId, self::dayNumber($day->toDateString())) !== null;
     }
 
     /** @return array{rule: ShiftStreakRule, start: Carbon, end: Carbon}|null the covering window that ends last */
     public function activeWindow(int $userId, \Carbon\Carbon $day): ?array
     {
-        $day = $day->copy()->startOfDay();
-        $latest = null;
-        foreach ($this->replay($userId, $day)['windows'] as $window) {
-            if ($day->betweenIncluded($window['start'], $window['end'])
-                && ($latest === null || $window['end']->gt($latest['end']))) {
-                $latest = $window;
-            }
-        }
+        $window = $this->latestCovering($userId, self::dayNumber($day->toDateString()));
 
-        return $latest;
+        return $window === null ? null : [
+            'rule' => $window['rule'],
+            'start' => self::toCarbon($window['start']),
+            'end' => self::toCarbon($window['end']),
+        ];
     }
 
     /**
@@ -78,31 +104,49 @@ final class StreakTimeline
      */
     public function statusAsOf(int $userId, \Carbon\Carbon $until, ?\Carbon\Carbon $windowsFrom = null): array
     {
-        $state = $this->replay($userId, $until->copy()->startOfDay());
-        $from = ($windowsFrom ?? $until)->copy()->startOfDay();
+        $state = $this->replay($userId, self::dayNumber($until->toDateString()));
+        $from = self::dayNumber(($windowsFrom ?? $until)->toDateString());
 
         $status = [];
         foreach ($this->rules as $type => $rule) {
             $end = null;
             foreach ($state['windows'] as $window) {
-                if ($window['rule']->shift_type === $type && $window['end']->gte($from)
-                    && ($end === null || $window['end']->gt($end))) {
+                if ($window['type'] === $type && $window['end'] >= $from
+                    && ($end === null || $window['end'] > $end)) {
                     $end = $window['end'];
                 }
             }
             $status[] = [
                 'shift_type' => $type,
                 'current_count' => $state['counts'][$type] ?? 0,
-                'streak_length' => (int) $rule->streak_length,
-                'resting_until' => $end === null ? null : $end->toDateString(),
+                'streak_length' => $this->streakLength[$type],
+                'resting_until' => $end === null ? null : gmdate('Y-m-d', $end * 86400),
             ];
         }
 
         return $status;
     }
 
-    /** @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, start: Carbon, end: Carbon}>} */
-    private function replay(int $userId, \Carbon\Carbon $until): array
+    /** @return array{rule: ShiftStreakRule, type: string, start: int, end: int}|null */
+    private function latestCovering(int $userId, int $day): ?array
+    {
+        $latest = null;
+        foreach ($this->replay($userId, $day)['windows'] as $window) {
+            if ($day >= $window['start'] && $day <= $window['end']
+                && ($latest === null || $window['end'] > $latest['end'])) {
+                $latest = $window;
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
+     * Replays the user's events with day < $until. Windows come back in creation order.
+     *
+     * @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>}
+     */
+    private function replay(int $userId, int $until): array
     {
         $counts = [];
         $windows = [];
@@ -110,16 +154,20 @@ final class StreakTimeline
             return ['counts' => $counts, 'windows' => $windows];
         }
 
-        $untilStr = $until->toDateString();
+        // Indexes into $windows that can still cover the current event. Events come in day order,
+        // so a window ending before the current day can never cover (or be extended by) a later one.
+        $open = [];
         foreach ($this->eventsByUser[$userId] ?? [] as $event) {
-            if ($event['date'] >= $untilStr) {
+            $day = $event['day'];
+            if ($day >= $until) {
                 break;
             }
-            $day = Carbon::parse($event['date'])->startOfDay();
 
             $covering = [];
-            foreach ($windows as $i => $window) {
-                if ($day->betweenIncluded($window['start'], $window['end'])) {
+            foreach ($open as $k => $i) {
+                if ($windows[$i]['end'] < $day) {
+                    unset($open[$k]);
+                } elseif ($day >= $windows[$i]['start']) {
                     $covering[] = $i;
                 }
             }
@@ -128,8 +176,8 @@ final class StreakTimeline
                 $policy = $event['rest_policy'] ?? self::NOT_COUNTED;
                 if ($policy === self::EXTENDS_REST) {
                     foreach ($covering as $i) {
-                        $candidate = $day->copy()->addDays((int) $windows[$i]['rule']->rest_days);
-                        if ($candidate->gt($windows[$i]['end'])) {
+                        $candidate = $day + $this->restDays[$windows[$i]['type']];
+                        if ($candidate > $windows[$i]['end']) {
                             $windows[$i]['end'] = $candidate;
                         }
                     }
@@ -139,19 +187,20 @@ final class StreakTimeline
                 }
             }
 
-            $rule = $event['shift_type'] !== null ? $this->rules->get($event['shift_type']) : null;
-            if ($rule === null) {
+            $type = $event['shift_type'];
+            if ($type === null || !isset($this->streakLength[$type])) {
                 continue;
             }
 
-            $type = $rule->shift_type;
             $counts[$type] = ($counts[$type] ?? 0) + 1;
-            if ($counts[$type] >= (int) $rule->streak_length) {
+            if ($counts[$type] >= $this->streakLength[$type]) {
                 $windows[] = [
-                    'rule' => $rule,
-                    'start' => $day->copy()->addDay(),
-                    'end' => $day->copy()->addDays((int) $rule->rest_days),
+                    'rule' => $this->rules->get($type),
+                    'type' => $type,
+                    'start' => $day + 1,
+                    'end' => $day + $this->restDays[$type],
                 ];
+                $open[] = count($windows) - 1;
                 $counts[$type] = 0;
             }
         }
@@ -159,8 +208,21 @@ final class StreakTimeline
         return ['counts' => $counts, 'windows' => $windows];
     }
 
+    /** Days since 1970-01-01 for a 'Y-m-d' date. */
+    private static function dayNumber(string $date): int
+    {
+        [$y, $m, $d] = explode('-', substr($date, 0, 10));
+
+        return intdiv(gmmktime(0, 0, 0, (int) $m, (int) $d, (int) $y), 86400);
+    }
+
+    private static function toCarbon(int $day): Carbon
+    {
+        return Carbon::parse(gmdate('Y-m-d', $day * 86400))->startOfDay();
+    }
+
     private static function compareEvents(array $a, array $b): int
     {
-        return [$a['date'], $a['shift_number']] <=> [$b['date'], $b['shift_number']];
+        return [$a['day'], $a['shift_number']] <=> [$b['day'], $b['shift_number']];
     }
 }

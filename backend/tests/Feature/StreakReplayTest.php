@@ -184,3 +184,34 @@ it('treats a later slot on the day the window opens as a normal shift, not a res
     expect($t->statusAsOf(1, Carbon::parse('2029-01-03'))[0]['current_count'])->toBe(1);
     expect($t->isResting(1, Carbon::parse('2029-01-03')))->toBeTrue();
 });
+
+it('answers a month of auto-fill isResting calls quickly over years of history', function () {
+    // 30 users x 3 years, ~75 events per user per year, alternating day/night.
+    $events = [];
+    for ($u = 1; $u <= 30; $u++) {
+        $d = Carbon::parse('2026-01-01');
+        for ($i = 0; $i < 225; $i++) {
+            $events[$u][] = srlEvent($d->toDateString(), $i % 3 === 2 ? 'night' : 'day', null, 1 + $i % 3);
+            $d->addDays(4);
+        }
+    }
+    $t = new StreakTimeline(srlRules([['night', 3, 2], ['day', 5, 1]]), $events);
+
+    $day = Carbon::parse('2029-01-01');
+    $calls = 0;
+    $started = microtime(true);
+    for ($d = 0; $d < 30; $d++) {
+        for ($slot = 1; $slot <= 3; $slot++) {
+            for ($u = 1; $u <= 30; $u++) {
+                $t->isResting($u, $day);
+                $calls++;
+            }
+            $t->append(($d * 3 + $slot) % 30 + 1, 'night', $day, $slot);
+        }
+        $day->addDay();
+    }
+    $elapsed = microtime(true) - $started;
+
+    expect($calls)->toBe(2700);
+    expect($elapsed)->toBeLessThan(3.0);
+});

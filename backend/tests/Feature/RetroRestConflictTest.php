@@ -94,3 +94,59 @@ it('flags in_rest after a retype makes an existing shift a rest day', function (
     $after = $this->actingAs($this->maintainer)->getJson("/api/schedule?month=2029-01&shift_group_id={$this->group->id}");
     expect(collect($after->json('schedule.2029-01-05.0.assignments'))->firstWhere('user_id', $this->employee->id)['in_rest'])->toBeTrue();
 });
+
+it('reports a plural, deduplicated message when two later shifts would go into rest', function () {
+    // 01-04 is a day shift (never counts): baseline 02 c1, 05 c2 → window 06..07. Assigning 03 → window 04..05.
+    $this->shifts['2029-01-04']->update(['shift_type' => 'day']);
+    ShiftAssignment::create(['shift_id' => $this->shifts['2029-01-04']->id, 'user_id' => $this->employee->id]);
+
+    $res = rrcAssign($this, '2029-01-03')->assertStatus(409)->assertJson(['code' => 'creates_rest_conflict']);
+    expect($res->json('affected'))->toHaveCount(2);
+    expect($res->json('message'))->toContain('makes 2029-01-04 and 2029-01-05 rest days for this employee (night: 2 in a row');
+});
+
+it('answers both conflicts in turn: dropped day is a rest day, and counting it would rest a later shift', function () {
+    // Nights 01-01, 01-02 → window 01-03..01-04. Existing 01-05 (c1) and 01-06 (c2) → window 01-07..01-08.
+    $d1 = Shift::create(['date' => '2029-01-01', 'shift_number' => 1, 'shift_group_id' => $this->group->id, 'shift_type' => 'night']);
+    ShiftAssignment::create(['shift_id' => $d1->id, 'user_id' => $this->employee->id]);
+    $d6 = Shift::create(['date' => '2029-01-06', 'shift_number' => 1, 'shift_group_id' => $this->group->id, 'shift_type' => 'night']);
+    $a6 = ShiftAssignment::create(['shift_id' => $d6->id, 'user_id' => $this->employee->id]);
+
+    rrcAssign($this, '2029-01-04')->assertStatus(409)->assertJson(['code' => 'rest_window_conflict']);
+
+    // 'counts' on 01-04 → 04 c1, 05 c2 → window 01-06..01-07 now covers the existing 01-06.
+    rrcAssign($this, '2029-01-04', ['rest_policy' => 'counts'])->assertStatus(409)->assertJson([
+        'code' => 'creates_rest_conflict',
+        'affected' => [['assignment_id' => $a6->id, 'date' => '2029-01-06']],
+    ]);
+
+    $res = rrcAssign($this, '2029-01-04', ['rest_policy' => 'counts', 'later_rest_policy' => 'extends_rest'])
+        ->assertCreated()
+        ->assertJson(['rest_policy' => 'counts', 'updated_assignment_ids' => [$a6->id], 'updated_rest_policy' => 'extends_rest']);
+    expect(ShiftAssignment::find($res->json('id'))->rest_policy)->toBe('counts');
+    expect($a6->fresh()->rest_policy)->toBe('extends_rest');
+});
+
+it('flags in_rest per group in the all-groups payload', function () {
+    ShiftAssignment::create(['shift_id' => $this->shifts['2029-01-03']->id, 'user_id' => $this->employee->id]); // rest 01-04..01-05
+    $other = ShiftGroup::create(['name' => 'Other', 'is_default' => false, 'sort_order' => 1]);
+    $otherShift = Shift::create(['date' => '2029-01-05', 'shift_number' => 1, 'shift_group_id' => $other->id, 'shift_type' => 'night']);
+    ShiftAssignment::create(['shift_id' => $otherShift->id, 'user_id' => $this->employee->id]);
+
+    $payload = $this->actingAs($this->maintainer)->getJson('/api/schedule?month=2029-01&shift_group_id=all');
+    $day = collect($payload->json('schedule.2029-01-05'));
+    $main = collect($day->firstWhere('shift_group_id', $this->group->id)['assignments'])->firstWhere('user_id', $this->employee->id);
+    $oth = collect($day->firstWhere('shift_group_id', $other->id)['assignments'])->firstWhere('user_id', $this->employee->id);
+    expect($main)->toMatchArray(['in_rest' => true, 'resting_until' => '2029-01-05']);
+    expect($oth)->toMatchArray(['in_rest' => false, 'resting_until' => null]);
+});
+
+it('includes in_rest and resting_until in the updateDayShifts payload', function () {
+    ShiftAssignment::create(['shift_id' => $this->shifts['2029-01-03']->id, 'user_id' => $this->employee->id]); // rest 01-04..01-05
+
+    $res = $this->actingAs($this->maintainer)->putJson('/api/schedule/day-shifts', [
+        'date' => '2029-01-05', 'count' => 1, 'shift_group_id' => $this->group->id,
+    ])->assertOk();
+    $a = collect($res->json('shifts.0.assignments'))->firstWhere('user_id', $this->employee->id);
+    expect($a)->toMatchArray(['in_rest' => true, 'resting_until' => '2029-01-05']);
+});

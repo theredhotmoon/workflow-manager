@@ -349,11 +349,14 @@ class ScheduleController extends Controller
             : [];
         if ($affected !== [] && !$request->filled('later_rest_policy')) {
             $rule = $affected[0]['rule'];
-            $dates = implode(', ', array_map(fn($a) => $a['date'], $affected));
+            $dateList = array_values(array_unique(array_map(fn($a) => $a['date'], $affected)));
+            $last = array_pop($dateList);
+            $dates = $dateList === [] ? $last : implode(', ', $dateList).' and '.$last;
+            $dayNoun = $dateList === [] ? 'a rest day' : 'rest days';
 
             return response()->json([
                 'code' => 'creates_rest_conflict',
-                'message' => "Assigning this shift makes {$dates} a rest day for this employee ({$rule->shift_type}: {$rule->streak_length} in a row, then {$rule->rest_days} days off).",
+                'message' => "Assigning this shift makes {$dates} {$dayNoun} for this employee ({$rule->shift_type}: {$rule->streak_length} in a row, then {$rule->rest_days} days off).",
                 'affected' => array_map(fn($a) => [
                     'assignment_id' => $a['assignment_id'],
                     'date' => $a['date'],

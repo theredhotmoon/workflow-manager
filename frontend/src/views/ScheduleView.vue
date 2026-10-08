@@ -2567,8 +2567,9 @@ async function doAssign(
     item.user_name = response.data.user_name;
     item.rest_policy = response.data.rest_policy;
     const updatedIds = response.data.updated_assignment_ids || [];
-    // Other chips' ⚠ / ⏸ / resting-until depend on this assignment: reload them from the server.
-    if (updatedIds.length || response.data.rest_policy) await fetchSchedule({ quiet: true });
+    // Any assignment can start, move or end a rest window, so other chips' ⚠ / ⏸ / resting-until
+    // can change: reload them from the server.
+    await fetchSchedule({ quiet: true });
     return { status: 'assigned', updatedCount: updatedIds.length };
   } catch (err) {
     // A rest day needs the manager's decision; keep the chip while asking.
@@ -2608,7 +2609,9 @@ async function chooseRestPolicy(policy) {
   if (status === 'assigned') {
     showToast(
       updatedCount === 0
-        ? 'Assigned during rest.'
+        ? conflict.code === 'rest_window_conflict' || restPolicy
+          ? 'Assigned during rest.'
+          : 'Assigned.'
         : updatedCount === 1
           ? 'Assigned; later shift updated.'
           : 'Assigned; later shifts updated.',

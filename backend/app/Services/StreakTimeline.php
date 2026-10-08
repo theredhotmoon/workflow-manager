@@ -183,7 +183,10 @@ final class StreakTimeline
      * the shifts newlyResting() reports, then, round by round, the shifts that stamping $policy on
      * the previous round pushes into rest (counts can complete a new streak, extends_rest lengthens
      * a window). Each round's shifts are those covered now but not in the previous round's state
-     * (the first round compares with the history without the candidate). Ids in stamping order.
+     * (the first round compares with the history without the candidate). From the second round on, a
+     * shift that was already on a rest day before the assign with its own policy keeps that answer:
+     * the manager was never shown it. Only shifts still covered at the end are returned (a later
+     * round can move a window off an earlier one). Ids in stamping order.
      *
      * @return list<int>
      */
@@ -195,7 +198,14 @@ final class StreakTimeline
             return [];
         }
 
-        $previous = $this->coveredIds($events, $this->coveredCache[$userId] ??= $this->replayEvents($events, PHP_INT_MAX)['covered']);
+        $before = $this->coveredIds($events, $this->coveredCache[$userId] ??= $this->replayEvents($events, PHP_INT_MAX)['covered']);
+        $answered = [];
+        foreach ($before as $id => $pos) {
+            if ($events[$pos]['rest_policy'] !== null) {
+                $answered[$id] = true;
+            }
+        }
+        $previous = $before;
         [$with] = self::withCandidate($events, $day, $shiftType, $shiftNumber, $restPolicy);
         $stamped = [];
         // Every round stamps at least one new id, so the loop ends on its own; the bound is a safeguard.
@@ -203,7 +213,7 @@ final class StreakTimeline
             $covered = $this->coveredIds($with, $this->replayEvents($with, PHP_INT_MAX)['covered']);
             $new = [];
             foreach ($covered as $id => $pos) {
-                if (!isset($previous[$id]) && !isset($stamped[$id])) {
+                if (!isset($previous[$id]) && !isset($stamped[$id]) && !isset($answered[$id])) {
                     $new[$id] = $pos;
                 }
             }
@@ -217,7 +227,10 @@ final class StreakTimeline
             $previous = $covered;
         }
 
-        return array_keys($stamped);
+        // A policy only matters on a rest day, so dropping the ones a later round uncovered changes nothing.
+        $final = $this->coveredIds($with, $this->replayEvents($with, PHP_INT_MAX)['covered']);
+
+        return array_values(array_filter(array_keys($stamped), fn ($id) => isset($final[$id])));
     }
 
     public function wouldConflict(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber): bool

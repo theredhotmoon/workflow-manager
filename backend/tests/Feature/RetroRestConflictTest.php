@@ -225,3 +225,41 @@ it('rejects a malformed expected_affected_ids', function () {
     rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'counts', 'expected_affected_ids' => ['x']])
         ->assertStatus(422)->assertJsonValidationErrors(['expected_affected_ids.0']);
 });
+
+it('leaves a deliberate earlier answer alone on a shift the manager was not shown', function () {
+    // Rule night 2 -> 3. Nights 02, 05 and 08; 08 was answered 'counts' (02+05 rest 06..08 covers it).
+    // Assigning 03 rests 05 (shown) and uncovers 08; extending the rest from 05 covers 08 again.
+    ShiftStreakRule::where('shift_group_id', $this->group->id)->update(['rest_days' => 3]);
+    $a8 = rrcNight($this, '2029-01-08');
+    $a8->update(['rest_policy' => 'counts']);
+    $a5 = $this->existing['2029-01-05'];
+
+    $res = rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'extends_rest', 'expected_affected_ids' => [$a5->id]])
+        ->assertCreated();
+    expect($res->json('updated_assignment_ids'))->toBe([$a5->id]);
+    expect($a5->fresh()->rest_policy)->toBe('extends_rest');
+    expect($a8->fresh()->rest_policy)->toBe('counts');
+});
+
+it('only updates shifts still on a rest day once the choice is applied', function () {
+    // Rule night 2 -> 3. Nights 04, 06 (counts), 10, 11 (counts); none on a rest day yet.
+    // Assigning 03: 03+04 rest 05..07 covers 06, which counts, so 06+10 rest 11..13 covers 11: both shown.
+    // Choosing extends_rest makes 06 stop counting, so 10+11 is a streak again and 11 is not on a rest day.
+    ShiftStreakRule::where('shift_group_id', $this->group->id)->update(['rest_days' => 3]);
+    ShiftAssignment::query()->delete();
+    rrcNight($this, '2029-01-04');
+    $a6 = rrcNight($this, '2029-01-06');
+    $a6->update(['rest_policy' => 'counts']);
+    rrcNight($this, '2029-01-10');
+    $a11 = rrcNight($this, '2029-01-11');
+    $a11->update(['rest_policy' => 'counts']);
+
+    expect(array_column(rrcAssign($this, '2029-01-03')->assertStatus(409)->json('affected'), 'assignment_id'))->toBe([$a6->id, $a11->id]);
+
+    $res = rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'extends_rest', 'expected_affected_ids' => [$a6->id, $a11->id]])
+        ->assertCreated();
+    expect($res->json('updated_assignment_ids'))->toBe([$a6->id]);
+    expect($a6->fresh()->rest_policy)->toBe('extends_rest');
+    expect($a11->fresh()->rest_policy)->toBe('counts');
+    expect(rrcPayloadAssignment($this, '2029-01-11')['resting_until'])->toBeNull();
+});

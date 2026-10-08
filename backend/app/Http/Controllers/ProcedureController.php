@@ -57,11 +57,16 @@ class ProcedureController extends Controller
         $sortableColumns = ['title', 'identifier', 'created_at', 'updated_at'];
         $sortBy = $request->input('sort_by', 'updated_at');
         $sortDir = $request->input('sort_dir', 'desc');
+        $direction = $sortDir === 'asc' ? 'asc' : 'desc';
         if (in_array($sortBy, $sortableColumns)) {
-            $query->orderBy($sortBy, $sortDir === 'asc' ? 'asc' : 'desc');
+            $query->orderBy($sortBy, $direction);
         } else {
             $query->orderByDesc('updated_at');
+            $direction = 'desc';
         }
+        // Tie-break on id so the order is total: rows sharing a timestamp (or title) otherwise come
+        // back in an arbitrary order per request, and paging through the list repeats or skips them.
+        $query->orderBy('procedures.id', $direction);
 
         // Pagination
         $perPage = (int) $request->input('per_page', 30);

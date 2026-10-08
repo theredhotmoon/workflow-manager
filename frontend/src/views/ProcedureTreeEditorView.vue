@@ -111,6 +111,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import TreeEditNode from '../components/procedure/TreeEditNode.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { fetchAllPages } from '../fetchAllPages.js';
 
 const treeData = ref([]);
 const allProcedures = ref([]);
@@ -189,27 +190,14 @@ async function fetchTree() {
   } catch {}
 }
 
-// /api/procedures is paginated (at most 100 per page); "unassigned" needs every procedure.
-async function fetchAllProcedures() {
-  const all = [];
-  let page = 1;
-  let lastPage = 1;
-  do {
-    const res = await api.get('/api/procedures', { params: { per_page: 100, page } });
-    all.push(...res.data.data);
-    lastPage = res.data.last_page;
-    page++;
-  } while (page <= lastPage);
-  return all;
-}
-
 async function fetchData() {
   const token = treeRequests.begin();
   loadingTree.value = true;
   try {
     const [treeRes, procedures] = await Promise.all([
       api.get('/api/procedures-tree'),
-      fetchAllProcedures(),
+      // /api/procedures is paginated; "unassigned" needs every procedure.
+      fetchAllPages((url, config) => api.get(url, config), '/api/procedures'),
     ]);
     if (!treeRequests.isCurrent(token)) return;
     treeData.value = treeRes.data;

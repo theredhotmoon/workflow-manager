@@ -115,3 +115,162 @@ export async function setShiftType(context, { shiftId, shiftType }) {
   if (!res.ok()) throw new Error(`set shift type failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function createDelegation(context, { name, destination, start, end, userIds = [] }) {
+  const headers = await getXsrfHeader(context);
+  const data = {
+    name,
+    destination,
+    start_datetime: `${start} 08:00:00`,
+    end_datetime: `${end} 18:00:00`,
+  };
+  if (userIds.length) data.user_ids = userIds;
+  const res = await send(context, 'post', '/api/delegations', { data, headers });
+  if (!res.ok()) throw new Error(`create delegation failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createNewbiePeriod(context, { userId, startDate, endDate }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/newbie-periods', {
+    data: { user_id: userId, start_date: startDate, end_date: endDate },
+    headers,
+  });
+  if (!res.ok())
+    throw new Error(`create newbie period failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createOfficeClosure(context, { startDate, endDate = startDate, title }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/office-closures', {
+    data: { start_date: startDate, end_date: endDate, title },
+    headers,
+  });
+  if (!res.ok())
+    throw new Error(`create office closure failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Availability entries always belong to the logged-in user of `context`.
+export async function createAvailability(context, { type, startDate, endDate = startDate }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/user-availabilities', {
+    data: { type, start_date: startDate, end_date: endDate },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create availability failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createOnCallAssignment(context, { shiftGroupId, userId, startsAt, endsAt }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/on-call-assignments', {
+    data: { shift_group_id: shiftGroupId, user_id: userId, starts_at: startsAt, ends_at: endsAt },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create on-call failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createProcedure(context, { title, ownerId, content = `<p>${title}</p>` }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/procedures', {
+    data: { title, owner_id: ownerId, content },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create procedure failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Notifies the procedure owner (alarm type PROCEDURE_NEW_QUESTION_ADDED) when asked by someone else.
+export async function askFaqQuestion(context, procedureId, question) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', `/api/procedures/${procedureId}/faq`, {
+    data: { question },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`ask FAQ question failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Notifies the procedure owner (alarm type PROCEDURE_NEW_ISSUE_REPORTED) when reported by someone else.
+export async function reportProcedureIssue(context, procedureId, description) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', `/api/procedures/${procedureId}/feedback`, {
+    data: { type: 'error', description },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`report issue failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createChecklistTemplate(
+  context,
+  { name, requiresConfirmation = false, procedureIds = [] },
+) {
+  const headers = await getXsrfHeader(context);
+  const items = procedureIds.length
+    ? procedureIds.map((procedureId, i) => ({
+        label: `${name} item ${i + 1}`,
+        type: 'checkbox',
+        requires_confirmation: requiresConfirmation,
+        procedure_id: procedureId,
+      }))
+    : [{ label: `${name} item`, type: 'checkbox', requires_confirmation: requiresConfirmation }];
+  const res = await send(context, 'post', '/api/checklist-templates', {
+    data: { name, is_active: true, groups: [{ name: `${name} group`, items }] },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create template failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createChecklistSubmission(
+  context,
+  { template, date, outgoingUserId, incomingUserId = null },
+) {
+  const headers = await getXsrfHeader(context);
+  const responses = template.groups
+    .flatMap((group) => group.items)
+    .map((item) => ({ checklist_item_id: item.id, value: 'true' }));
+  const res = await send(context, 'post', '/api/checklist-submissions', {
+    data: {
+      checklist_template_id: template.id,
+      date,
+      outgoing_user_id: outgoingUserId,
+      incoming_user_id: incomingUserId,
+      responses,
+    },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create submission failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function archiveDelegation(context, delegationId) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', `/api/delegations/${delegationId}/archive`, { headers });
+  if (!res.ok()) throw new Error(`archive delegation failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Publishes a new version through the draft flow, which also stores a version snapshot.
+export async function publishProcedureVersion(
+  context,
+  procedureId,
+  { title, content = `<p>${title}</p>`, changeReason },
+) {
+  const headers = await getXsrfHeader(context);
+  const draft = await send(context, 'put', `/api/procedures/${procedureId}/draft`, {
+    data: { title, content },
+    headers,
+  });
+  if (!draft.ok()) throw new Error(`save draft failed: ${draft.status()} ${await draft.text()}`);
+  const res = await send(context, 'post', `/api/procedures/${procedureId}/publish`, {
+    data: { change_reason: changeReason },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`publish failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

@@ -207,6 +207,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast';
 
 const loading = ref(true);
@@ -317,26 +318,26 @@ function formatTime(isoStr) {
 
 // Switching months while a load is in flight overlaps fetches. Only the latest one may apply its
 // result — otherwise a slower load of the previous month shows its shifts under the new month's
-// heading.
-let shiftsRequestSeq = 0;
+// heading. Both requests belong to one load, so one token covers the Promise.all.
+const shiftsRequests = useLatestRequest();
 
 async function fetchMyShifts() {
-  const requestSeq = ++shiftsRequestSeq;
+  const token = shiftsRequests.begin();
   loading.value = true;
   try {
     const [shiftRes, delRes] = await Promise.all([
       api.get('/api/my-shifts', { params: { month: monthKey.value } }),
       api.get('/api/my-delegations', { params: { month: monthKey.value } }),
     ]);
-    if (requestSeq !== shiftsRequestSeq) return;
+    if (!shiftsRequests.isCurrent(token)) return;
     shifts.value = shiftRes.data;
     delegations.value = delRes.data;
   } catch {
-    if (requestSeq !== shiftsRequestSeq) return;
+    if (!shiftsRequests.isCurrent(token)) return;
     shifts.value = {};
     delegations.value = [];
   } finally {
-    if (requestSeq === shiftsRequestSeq) loading.value = false;
+    if (shiftsRequests.isCurrent(token)) loading.value = false;
   }
 }
 

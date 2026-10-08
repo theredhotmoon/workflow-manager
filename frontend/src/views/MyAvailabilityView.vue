@@ -10,11 +10,11 @@
 
       <!-- Month Navigator -->
       <div class="flex items-center justify-center gap-3 mb-6">
-        <button @click="prevMonth" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+        <button @click="prevMonth" aria-label="Previous month" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
         <span class="text-white font-semibold text-lg min-w-[180px] text-center">{{ monthLabel }}</span>
-        <button @click="nextMonth" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+        <button @click="nextMonth" aria-label="Next month" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
         </button>
       </div>
@@ -26,7 +26,7 @@
             class="px-2 py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">{{ d }}</div>
         </div>
         <div v-for="(week, wi) in calendarWeeks" :key="wi" class="grid grid-cols-7 border-b border-white/5 last:border-b-0">
-          <div v-for="(day, di) in week" :key="di"
+          <div v-for="(day, di) in week" :key="di" :data-date="day.dateStr"
             :class="[
               'border-r border-white/5 last:border-r-0 min-h-[80px] p-2 transition-colors cursor-pointer',
               day.isCurrentMonth ? 'hover:bg-white/5' : 'bg-white/[0.02] opacity-40',
@@ -154,6 +154,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 
 const currentYear = ref(new Date().getFullYear());
@@ -250,12 +251,19 @@ function openAddModal(dateStr) {
   showModal.value = true;
 }
 
+// The entries list is reloaded on every month change. A reload that started before a save/delete
+// would resurrect a deleted entry or drop an added one, so local mutations invalidate it, and only
+// the latest reload may apply or report an error.
+const entriesRequests = useLatestRequest();
+
 async function fetchEntries() {
+  const token = entriesRequests.begin();
   try {
     const res = await api.get('/api/user-availabilities');
+    if (!entriesRequests.isCurrent(token)) return;
     entries.value = res.data;
   } catch {
-    showToast('Failed to load availability.', 'error');
+    if (entriesRequests.isCurrent(token)) showToast('Failed to load availability.', 'error');
   }
 }
 
@@ -271,6 +279,7 @@ async function saveEntry() {
       note: form.value.note || null,
     };
     const res = await api.post('/api/user-availabilities', payload);
+    entriesRequests.invalidate();
     entries.value.push(res.data);
     showModal.value = false;
     showToast('Availability saved.');
@@ -291,6 +300,7 @@ async function deleteEntry(entry) {
   if (!ok) return;
   try {
     await api.delete(`/api/user-availabilities/${entry.id}`);
+    entriesRequests.invalidate();
     entries.value = entries.value.filter((e) => e.id !== entry.id);
     showToast('Entry removed.');
   } catch {
@@ -303,12 +313,18 @@ onMounted(() => {
   fetchDelegations();
 });
 
+// Month changes overlap delegation loads; only the latest may apply or blank the list (a failing
+// superseded request must not wipe the month on screen).
+const delegationRequests = useLatestRequest();
+
 async function fetchDelegations() {
+  const token = delegationRequests.begin();
   try {
     const res = await api.get('/api/my-delegations', { params: { month: monthKey.value } });
+    if (!delegationRequests.isCurrent(token)) return;
     delegations.value = res.data;
   } catch {
-    delegations.value = [];
+    if (delegationRequests.isCurrent(token)) delegations.value = [];
   }
 }
 

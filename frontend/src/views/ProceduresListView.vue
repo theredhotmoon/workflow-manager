@@ -328,12 +328,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import ProcedureTreeNode from '../components/procedure/ProcedureTreeNode.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
+import ProcedureTreeNode from '../components/procedure/ProcedureTreeNode.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { currentUser as authUser } from '../router/index.js';
 
 const router = useRouter();
@@ -485,8 +486,14 @@ async function fetchTree() {
   } catch {}
 }
 
+// Search (debounced), filters, sort and paging overlap fetches. Only the latest may apply its list
+// and pager (including current_page, which would otherwise snap back) or clear the loading /
+// "Updating results…" indicators.
+const procedureRequests = useLatestRequest();
+
 let fetchTimeout = null;
 async function fetchProcedures() {
+  const token = procedureRequests.begin();
   // Only show the full-page loading skeleton on the initial load.
   // Subsequent filter/sort/page fetches use the inline `filtering` indicator
   // so existing results stay visible instead of blinking to a blank state.
@@ -513,14 +520,17 @@ async function fetchProcedures() {
     }
 
     const res = await api.get('/api/procedures', { params });
+    if (!procedureRequests.isCurrent(token)) return;
     procedures.value = res.data.data;
     totalProcedures.value = res.data.total;
     currentPage.value = res.data.current_page;
     lastPage.value = res.data.last_page;
   } catch {
   } finally {
-    loading.value = false;
-    filtering.value = false;
+    if (procedureRequests.isCurrent(token)) {
+      loading.value = false;
+      filtering.value = false;
+    }
   }
 }
 
@@ -529,12 +539,11 @@ async function fetchInitial() {
   try {
     const tagRes = await api.get('/api/procedure-tags');
     allTags.value = tagRes.data;
-    await fetchTree();
-    await fetchProcedures();
-  } catch {
-  } finally {
-    loading.value = false;
-  }
+  } catch {}
+  await fetchTree();
+  // fetchProcedures owns `loading` from here: only the latest list request may clear it, so a
+  // search typed during the initial load isn't followed by an early "loaded" state.
+  await fetchProcedures();
 }
 
 // Watch reactive filters — reset to page 1 and refetch with debounce for search

@@ -120,9 +120,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 
 const loading = ref(true);
 const alarms = ref([]);
@@ -143,7 +144,12 @@ const alarmTypes = [
 
 const hasUnread = computed(() => alarms.value.some((a) => !a.read_at));
 
+// Filter and page changes overlap fetches (a filter change on page > 1 even fires two). Only the
+// latest may apply its page, total or clear `loading`, so the list always matches the filter bar.
+const alarmRequests = useLatestRequest();
+
 async function fetchAlarms() {
+  const token = alarmRequests.begin();
   loading.value = true;
   try {
     const params = { page: page.value };
@@ -152,12 +158,13 @@ async function fetchAlarms() {
     if (filterDateFrom.value) params.date_from = filterDateFrom.value;
     if (filterDateTo.value) params.date_to = filterDateTo.value;
     const res = await api.get('/api/alarms', { params });
+    if (!alarmRequests.isCurrent(token)) return;
     alarms.value = res.data.data;
     totalPages.value = res.data.last_page;
   } catch {
-    alarms.value = [];
+    if (alarmRequests.isCurrent(token)) alarms.value = [];
   } finally {
-    loading.value = false;
+    if (alarmRequests.isCurrent(token)) loading.value = false;
   }
 }
 

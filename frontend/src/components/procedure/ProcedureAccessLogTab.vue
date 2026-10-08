@@ -52,8 +52,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import api from '../../axios.js';
+import { useLatestRequest } from '../../composables/useLatestRequest.js';
 
 const props = defineProps({
   procedureId: { type: Number, required: true },
@@ -85,7 +86,12 @@ function fmtDateTime(d) {
   });
 }
 
+// The unfiltered mount load and every filter change write the same list, so they share one
+// channel: a slow unfiltered load must not replace a filter the user already picked.
+const logsRequests = useLatestRequest();
+
 async function fetchLogs() {
+  const token = logsRequests.begin();
   loading.value = true;
   try {
     const params = {};
@@ -93,12 +99,12 @@ async function fetchLogs() {
     if (filters.version) params.version = filters.version;
     if (filters.date_from) params.date_from = filters.date_from;
     if (filters.date_to) params.date_to = filters.date_to;
-    logs.value = (
-      await api.get(`/api/procedures/${props.procedureId}/access-log`, { params })
-    ).data;
+    const res = await api.get(`/api/procedures/${props.procedureId}/access-log`, { params });
+    if (!logsRequests.isCurrent(token)) return;
+    logs.value = res.data;
   } catch {
   } finally {
-    loading.value = false;
+    if (logsRequests.isCurrent(token)) loading.value = false;
   }
 }
 
@@ -112,9 +118,11 @@ function clearFilters() {
 
 onMounted(async () => {
   // Fetch initial unfiltered data to populate filter dropdowns
+  const token = logsRequests.begin();
   try {
     const data = (await api.get(`/api/procedures/${props.procedureId}/access-log`)).data;
-    logs.value = data;
+    // The list only if no filter was picked meanwhile; the dropdown options always.
+    if (logsRequests.isCurrent(token)) logs.value = data;
 
     // Extract unique users and versions for dropdowns
     const userMap = {};
@@ -127,7 +135,7 @@ onMounted(async () => {
     uniqueVersions.value = [...versionSet].sort((a, b) => b - a);
   } catch {
   } finally {
-    loading.value = false;
+    if (logsRequests.isCurrent(token)) loading.value = false;
   }
 });
 </script>

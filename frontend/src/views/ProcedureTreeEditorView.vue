@@ -106,10 +106,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import TreeEditNode from '../components/procedure/TreeEditNode.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 
 const treeData = ref([]);
 const allProcedures = ref([]);
@@ -176,20 +177,27 @@ async function onDropToRoot(e) {
   }
 }
 
+// Two quick drops each refetch the tree; the older GET landing last would show a pre-move tree.
+// The mount load writes the same tree, so it shares the channel.
+const treeRequests = useLatestRequest();
+
 async function fetchTree() {
+  const token = treeRequests.begin();
   try {
-    treeData.value = (await api.get('/api/procedures-tree')).data;
+    const res = await api.get('/api/procedures-tree');
+    if (treeRequests.isCurrent(token)) treeData.value = res.data;
   } catch {}
 }
 
 async function fetchData() {
+  const token = treeRequests.begin();
   loadingTree.value = true;
   try {
     const [treeRes, procRes] = await Promise.all([
       api.get('/api/procedures-tree'),
       api.get('/api/procedures'),
     ]);
-    treeData.value = treeRes.data;
+    if (treeRequests.isCurrent(token)) treeData.value = treeRes.data;
     allProcedures.value = procRes.data;
   } catch {
   } finally {

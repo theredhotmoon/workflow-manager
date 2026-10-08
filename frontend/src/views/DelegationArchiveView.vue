@@ -176,10 +176,11 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
-import { confirm } from '../composables/useConfirm.js';
+import { computed, onMounted, reactive, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 
 const archived = ref([]);
 const allUsers = ref([]);
@@ -283,7 +284,12 @@ async function fetchLogs(delId) {
   }
 }
 
+// Every filter change refetches; only the latest may apply its rows or clear `loading`, so the list
+// always matches the filters shown.
+const archiveRequests = useLatestRequest();
+
 async function fetchData() {
+  const token = archiveRequests.begin();
   loading.value = true;
   try {
     const params = {};
@@ -296,13 +302,14 @@ async function fetchData() {
       api.get('/api/delegation-archive/destinations'),
       api.get('/api/users'),
     ]);
+    if (!archiveRequests.isCurrent(token)) return;
     archived.value = archRes.data;
     destinations.value = destRes.data;
     allUsers.value = usersRes.data;
   } catch (e) {
-    console.error(e);
+    if (archiveRequests.isCurrent(token)) console.error(e);
   } finally {
-    loading.value = false;
+    if (archiveRequests.isCurrent(token)) loading.value = false;
   }
 }
 

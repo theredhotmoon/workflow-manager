@@ -63,6 +63,7 @@
 import { onMounted, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 
 const groups = ref([]);
 const selectedGroupId = ref(null);
@@ -85,10 +86,10 @@ async function fetchGroups() {
 // Fetches overlap (the on-load fetch for the default group, a group change, period stepping).
 // Only the latest one may apply its response — otherwise a slower, older response replaces the
 // report the user is looking at with another group's or period's.
-let reportRequestSeq = 0;
+const reportRequests = useLatestRequest();
 
 async function fetchReport() {
-  const requestSeq = ++reportRequestSeq;
+  const token = reportRequests.begin();
   if (!selectedGroupId.value) {
     loading.value = false;
     return;
@@ -98,12 +99,12 @@ async function fetchReport() {
     const res = await api.get('/api/settlement-periods', {
       params: { shift_group_id: selectedGroupId.value, offset: offset.value },
     });
-    if (requestSeq !== reportRequestSeq) return;
+    if (!reportRequests.isCurrent(token)) return;
     report.value = res.data;
   } catch {
-    if (requestSeq === reportRequestSeq) report.value = null;
+    if (reportRequests.isCurrent(token)) report.value = null;
   } finally {
-    if (requestSeq === reportRequestSeq) loading.value = false;
+    if (reportRequests.isCurrent(token)) loading.value = false;
   }
 }
 

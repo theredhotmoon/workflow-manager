@@ -8,6 +8,9 @@ const GROUP_NAME = 'Drag Team Manual';
 const EMPLOYEE = 'Regular Employee';
 
 async function dragToShiftDropzone(page, sourceLocator, targetLocator) {
+  // Shift-group tabs above the grid wrap as groups accumulate during a run, pushing late days below
+  // the fold. The employee roster is sticky, so scrolling the target in keeps both ends on screen.
+  await targetLocator.scrollIntoViewIfNeeded();
   const source = await sourceLocator.boundingBox();
   const target = await targetLocator.boundingBox();
   if (!source || !target) throw new Error('drag source/target not visible');

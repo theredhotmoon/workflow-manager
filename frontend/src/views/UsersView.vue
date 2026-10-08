@@ -658,7 +658,7 @@
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
       <div v-if="showNewbieModal" class="fixed inset-0 z-50 flex items-center justify-center px-4">
-        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showNewbieModal = false"></div>
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="closeNewbieModal()"></div>
         <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-yellow-500/25 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
           <div class="flex items-center gap-3 mb-5">
             <div class="w-10 h-10 rounded-xl bg-yellow-500/15 flex items-center justify-center text-yellow-400 text-lg">⭐</div>
@@ -691,7 +691,7 @@
               </div>
             </div>
             <div class="flex items-center justify-end gap-3">
-              <button type="button" @click="showNewbieModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Close</button>
+              <button type="button" @click="closeNewbieModal()" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Close</button>
               <button type="submit" :disabled="savingNewbie || !newbieForm.start_date || !newbieForm.end_date"
                 class="px-5 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-yellow-500/25 transition-all text-sm disabled:opacity-50">Add Period</button>
             </div>
@@ -1159,6 +1159,11 @@ async function assignToExisting(del) {
 // Closing the dialog and opening it for another user before the first user's periods arrived
 // overlaps loads; only the latest may fill the list (the post-create refetch shares the channel).
 const newbieRequests = useLatestRequest();
+
+function closeNewbieModal() {
+  newbieRequests.invalidate();
+  showNewbieModal.value = false;
+}
 
 async function openNewbieModal(user) {
   const token = newbieRequests.begin();

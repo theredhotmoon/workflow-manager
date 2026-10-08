@@ -2543,6 +2543,9 @@ async function onDrop(evt, shift, dateStr) {
   await proceedWithDelegationCheck(shift, item, evt.newIndex, dateStr);
 }
 
+// The DELETE of a drag-move's source slot (see onRemove); resolved when there is none.
+let pendingMoveRemoval = Promise.resolve();
+
 // Resolves to { status: 'assigned' | 'prompted' (waiting on the rest-day dialog) | 'failed', updatedCount }.
 // laterRestPolicy goes with the ids of the later shifts the manager was shown; if the server's list
 // differs by now, it asks again.
@@ -2568,7 +2571,8 @@ async function doAssign(
     item.rest_policy = response.data.rest_policy;
     const updatedIds = response.data.updated_assignment_ids || [];
     // Any assignment can start, move or end a rest window, so other chips' ⚠ / ⏸ / resting-until
-    // can change: reload them from the server.
+    // can change: reload them from the server — after a drag-move's DELETE of the old slot, if any.
+    await pendingMoveRemoval;
     await fetchSchedule({ quiet: true });
     return { status: 'assigned', updatedCount: updatedIds.length };
   } catch (err) {
@@ -2770,11 +2774,11 @@ async function onRemove(evt, shift) {
   const assignmentId = pendingRemoveAssignmentId.value;
   pendingRemoveAssignmentId.value = null;
   if (assignmentId) {
-    try {
-      await api.delete(`/api/schedule/unassign/${assignmentId}`);
-    } catch {
+    // doAssign() waits for this before reloading, so a move's old slot is gone from the refetch.
+    pendingMoveRemoval = api.delete(`/api/schedule/unassign/${assignmentId}`).catch(() => {
       // silently handle
-    }
+    });
+    await pendingMoveRemoval;
   }
 }
 

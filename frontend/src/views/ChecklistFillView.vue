@@ -20,7 +20,7 @@
           <!-- Date -->
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-1.5">Date</label>
-            <input v-model="setup.date" type="date" @change="fetchShiftsForDate"
+            <input v-model="setup.date" type="date" @change="fetchShiftsForDate()"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
 
@@ -95,7 +95,7 @@
               <template v-if="setup.incomingUserId"> · Incoming: <span class="text-amber-400">{{ getUserName(setup.incomingUserId) }}</span></template>
             </p>
           </div>
-          <button @click="step = 'setup'" class="text-sm text-slate-400 hover:text-white transition-colors">← Back</button>
+          <button @click="backToSetup" class="text-sm text-slate-400 hover:text-white transition-colors">← Back</button>
         </div>
 
         <!-- Shift Info Card -->
@@ -337,7 +337,7 @@
               {{ confirmSubmission.date }} · Filled by <span class="text-indigo-400">{{ confirmSubmission.outgoing_user?.name }}</span>
             </p>
           </div>
-          <button @click="step = 'confirm'" class="text-sm text-slate-400 hover:text-white transition-colors">← Back</button>
+          <button @click="backToConfirmList" class="text-sm text-slate-400 hover:text-white transition-colors">← Back</button>
         </div>
 
         <div class="space-y-4">
@@ -471,7 +471,7 @@
     <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
       <div v-if="showProcedureModal" class="fixed inset-0 z-[70] flex items-start justify-center pt-4 px-4">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="showProcedureModal = false"></div>
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeProcedureModal"></div>
         <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
           <!-- Header -->
           <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
@@ -491,7 +491,7 @@
                 class="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-all" title="Open full page">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </router-link>
-              <button @click="showProcedureModal = false" class="p-2 text-slate-400 hover:text-white transition-colors">
+              <button @click="closeProcedureModal" class="p-2 text-slate-400 hover:text-white transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -519,14 +519,15 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { currentUser } from '../router/index.js';
-import { useToast } from '../composables/useToast.js';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { useToast } from '../composables/useToast.js';
+import { currentUser } from '../router/index.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -643,12 +644,18 @@ async function loadData() {
   }
 }
 
+// Changing the date twice quickly overlaps loads; only the latest date's shifts may be offered
+// (otherwise the user can start a checklist for the wrong day's shift).
+const shiftsRequests = useLatestRequest();
+
 async function fetchShiftsForDate(preserveShiftId = null) {
+  const token = shiftsRequests.begin();
   availableShifts.value = [];
   if (!preserveShiftId) setup.shiftId = null;
   if (!setup.date) return;
   try {
     const res = await api.get('/api/shifts-by-date', { params: { date: setup.date } });
+    if (!shiftsRequests.isCurrent(token)) return;
     availableShifts.value = res.data;
     // Restore shiftId if preserved from query params
     if (preserveShiftId && res.data.some((s) => s.id === preserveShiftId)) {
@@ -683,9 +690,28 @@ function getUserName(id) {
   return u?.name || 'Unknown';
 }
 
+function backToSetup() {
+  shiftInfoRequests.invalidate();
+  step.value = 'setup';
+}
+
+function backToConfirmList() {
+  confirmationRequests.invalidate();
+  step.value = 'confirm';
+}
+
+function closeProcedureModal() {
+  previewRequests.invalidate();
+  showProcedureModal.value = false;
+}
+
+// Going back and starting again before the shift info arrived supersedes the earlier start.
+const shiftInfoRequests = useLatestRequest();
+
 async function startFilling() {
   const tpl = activeTemplates.value.find((t) => t.id === Number(setup.templateId));
   if (!tpl) return;
+  const token = shiftInfoRequests.begin();
   selectedTemplate.value = tpl;
 
   // Initialize responses
@@ -708,13 +734,15 @@ async function startFilling() {
 
   // Check procedure reads
   await checkProcedureReads(tpl);
+  if (!shiftInfoRequests.isCurrent(token)) return;
 
   // Fetch shift info if available
   if (setup.shiftId) {
     try {
-      shiftInfo.value = (await api.get(`/api/shifts/${setup.shiftId}`)).data;
+      const res = await api.get(`/api/shifts/${setup.shiftId}`);
+      if (shiftInfoRequests.isCurrent(token)) shiftInfo.value = res.data;
     } catch {
-      shiftInfo.value = null;
+      if (shiftInfoRequests.isCurrent(token)) shiftInfo.value = null;
     }
   } else {
     shiftInfo.value = null;
@@ -821,7 +849,7 @@ async function submitChecklist() {
 
     await api.post('/api/checklist-submissions', payload);
     showToast('Checklist submitted successfully!');
-    step.value = 'setup';
+    backToSetup();
   } catch (err) {
     const msg = err.response?.data?.message || 'Failed to submit checklist.';
     showToast(msg, 'error');
@@ -846,9 +874,15 @@ async function loadPendingConfirmations() {
   }
 }
 
+// The pending list stays clickable while a detail loads; only the last clicked submission may open
+// (the confirm PUT uses confirmSubmission.id, so a stale one would confirm the wrong checklist).
+const confirmationRequests = useLatestRequest();
+
 async function openConfirmation(sub) {
+  const token = confirmationRequests.begin();
   try {
     const response = await api.get(`/api/checklist-submissions/${sub.id}`);
+    if (!confirmationRequests.isCurrent(token)) return;
     confirmSubmission.value = response.data;
     confirmIds.value = new Set();
     Object.keys(confirmValues).forEach((k) => {
@@ -856,7 +890,7 @@ async function openConfirmation(sub) {
     });
     step.value = 'confirm-detail';
   } catch {
-    showToast('Failed to load submission.', 'error');
+    if (confirmationRequests.isCurrent(token)) showToast('Failed to load submission.', 'error');
   }
 }
 
@@ -916,6 +950,7 @@ async function submitConfirmation() {
       confirmation_values: { ...confirmValues },
     });
     showToast('Checklist confirmed and completed!');
+    confirmationRequests.invalidate();
     step.value = 'setup';
   } catch (err) {
     const msg = err.response?.data?.message || 'Failed to confirm checklist.';
@@ -927,14 +962,22 @@ async function submitConfirmation() {
 
 onMounted(loadData);
 
+// Opening another procedure before the previous preview arrived supersedes it; a stale failure
+// must not toast or close the preview the user is now looking at.
+const previewRequests = useLatestRequest();
+
 async function openProcedureModal(procedureId) {
+  const token = previewRequests.begin();
   showProcedureModal.value = true;
   procedurePreview.value = null;
   try {
-    procedurePreview.value = (await api.get(`/api/procedures/${procedureId}`)).data;
+    const res = await api.get(`/api/procedures/${procedureId}`);
+    if (!previewRequests.isCurrent(token)) return;
+    procedurePreview.value = res.data;
     // Reset tab in ProcedureContent
     setTimeout(() => procedureContentRef.value?.resetTab(), 0);
   } catch {
+    if (!previewRequests.isCurrent(token)) return;
     showToast('Failed to load procedure.', 'error');
     showProcedureModal.value = false;
   }

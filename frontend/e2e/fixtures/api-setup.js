@@ -172,3 +172,35 @@ export async function createOnCallAssignment(context, { shiftGroupId, userId, st
   if (!res.ok()) throw new Error(`create on-call failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function createProcedure(context, { title, ownerId, content = `<p>${title}</p>` }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/procedures', {
+    data: { title, owner_id: ownerId, content },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create procedure failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Notifies the procedure owner (alarm type PROCEDURE_NEW_QUESTION_ADDED) when asked by someone else.
+export async function askFaqQuestion(context, procedureId, question) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', `/api/procedures/${procedureId}/faq`, {
+    data: { question },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`ask FAQ question failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Notifies the procedure owner (alarm type PROCEDURE_NEW_ISSUE_REPORTED) when reported by someone else.
+export async function reportProcedureIssue(context, procedureId, description) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', `/api/procedures/${procedureId}/feedback`, {
+    data: { type: 'error', description },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`report issue failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

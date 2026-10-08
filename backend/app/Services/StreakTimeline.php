@@ -23,7 +23,7 @@ final class StreakTimeline
     public const EXTENDS_REST = 'extends_rest';
     public const POLICIES = [self::NOT_COUNTED, self::COUNTS, self::EXTENDS_REST];
 
-    /** @var array<int, list<array{day: int, shift_number: int, shift_type: ?string, rest_policy: ?string}>> */
+    /** @var array<int, list<array{day: int, shift_number: int, shift_type: ?string, rest_policy: ?string, assignment_id: ?int}>> */
     private array $eventsByUser = [];
 
     /** @var array<string, int> */
@@ -50,6 +50,7 @@ final class StreakTimeline
                     'shift_number' => (int) $event['shift_number'],
                     'shift_type' => $event['shift_type'],
                     'rest_policy' => $event['rest_policy'] ?? null,
+                    'assignment_id' => isset($event['assignment_id']) ? (int) $event['assignment_id'] : null,
                 ];
             }
             usort($mapped, [self::class, 'compareEvents']);
@@ -62,13 +63,14 @@ final class StreakTimeline
         return $this->rules->isNotEmpty();
     }
 
-    public function append(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy = null): void
+    public function append(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy = null, ?int $assignmentId = null): void
     {
         $event = [
             'day' => self::dayNumber($date->toDateString()),
             'shift_number' => $shiftNumber,
             'shift_type' => $shiftType,
             'rest_policy' => $restPolicy,
+            'assignment_id' => $assignmentId,
         ];
         $events = $this->eventsByUser[$userId] ?? [];
         $last = end($events);
@@ -127,6 +129,73 @@ final class StreakTimeline
         return $status;
     }
 
+    /**
+     * Existing assignments of the user that would newly fall inside a rest window if this candidate
+     * assignment were added (a candidate on day D only affects days > D). Chain effects are included:
+     * the whole history is replayed with and without the candidate.
+     *
+     * @return list<array{assignment_id: ?int, date: string, shift_number: int, shift_type: ?string, resting_until: string, rule: ShiftStreakRule}>
+     */
+    public function newlyResting(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy = null): array
+    {
+        $events = $this->eventsByUser[$userId] ?? [];
+        $day = self::dayNumber($date->toDateString());
+        if ($this->rules->isEmpty() || $events === [] || end($events)['day'] <= $day) {
+            return [];
+        }
+
+        $before = $this->replayEvents($events, PHP_INT_MAX)['covered'];
+
+        $with = [];
+        foreach ($events as $i => $event) {
+            $with[] = $event + ['origin' => $i];
+        }
+        $with[] = ['day' => $day, 'shift_number' => $shiftNumber, 'shift_type' => $shiftType,
+            'rest_policy' => $restPolicy, 'assignment_id' => null, 'origin' => -1];
+        usort($with, [self::class, 'compareEvents']);
+        $after = $this->replayEvents($with, PHP_INT_MAX);
+
+        $affected = [];
+        foreach ($after['covered'] as $pos => $windowIndex) {
+            $origin = $with[$pos]['origin'];
+            if ($origin < 0 || isset($before[$origin])) {
+                continue;
+            }
+            $window = $after['windows'][$windowIndex];
+            $affected[] = [
+                'assignment_id' => $with[$pos]['assignment_id'],
+                'date' => gmdate('Y-m-d', $with[$pos]['day'] * 86400),
+                'shift_number' => $with[$pos]['shift_number'],
+                'shift_type' => $with[$pos]['shift_type'],
+                'resting_until' => gmdate('Y-m-d', $window['end'] * 86400),
+                'rule' => $window['rule'],
+            ];
+        }
+
+        return $affected;
+    }
+
+    public function wouldConflict(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber): bool
+    {
+        return $this->isResting($userId, $date)
+            || $this->newlyResting($userId, $shiftType, $date, $shiftNumber) !== [];
+    }
+
+    /** @return array<int, string> assignment_id => resting_until (Y-m-d) for every covered assignment */
+    public function restingAssignments(int $userId): array
+    {
+        $events = $this->eventsByUser[$userId] ?? [];
+        $state = $this->replayEvents($events, PHP_INT_MAX);
+        $resting = [];
+        foreach ($state['covered'] as $pos => $windowIndex) {
+            if ($events[$pos]['assignment_id'] !== null) {
+                $resting[$events[$pos]['assignment_id']] = gmdate('Y-m-d', $state['windows'][$windowIndex]['end'] * 86400);
+            }
+        }
+
+        return $resting;
+    }
+
     /** @return array{rule: ShiftStreakRule, type: string, start: int, end: int}|null */
     private function latestCovering(int $userId, int $day): ?array
     {
@@ -144,20 +213,33 @@ final class StreakTimeline
     /**
      * Replays the user's events with day < $until. Windows come back in creation order.
      *
-     * @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>}
+     * @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>, covered: array<int, int>}
      */
     private function replay(int $userId, int $until): array
     {
+        return $this->replayEvents($this->eventsByUser[$userId] ?? [], $until);
+    }
+
+    /**
+     * Replays a sorted event list (0-based). 'covered' maps the position of every event that fell
+     * inside an open window to the index of the covering window ending last.
+     *
+     * @param  list<array<string, mixed>>  $events
+     * @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>, covered: array<int, int>}
+     */
+    private function replayEvents(array $events, int $until): array
+    {
         $counts = [];
         $windows = [];
+        $covered = [];
         if ($this->rules->isEmpty()) {
-            return ['counts' => $counts, 'windows' => $windows];
+            return ['counts' => $counts, 'windows' => $windows, 'covered' => $covered];
         }
 
         // Indexes into $windows that can still cover the current event. Events come in day order,
         // so a window ending before the current day can never cover (or be extended by) a later one.
         $open = [];
-        foreach ($this->eventsByUser[$userId] ?? [] as $event) {
+        foreach ($events as $pos => $event) {
             $day = $event['day'];
             if ($day >= $until) {
                 break;
@@ -182,6 +264,13 @@ final class StreakTimeline
                         }
                     }
                 }
+                $latest = $covering[0];
+                foreach ($covering as $i) {
+                    if ($windows[$i]['end'] > $windows[$latest]['end']) {
+                        $latest = $i;
+                    }
+                }
+                $covered[$pos] = $latest;
                 if ($policy !== self::COUNTS) {
                     continue;
                 }
@@ -205,7 +294,7 @@ final class StreakTimeline
             }
         }
 
-        return ['counts' => $counts, 'windows' => $windows];
+        return ['counts' => $counts, 'windows' => $windows, 'covered' => $covered];
     }
 
     /** Days since 1970-01-01 for a 'Y-m-d' date. */

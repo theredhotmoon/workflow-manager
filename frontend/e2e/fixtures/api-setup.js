@@ -105,3 +105,13 @@ export async function setShiftTypes(context, { shiftGroupId, month, shiftNumber,
   if (!res.ok()) throw new Error(`set shift types failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function setShiftType(context, { shiftId, shiftType }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'put', `/api/schedule/shifts/${shiftId}/type`, {
+    data: { shift_type: shiftType },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`set shift type failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

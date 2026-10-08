@@ -524,6 +524,8 @@
                           <span class="truncate min-w-0" :title="assignment.user_name">{{ assignment.user_name }}</span>
                           <span v-if="assignment.rest_policy && assignment.rest_policy !== 'not_counted'" class="shrink-0 text-[9px] text-amber-300"
                             :title="assignment.rest_policy === 'extends_rest' ? 'Assigned during rest: extends rest' : 'Assigned during rest: counts toward next streak'">⏸</span>
+                          <span v-if="assignment.in_rest" class="shrink-0 text-[9px] text-red-300"
+                            :title="'Now on a rest day (resting until ' + assignment.resting_until + '): nobody chose how it counts'">⚠</span>
                           <!-- Employee: request day off button -->
                           <button v-if="currentUser && !currentUser.is_admin && currentUser.id === assignment.user_id && !assignment.has_change_request && isShiftFuture(shift, day.dateStr)"
                             @click.stop="openChangeRequestModal(assignment, shift, day.dateStr)"
@@ -1259,7 +1261,7 @@
     </Transition>
 
     <RestDayPolicyModal v-if="restPrompt" :user-name="restPrompt.item.user_name || 'This employee'"
-      :resting-until="restPrompt.conflict.resting_until" :rule="restPrompt.conflict.rule"
+      :resting-until="restPrompt.conflict.resting_until || ''" :affected="restPrompt.conflict.affected || null" :rule="restPrompt.conflict.rule"
       @choose="chooseRestPolicy" @cancel="cancelRestPolicy" />
 
     <!-- Shift Change Request Modal -->
@@ -2540,21 +2542,30 @@ async function onDrop(evt, shift, dateStr) {
 }
 
 // Resolves to 'assigned', 'prompted' (waiting on the rest-day dialog) or 'failed'.
-async function doAssign(shift, item, index, restPolicy = null) {
+async function doAssign(shift, item, index, restPolicy = null, laterRestPolicy = null) {
   try {
     const response = await api.post('/api/schedule/assign', {
       shift_id: shift.id,
       user_id: item.user_id,
       ...(restPolicy ? { rest_policy: restPolicy } : {}),
+      ...(laterRestPolicy ? { later_rest_policy: laterRestPolicy } : {}),
     });
     item.id = response.data.id;
     item.user_name = response.data.user_name;
     item.rest_policy = response.data.rest_policy;
+    applyUpdatedRestPolicies(
+      response.data.updated_assignment_ids,
+      response.data.updated_rest_policy,
+    );
     return 'assigned';
   } catch (err) {
     // A rest day needs the manager's decision; keep the chip while asking.
-    if (err.response?.status === 409 && err.response.data?.code === 'rest_window_conflict') {
-      restPrompt.value = { shift, item, index, conflict: err.response.data };
+    const code = err.response?.data?.code;
+    if (
+      err.response?.status === 409 &&
+      (code === 'rest_window_conflict' || code === 'creates_rest_conflict')
+    ) {
+      restPrompt.value = { shift, item, index, conflict: err.response.data, restPolicy };
       return 'prompted';
     }
     const i = shift.assignments.indexOf(item);
@@ -2565,12 +2576,32 @@ async function doAssign(shift, item, index, restPolicy = null) {
   }
 }
 
-const restPrompt = ref(null); // { shift, item, index, conflict }
+const restPrompt = ref(null); // { shift, item, index, conflict, restPolicy }
+
+// Later shifts the server just re-labelled: reflect it on the loaded chips without a refetch.
+function applyUpdatedRestPolicies(ids, policy) {
+  if (!ids?.length) return;
+  const wanted = new Set(ids);
+  for (const dayShifts of Object.values(schedule.value)) {
+    for (const s of dayShifts) {
+      for (const a of s.assignments) {
+        if (wanted.has(a.id)) {
+          a.rest_policy = policy;
+          a.in_rest = false;
+        }
+      }
+    }
+  }
+}
 
 async function chooseRestPolicy(policy) {
-  const { shift, item, index } = restPrompt.value;
+  const { shift, item, index, conflict, restPolicy } = restPrompt.value;
   restPrompt.value = null;
-  const status = await doAssign(shift, item, index, policy);
+  // A later-shift question carries the answer to the dropped day's own question, if it was asked.
+  const status =
+    conflict.code === 'creates_rest_conflict'
+      ? await doAssign(shift, item, index, restPolicy, policy)
+      : await doAssign(shift, item, index, policy);
   if (status === 'assigned') showToast('Assigned during rest.', 'success');
 }
 

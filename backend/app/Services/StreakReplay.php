@@ -23,6 +23,8 @@ class StreakReplay
             ->where('shifts.shift_group_id', $group->id)
             ->whereIn('shift_assignments.user_id', $userIds)
             ->when($until !== null, fn ($query) => $query->where('shifts.date', '<', $until->toDateString()))
+            // Plain rows (no models): only scalar columns are read; the date comes back as a string.
+            ->toBase()
             ->get(['shift_assignments.id as assignment_id', 'shift_assignments.user_id', 'shifts.date', 'shifts.shift_number', 'shifts.shift_type', 'shift_assignments.rest_policy']);
 
         $events = [];

@@ -132,3 +132,23 @@ it('does not assign a shift that would turn the employee\'s existing later shift
     'rotating' => ['/api/schedule/auto-assign/rotating', ['rotation_days' => 7]],
     'polish-law' => ['/api/schedule/auto-assign/polish-law', ['rotation_days' => 7]],
 ]);
+
+it('sees the employee\'s existing shift in the next month when skipping a shift that would rest it', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 3]);
+    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    // Empty nights 01-27 and 01-29 would complete the streak and rest 01-30..02-01, covering the
+    // employee's existing night on 02-01 — outside the month being filled.
+    foreach (['2029-01-27', '2029-01-29', '2029-02-01'] as $date) {
+        $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
+            'start_time' => '22:00', 'end_time' => '06:00']);
+        if ($date === '2029-02-01') {
+            ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
+        }
+    }
+
+    $this->actingAs($maintainer)->postJson('/api/schedule/auto-assign/random', aasPayload($group, $employee, []))->assertOk();
+
+    expect(aasAssignedDates($group, $employee))->toBe(['2029-01-27', '2029-02-01']);
+});

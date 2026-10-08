@@ -150,3 +150,78 @@ it('includes in_rest and resting_until in the updateDayShifts payload', function
     $a = collect($res->json('shifts.0.assignments'))->firstWhere('user_id', $this->employee->id);
     expect($a)->toMatchArray(['in_rest' => true, 'resting_until' => '2029-01-05']);
 });
+
+function rrcNight($test, string $date, bool $assign = true): ?ShiftAssignment
+{
+    $test->shifts[$date] ??= Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $test->group->id, 'shift_type' => 'night']);
+
+    return $assign ? ShiftAssignment::create(['shift_id' => $test->shifts[$date]->id, 'user_id' => $test->employee->id]) : null;
+}
+
+function rrcPayloadAssignment($test, string $date): array
+{
+    $payload = $test->actingAs($test->maintainer)->getJson("/api/schedule?month=2029-01&shift_group_id={$test->group->id}");
+
+    return collect($payload->json("schedule.{$date}.0.assignments"))->firstWhere('user_id', $test->employee->id);
+}
+
+it('applies the chosen extends_rest policy to a further shift it pushes into rest', function () {
+    // Rule night 2 -> 3. Existing nights 02, 05, 08. Assigning 03: 02+03 rest 04..06 covers 05 (affected).
+    // Extending the rest from 05 (to 08) then covers 08 as well.
+    ShiftStreakRule::where('shift_group_id', $this->group->id)->update(['rest_days' => 3]);
+    $a8 = rrcNight($this, '2029-01-08');
+    $a5 = $this->existing['2029-01-05'];
+
+    rrcAssign($this, '2029-01-03')->assertStatus(409)->assertJson(['code' => 'creates_rest_conflict']);
+    expect(array_column(rrcAssign($this, '2029-01-03')->json('affected'), 'assignment_id'))->toBe([$a5->id]);
+
+    $res = rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'extends_rest', 'expected_affected_ids' => [$a5->id]])
+        ->assertCreated()->assertJson(['updated_rest_policy' => 'extends_rest']);
+    expect($res->json('updated_assignment_ids'))->toBe([$a5->id, $a8->id]);
+    expect($a5->fresh()->rest_policy)->toBe('extends_rest');
+    expect($a8->fresh()->rest_policy)->toBe('extends_rest');
+    foreach (['2029-01-05', '2029-01-08'] as $date) {
+        expect(rrcPayloadAssignment($this, $date)['in_rest'])->toBeFalse();
+    }
+});
+
+it('applies the chosen counts policy to a further shift it pushes into rest', function () {
+    // Rule night 2 -> 3. Existing nights 02, 05, 07, 09. Assigning 03: 02+03 rest 04..06 covers 05 (affected).
+    // Counting 05 makes 05+07 a streak, rest 08..10, which covers 09.
+    ShiftStreakRule::where('shift_group_id', $this->group->id)->update(['rest_days' => 3]);
+    $a7 = rrcNight($this, '2029-01-07');
+    $a9 = rrcNight($this, '2029-01-09');
+    $a5 = $this->existing['2029-01-05'];
+
+    $res = rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'counts', 'expected_affected_ids' => [$a5->id]])
+        ->assertCreated()->assertJson(['updated_rest_policy' => 'counts']);
+    expect($res->json('updated_assignment_ids'))->toBe([$a5->id, $a9->id]);
+    expect($a5->fresh()->rest_policy)->toBe('counts');
+    expect($a9->fresh()->rest_policy)->toBe('counts');
+    expect($a7->fresh()->rest_policy)->toBeNull();
+    foreach (['2029-01-05', '2029-01-07', '2029-01-09'] as $date) {
+        expect(rrcPayloadAssignment($this, $date)['in_rest'])->toBeFalse();
+    }
+});
+
+it('asks again with the fresh list when the shifts it would affect changed since the prompt', function () {
+    $a5 = $this->existing['2029-01-05'];
+    rrcAssign($this, '2029-01-03')->assertStatus(409);
+    // Meanwhile another later shift lands inside the coming rest (01-04 as a day shift).
+    $this->shifts['2029-01-04']->update(['shift_type' => 'day']);
+    $a4 = ShiftAssignment::create(['shift_id' => $this->shifts['2029-01-04']->id, 'user_id' => $this->employee->id]);
+
+    $res = rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'extends_rest', 'expected_affected_ids' => [$a5->id]])
+        ->assertStatus(409)->assertJson(['code' => 'creates_rest_conflict']);
+    expect(array_column($res->json('affected'), 'assignment_id'))->toBe([$a4->id, $a5->id]);
+    expect(ShiftAssignment::where('shift_id', $this->shifts['2029-01-03']->id)->count())->toBe(0);
+    expect($a5->fresh()->rest_policy)->toBeNull();
+
+    rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'extends_rest', 'expected_affected_ids' => [$a5->id, $a4->id]])
+        ->assertCreated();
+});
+
+it('rejects a malformed expected_affected_ids', function () {
+    rrcAssign($this, '2029-01-03', ['later_rest_policy' => 'counts', 'expected_affected_ids' => ['x']])
+        ->assertStatus(422)->assertJsonValidationErrors(['expected_affected_ids.0']);
+});

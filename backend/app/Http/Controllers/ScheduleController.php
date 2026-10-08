@@ -305,6 +305,8 @@ class ScheduleController extends Controller
             'user_id' => ['required', 'exists:users,id'],
             'rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
             'later_rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
+            'expected_affected_ids' => ['nullable', 'array'],
+            'expected_affected_ids.*' => ['integer'],
         ]);
 
         // Check if user is already assigned to this shift
@@ -347,7 +349,19 @@ class ScheduleController extends Controller
         $affected = $timeline
             ? $timeline->newlyResting($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy)
             : [];
-        if ($affected !== [] && !$request->filled('later_rest_policy')) {
+        // The confirm carries the shifts the manager was shown; if that list is stale, ask again.
+        $affectedIds = array_map(fn($a) => $a['assignment_id'], $affected);
+        $expectedIds = $request->has('expected_affected_ids')
+            ? array_map('intval', (array) $request->input('expected_affected_ids'))
+            : null;
+        $stale = false;
+        if ($expectedIds !== null) {
+            $fresh = $affectedIds;
+            sort($fresh);
+            sort($expectedIds);
+            $stale = $fresh !== $expectedIds;
+        }
+        if ($affected !== [] && (!$request->filled('later_rest_policy') || $stale)) {
             $rule = $affected[0]['rule'];
             $dateList = array_values(array_unique(array_map(fn($a) => $a['date'], $affected)));
             $last = array_pop($dateList);
@@ -371,17 +385,20 @@ class ScheduleController extends Controller
             ], 409);
         }
 
-        $affectedIds = array_map(fn($a) => $a['assignment_id'], $affected);
+        // The chosen policy applies to the whole chain: stamping it can push further shifts into rest.
         $laterPolicy = $affectedIds !== [] ? $request->input('later_rest_policy') : null;
+        $updatedIds = $laterPolicy !== null
+            ? $timeline->cascadePolicy($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy, $laterPolicy)
+            : [];
 
-        $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $affectedIds, $laterPolicy) {
+        $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy) {
             $created = ShiftAssignment::create([
                 'shift_id' => $shift->id,
                 'user_id' => $userId,
                 'rest_policy' => $restPolicy,
             ]);
-            if ($affectedIds !== []) {
-                ShiftAssignment::whereIn('id', $affectedIds)->update(['rest_policy' => $laterPolicy]);
+            if ($updatedIds !== []) {
+                ShiftAssignment::whereIn('id', $updatedIds)->update(['rest_policy' => $laterPolicy]);
             }
 
             return $created;
@@ -394,7 +411,7 @@ class ScheduleController extends Controller
             'user_id' => $assignment->user_id,
             'user_name' => $assignment->user->name,
             'rest_policy' => $assignment->rest_policy,
-            'updated_assignment_ids' => $affectedIds,
+            'updated_assignment_ids' => $updatedIds,
             'updated_rest_policy' => $laterPolicy,
         ], 201);
     }

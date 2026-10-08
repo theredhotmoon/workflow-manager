@@ -151,20 +151,8 @@ final class StreakTimeline
 
         $before = $this->coveredCache[$userId] ??= $this->replayEvents($events, PHP_INT_MAX)['covered'];
 
-        // Insert the candidate after every event that sorts before or equal to it (what a stable sort
-        // would do with it appended last). An event at position $pos afterwards was at $pos, or $pos - 1
-        // when it sits behind the candidate, before.
-        $candidate = ['day' => $day, 'shift_number' => $shiftNumber, 'shift_type' => $shiftType,
-            'rest_policy' => $restPolicy, 'assignment_id' => null];
-        $insertAt = count($events);
-        foreach ($events as $i => $event) {
-            if (self::compareEvents($event, $candidate) > 0) {
-                $insertAt = $i;
-                break;
-            }
-        }
-        $with = $events;
-        array_splice($with, $insertAt, 0, [$candidate]);
+        // An event at position $pos afterwards was at $pos, or $pos - 1 when it sits behind the candidate, before.
+        [$with, $insertAt] = self::withCandidate($events, $day, $shiftType, $shiftNumber, $restPolicy);
         $after = $this->replayEvents($with, PHP_INT_MAX);
 
         $affected = [];
@@ -190,6 +178,48 @@ final class StreakTimeline
         return $affected;
     }
 
+    /**
+     * Every assignment the chosen later-shift policy ends up applying to once the candidate is added:
+     * the shifts newlyResting() reports, then, round by round, the shifts that stamping $policy on
+     * the previous round pushes into rest (counts can complete a new streak, extends_rest lengthens
+     * a window). Each round's shifts are those covered now but not in the previous round's state
+     * (the first round compares with the history without the candidate). Ids in stamping order.
+     *
+     * @return list<int>
+     */
+    public function cascadePolicy(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy, string $policy): array
+    {
+        $events = $this->eventsByUser[$userId] ?? [];
+        $day = self::dayNumber($date->toDateString());
+        if ($this->rules->isEmpty() || $events === [] || end($events)['day'] <= $day) {
+            return [];
+        }
+
+        $previous = $this->coveredIds($events, $this->coveredCache[$userId] ??= $this->replayEvents($events, PHP_INT_MAX)['covered']);
+        [$with] = self::withCandidate($events, $day, $shiftType, $shiftNumber, $restPolicy);
+        $stamped = [];
+        // Every round stamps at least one new id, so the loop ends on its own; the bound is a safeguard.
+        for ($round = 0; $round <= count($events); $round++) {
+            $covered = $this->coveredIds($with, $this->replayEvents($with, PHP_INT_MAX)['covered']);
+            $new = [];
+            foreach ($covered as $id => $pos) {
+                if (!isset($previous[$id]) && !isset($stamped[$id])) {
+                    $new[$id] = $pos;
+                }
+            }
+            if ($new === []) {
+                break;
+            }
+            foreach ($new as $id => $pos) {
+                $with[$pos]['rest_policy'] = $policy;
+                $stamped[$id] = true;
+            }
+            $previous = $covered;
+        }
+
+        return array_keys($stamped);
+    }
+
     public function wouldConflict(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber): bool
     {
         return $this->isResting($userId, $date)
@@ -210,6 +240,46 @@ final class StreakTimeline
         }
 
         return $resting;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $events
+     * @param  array<int, int>  $covered  replayEvents()['covered'] for $events
+     * @return array<int, int> assignment_id => position, for covered events that are stored assignments
+     */
+    private function coveredIds(array $events, array $covered): array
+    {
+        $ids = [];
+        foreach ($covered as $pos => $_) {
+            if ($events[$pos]['assignment_id'] !== null) {
+                $ids[$events[$pos]['assignment_id']] = $pos;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * The sorted events with a candidate inserted after every event that sorts before or equal to it
+     * (what a stable sort would do with it appended last).
+     *
+     * @param  list<array<string, mixed>>  $events
+     * @return array{0: list<array<string, mixed>>, 1: int} the new list and the candidate's position
+     */
+    private static function withCandidate(array $events, int $day, ?string $shiftType, int $shiftNumber, ?string $restPolicy): array
+    {
+        $candidate = ['day' => $day, 'shift_number' => $shiftNumber, 'shift_type' => $shiftType,
+            'rest_policy' => $restPolicy, 'assignment_id' => null];
+        $insertAt = count($events);
+        foreach ($events as $i => $event) {
+            if (self::compareEvents($event, $candidate) > 0) {
+                $insertAt = $i;
+                break;
+            }
+        }
+        array_splice($events, $insertAt, 0, [$candidate]);
+
+        return [$events, $insertAt];
     }
 
     /** @return array{rule: ShiftStreakRule, type: string, start: int, end: int}|null */

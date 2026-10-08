@@ -4,6 +4,23 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-08 — 🐛 The procedure tree editor opens again
+
+The procedure tree editor (`/procedures/tree-editor`) failed to render at all ("allProcedures.value.filter is not a function"). It read the paginated `/api/procedures` response as if it were a plain list, so the page crashed before showing the tree. It now loads every page of procedures (100 per request) and renders the tree, the "Unassigned Procedures" panel and the "All Assigned" list.
+
+### Frontend
+| What | Details |
+|------|---------|
+| Fixed | `ProcedureTreeEditorView` loads all pages of `/api/procedures` instead of assigning the paginated object to an array; the combined load is still guarded against stale responses |
+| Note | Every procedure belongs to the tree (a procedure without a parent is a root node), so "Unassigned Procedures" is always empty with today's data model |
+
+### Tests
+| What | Details |
+|------|---------|
+| Added | `e2e/procedures/tree-editor.spec.js` — the page renders without a page error and a new procedure shows in "All Assigned" |
+
+---
+
 ## 2026-10-08 — 🐛 Views no longer show stale data after fast clicks
 
 Clicking faster than a screen loads — stepping months, switching groups, filters, sort or pages, opening one item and then another — could end with an older, slower response replacing what you had just asked for: another month's data, results that didn't match the filter bar, a cleared loading indicator, a blanked list or a selection snapping back. All of these screens now share one guard, so only the latest request for a piece of state can apply its result. Closing a dialog or panel also drops its pending loads.
@@ -16,7 +33,7 @@ Clicking faster than a screen loads — stepping months, switching groups, filte
 | Fixed | Schedule (delegation, newbie and closure overlays; employee availability, including deselecting an employee), On-Call, Office Availability, My Availability, Alarms, Checklist History, Checklist Fill, Checklist Builder, Delegation Archive, Procedures list (search, filters, sort, paging, "Updating results…"), Procedure detail (version browsing, compare), procedure access log, procedure editor, Procedures to learn (preview), Users (newbie dialog; deleting a period also drops an in-flight reload) |
 | Fixed | Checklist Fill: changing the date no longer keeps the previous date's shift selected |
 | Fixed | Checklist Fill: a slow "unread procedures" check for a previous template can no longer block (or unblock) Submit for the current one; Submit stays disabled while the check runs, and the previous shift's info no longer flashes |
-| Changed | The procedure tree editor has the same guard on its tree refresh; the page itself currently has a separate, known rendering bug, so this is not yet visible to users |
+| Changed | The procedure tree editor has the same guard on its tree refresh (the page's separate rendering bug is fixed in the entry above) |
 | Fixed | Procedures to learn no longer leaves a `hashchange` listener behind |
 | Tests | New e2e fixture `holdRequests` (`e2e/fixtures/hold.js`) and race tests for each screen |
 

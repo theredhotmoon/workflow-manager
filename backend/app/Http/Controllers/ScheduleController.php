@@ -9,6 +9,7 @@ use App\Models\ShiftChecklist;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\ChecklistTemplate;
+use App\Services\RestPolicyJanitor;
 use App\Services\ShiftTypeChanger;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
@@ -220,7 +221,7 @@ class ScheduleController extends Controller
     /**
      * Update the number of shift slots for a specific day.
      */
-    public function updateDayShifts(Request $request)
+    public function updateDayShifts(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'date' => ['required', 'date'],
@@ -250,8 +251,14 @@ class ScheduleController extends Controller
         } elseif ($desiredCount < $currentCount) {
             // Remove excess shift slots (from the end, unassigned first)
             $toRemove = $currentShifts->slice($desiredCount);
+            $userIds = ShiftAssignment::whereIn('shift_id', $toRemove->pluck('id'))->pluck('user_id')->all();
             foreach ($toRemove as $shift) {
                 $shift->delete(); // cascades to assignments
+            }
+            // Later shifts the removed assignments kept in rest lose their policy.
+            $group = ShiftGroup::find($groupId);
+            if ($group) {
+                $janitor->clearUncovered($group, $userIds);
             }
         }
 
@@ -298,7 +305,7 @@ class ScheduleController extends Controller
     /**
      * Assign a user to a shift slot.
      */
-    public function assign(Request $request, StreakReplay $streakReplay)
+    public function assign(Request $request, StreakReplay $streakReplay, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'shift_id' => ['required', 'exists:shifts,id'],
@@ -328,8 +335,10 @@ class ScheduleController extends Controller
         $timeline = $shift->shiftGroup ? $streakReplay->forGroup($shift->shiftGroup, [$userId]) : null;
         $window = $timeline ? $timeline->activeWindow($userId, $shift->date) : null;
         if ($window !== null && !$request->filled('rest_policy')) {
-            $rule = $window['rule'];
-            $restingUntil = $window['end']->toDateString();
+            // Report the window's final end (later extends_rest included), as the ⚠ chip does.
+            $final = $timeline->finalWindowAt($userId, $shift->date);
+            $rule = $final['rule'];
+            $restingUntil = $final['end']->toDateString();
 
             return response()->json([
                 'code' => 'rest_window_conflict',
@@ -391,7 +400,7 @@ class ScheduleController extends Controller
             ? $timeline->cascadePolicy($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy, $laterPolicy)
             : [];
 
-        $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy) {
+        $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor) {
             $created = ShiftAssignment::create([
                 'shift_id' => $shift->id,
                 'user_id' => $userId,
@@ -399,6 +408,10 @@ class ScheduleController extends Controller
             ]);
             if ($updatedIds !== []) {
                 ShiftAssignment::whereIn('id', $updatedIds)->update(['rest_policy' => $laterPolicy]);
+            }
+            // A new shift can also move a window off a later shift that had a policy.
+            if ($shift->shiftGroup) {
+                $janitor->clearUncovered($shift->shiftGroup, [$userId]);
             }
 
             return $created;
@@ -446,14 +459,19 @@ class ScheduleController extends Controller
     /**
      * Remove a user from a shift slot.
      */
-    public function unassign(ShiftAssignment $assignment)
+    public function unassign(ShiftAssignment $assignment, RestPolicyJanitor $janitor)
     {
         // Auto-acknowledge any pending change requests for this assignment
         ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
             ->where('status', 'pending')
             ->update(['status' => 'acknowledged']);
 
+        $group = $assignment->shift?->shiftGroup;
         $assignment->delete();
+        // Later shifts this one kept in rest lose their policy.
+        if ($group) {
+            $janitor->clearUncovered($group, [(int) $assignment->user_id]);
+        }
 
         return response()->json([
             'message' => 'Assignment removed successfully.',

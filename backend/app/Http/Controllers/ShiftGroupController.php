@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
+use App\Services\RestPolicyJanitor;
 use App\Support\ShiftType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -118,7 +119,7 @@ class ShiftGroupController extends Controller
     /**
      * Replace a group's full set of shift-streak rules in one call.
      */
-    public function syncStreakRules(Request $request, ShiftGroup $shiftGroup)
+    public function syncStreakRules(Request $request, ShiftGroup $shiftGroup, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'rules' => ['present', 'array'],
@@ -139,7 +140,7 @@ class ShiftGroupController extends Controller
             ], 422);
         }
 
-        DB::transaction(function () use ($rules, $shiftGroup) {
+        DB::transaction(function () use ($rules, $shiftGroup, $janitor) {
             $keepIds = [];
             foreach ($rules as $rule) {
                 $model = ShiftStreakRule::updateOrCreate(
@@ -149,6 +150,9 @@ class ShiftGroupController extends Controller
                 $keepIds[] = $model->id;
             }
             $shiftGroup->streakRules()->whereNotIn('id', $keepIds)->delete();
+
+            // New rules move the rest windows: answers for shifts no longer on a rest day are dropped.
+            $janitor->clearUncovered($shiftGroup, $janitor->usersWithPolicy($shiftGroup));
         });
 
         $shiftGroup->load('streakRules');

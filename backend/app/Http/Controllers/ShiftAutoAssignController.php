@@ -7,6 +7,7 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\UserAvailability;
+use App\Services\RestPolicyJanitor;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
 use Carbon\Carbon;
@@ -18,7 +19,7 @@ class ShiftAutoAssignController extends Controller
     /**
      * Delete all shifts + assignments for a month.
      */
-    public function clearMonth(Request $request)
+    public function clearMonth(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -36,11 +37,19 @@ class ShiftAutoAssignController extends Controller
 
         $totalShifts = $shifts->count();
         $totalAssignments = 0;
+        $userIds = [];
 
         foreach ($shifts as $shift) {
             $totalAssignments += $shift->assignments->count();
+            array_push($userIds, ...$shift->assignments->pluck('user_id')->all());
             $shift->assignments()->delete();
             $shift->delete();
+        }
+
+        // Shifts after the month that its streaks kept in rest lose their policy.
+        $group = ShiftGroup::find($groupId);
+        if ($group) {
+            $janitor->clearUncovered($group, $userIds);
         }
 
         return response()->json([

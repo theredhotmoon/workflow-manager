@@ -260,6 +260,7 @@ it('only updates shifts still on a rest day once the choice is applied', functio
         ->assertCreated();
     expect($res->json('updated_assignment_ids'))->toBe([$a6->id]);
     expect($a6->fresh()->rest_policy)->toBe('extends_rest');
-    expect($a11->fresh()->rest_policy)->toBe('counts');
+    // 11 is not on a rest day, so its old answer no longer applies and is cleared (RestPolicyJanitor).
+    expect($a11->fresh()->rest_policy)->toBeNull();
     expect(rrcPayloadAssignment($this, '2029-01-11')['resting_until'])->toBeNull();
 });

@@ -14,8 +14,11 @@ use Illuminate\Support\Collection;
  *
  * Auto-fill asks wouldConflict() once per (employee, shift), so the replay works on integer day
  * numbers (days since 1970-01-01) and only scans still-open windows; Carbon is built only for
- * returned values. newlyResting() replays the full history with the candidate; the "without"
- * coverage is cached per user and cleared by append().
+ * returned values. The full replay of each user's current events (the "baseline") is cached, with
+ * a checkpoint of the replay state every CHECKPOINT_EVERY events, and cleared by append().
+ * isResting() resumes from the checkpoint before the day; newlyResting() resumes from the one
+ * before the candidate and stops as soon as its state matches the baseline again (from there on
+ * both replays are identical).
  */
 final class StreakTimeline
 {
@@ -27,8 +30,14 @@ final class StreakTimeline
     /** @var array<int, list<array{day: int, shift_number: int, shift_type: ?string, rest_policy: ?string, assignment_id: ?int}>> */
     private array $eventsByUser = [];
 
-    /** @var array<int, array<int, int>> userId => covered positions of the user's current events (cleared by append) */
-    private array $coveredCache = [];
+    private const CHECKPOINT_EVERY = 16;
+
+    /**
+     * userId => full replay of the user's current events, with checkpoints (cleared by append).
+     *
+     * @var array<int, array{counts: array<string, int>, windows: array<int, array{rule: ShiftStreakRule, type: string, start: int, end: int}>, covered: array<int, int>, checkpoints: array<int, array{0: array<string, int>, 1: array<int, int>}>}>
+     */
+    private array $baseline = [];
 
     /** @var array<string, int> */
     private array $streakLength = [];
@@ -83,7 +92,7 @@ final class StreakTimeline
             usort($events, [self::class, 'compareEvents']);
         }
         $this->eventsByUser[$userId] = $events;
-        unset($this->coveredCache[$userId]);
+        unset($this->baseline[$userId]);
     }
 
     public function isResting(int $userId, \Carbon\Carbon $day): bool
@@ -101,6 +110,45 @@ final class StreakTimeline
             'start' => self::toCarbon($window['start']),
             'end' => self::toCarbon($window['end']),
         ];
+    }
+
+    /**
+     * The window covering $day with the latest FINAL end, over the full replay (later extends_rest
+     * included). Windows opened on or after $day start after it and extensions only lengthen, so the
+     * covering set is the one activeWindow() sees; only the reported end can be later.
+     *
+     * @return array{rule: ShiftStreakRule, start: Carbon, end: Carbon}|null
+     */
+    public function finalWindowAt(int $userId, \Carbon\Carbon $day): ?array
+    {
+        $window = self::longestCovering($this->baseline($userId)['windows'], self::dayNumber($day->toDateString()));
+
+        return $window === null ? null : [
+            'rule' => $window['rule'],
+            'start' => self::toCarbon($window['start']),
+            'end' => self::toCarbon($window['end']),
+        ];
+    }
+
+    /**
+     * Assignments of the user that carry a rest_policy but are not covered by any rest window. The
+     * replay reads a policy only for a covered event, so clearing these changes no window and no
+     * coverage: after one clearing pass this list is empty.
+     *
+     * @return list<int>
+     */
+    public function uncoveredWithPolicy(int $userId): array
+    {
+        $events = $this->eventsByUser[$userId] ?? [];
+        $covered = $this->baseline($userId)['covered'];
+        $ids = [];
+        foreach ($events as $pos => $event) {
+            if ($event['rest_policy'] !== null && $event['assignment_id'] !== null && !isset($covered[$pos])) {
+                $ids[] = $event['assignment_id'];
+            }
+        }
+
+        return $ids;
     }
 
     /**
@@ -143,39 +191,71 @@ final class StreakTimeline
      */
     public function newlyResting(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy = null): array
     {
-        $events = $this->eventsByUser[$userId] ?? [];
-        $day = self::dayNumber($date->toDateString());
-        if ($this->rules->isEmpty() || $events === [] || end($events)['day'] <= $day) {
-            return [];
-        }
-
-        $before = $this->coveredCache[$userId] ??= $this->replayEvents($events, PHP_INT_MAX)['covered'];
-
-        // An event at position $pos afterwards was at $pos, or $pos - 1 when it sits behind the candidate, before.
-        [$with, $insertAt] = self::withCandidate($events, $day, $shiftType, $shiftNumber, $restPolicy);
-        $after = $this->replayEvents($with, PHP_INT_MAX);
+        [$events, $newly, $windows] = $this->newlyCovered($userId, $shiftType, $date, $shiftNumber, $restPolicy, false);
 
         $affected = [];
-        foreach ($after['covered'] as $pos => $_) {
-            if ($pos === $insertAt) {
-                continue;
-            }
-            $origin = $pos < $insertAt ? $pos : $pos - 1;
-            if (isset($before[$origin])) {
-                continue;
-            }
-            $window = self::longestCovering($after['windows'], $with[$pos]['day']);
+        foreach ($newly as $pos) {
+            $window = self::longestCovering($windows, $events[$pos]['day']);
             $affected[] = [
-                'assignment_id' => $with[$pos]['assignment_id'],
-                'date' => gmdate('Y-m-d', $with[$pos]['day'] * 86400),
-                'shift_number' => $with[$pos]['shift_number'],
-                'shift_type' => $with[$pos]['shift_type'],
+                'assignment_id' => $events[$pos]['assignment_id'],
+                'date' => gmdate('Y-m-d', $events[$pos]['day'] * 86400),
+                'shift_number' => $events[$pos]['shift_number'],
+                'shift_type' => $events[$pos]['shift_type'],
                 'resting_until' => gmdate('Y-m-d', $window['end'] * 86400),
                 'rule' => $window['rule'],
             ];
         }
 
         return $affected;
+    }
+
+    /**
+     * Replays the user's events with the candidate added. Returns the events, the positions (in the
+     * events) the candidate newly puts into rest, in order, and the windows with their final ends.
+     * With $firstOnly it stops at the first such position (the windows are then not final).
+     *
+     * @return array{0: list<array<string, mixed>>, 1: list<int>, 2: array<int, array{rule: ShiftStreakRule, type: string, start: int, end: int}>}
+     */
+    private function newlyCovered(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber, ?string $restPolicy, bool $firstOnly): array
+    {
+        $events = $this->eventsByUser[$userId] ?? [];
+        $day = self::dayNumber($date->toDateString());
+        if ($this->rules->isEmpty() || $events === [] || end($events)['day'] <= $day) {
+            return [$events, [], []];
+        }
+
+        $base = $this->baseline($userId);
+        $count = count($events);
+        $candidate = ['day' => $day, 'shift_number' => $shiftNumber, 'shift_type' => $shiftType,
+            'rest_policy' => $restPolicy, 'assignment_id' => null];
+        // The candidate goes after every event that sorts before or equal to it (stable-sort order).
+        $insertAt = self::upperBound($events, $day, $shiftNumber);
+
+        // Events before the candidate replay as in the baseline: resume from the checkpoint before it.
+        [$counts, $windows, $open, $nextKey, $from] = $this->resume($base, $insertAt);
+        for ($pos = $from; $pos < $insertAt; $pos++) {
+            $this->step($events[$pos], $counts, $windows, $open, $nextKey);
+        }
+        $this->step($candidate, $counts, $windows, $open, $nextKey);
+
+        $newly = [];
+        for ($pos = $insertAt; $pos < $count; $pos++) {
+            // At a checkpoint, a state equal to the baseline's means every later event replays
+            // exactly as in the baseline: nothing more is newly covered. The windows covering the
+            // shifts found so far already have their final end: one still open here would equal a
+            // baseline window, which then covered those shifts too (ends only grow), so they wouldn't be new.
+            if ($pos % self::CHECKPOINT_EVERY === 0 && $this->sameAsBaseline($base, $pos, $events[$pos]['day'], $counts, $windows, $open)) {
+                break;
+            }
+            if ($this->step($events[$pos], $counts, $windows, $open, $nextKey) !== null && !isset($base['covered'][$pos])) {
+                $newly[] = $pos;
+                if ($firstOnly) {
+                    break;
+                }
+            }
+        }
+
+        return [$events, $newly, $windows];
     }
 
     /**
@@ -198,7 +278,7 @@ final class StreakTimeline
             return [];
         }
 
-        $before = $this->coveredIds($events, $this->coveredCache[$userId] ??= $this->replayEvents($events, PHP_INT_MAX)['covered']);
+        $before = $this->coveredIds($events, $this->baseline($userId)['covered']);
         $answered = [];
         foreach ($before as $id => $pos) {
             if ($events[$pos]['rest_policy'] !== null) {
@@ -235,15 +315,16 @@ final class StreakTimeline
 
     public function wouldConflict(int $userId, ?string $shiftType, \Carbon\Carbon $date, int $shiftNumber): bool
     {
+        // Only whether anything is newly put into rest matters: stop at the first such shift.
         return $this->isResting($userId, $date)
-            || $this->newlyResting($userId, $shiftType, $date, $shiftNumber) !== [];
+            || $this->newlyCovered($userId, $shiftType, $date, $shiftNumber, null, true)[1] !== [];
     }
 
     /** @return array<int, string> assignment_id => resting_until (Y-m-d) for every covered assignment */
     public function restingAssignments(int $userId): array
     {
         $events = $this->eventsByUser[$userId] ?? [];
-        $state = $this->replayEvents($events, PHP_INT_MAX);
+        $state = $this->baseline($userId);
         $resting = [];
         foreach ($state['covered'] as $pos => $_) {
             if ($events[$pos]['assignment_id'] !== null) {
@@ -298,8 +379,22 @@ final class StreakTimeline
     /** @return array{rule: ShiftStreakRule, type: string, start: int, end: int}|null */
     private function latestCovering(int $userId, int $day): ?array
     {
+        if ($this->rules->isEmpty()) {
+            return null;
+        }
+
+        // The state after every event before $day: resume from the checkpoint before it.
+        $events = $this->eventsByUser[$userId] ?? [];
+        $until = self::upperBound($events, $day - 1, PHP_INT_MAX);
+        [$counts, $windows, $open, $nextKey, $from] = $this->resume($this->baseline($userId), $until);
+        for ($pos = $from; $pos < $until; $pos++) {
+            $this->step($events[$pos], $counts, $windows, $open, $nextKey);
+        }
+
+        // A window that is no longer open ended before an earlier event's day, so it can't cover $day.
         $latest = null;
-        foreach ($this->replay($userId, $day)['windows'] as $window) {
+        foreach ($open as $key) {
+            $window = $windows[$key];
             if ($day >= $window['start'] && $day <= $window['end']
                 && ($latest === null || $window['end'] > $latest['end'])) {
                 $latest = $window;
@@ -307,6 +402,80 @@ final class StreakTimeline
         }
 
         return $latest;
+    }
+
+    /** The full replay of the user's current events, with checkpoints; cached until append(). */
+    private function baseline(int $userId): array
+    {
+        return $this->baseline[$userId] ??= $this->replayEvents($this->eventsByUser[$userId] ?? [], PHP_INT_MAX, true);
+    }
+
+    /**
+     * The baseline's replay state at the last checkpoint at or before event $pos: counts, the windows
+     * open there (keyed as in the baseline, in creation order, with their end at that point), their
+     * keys, the next free window key, and the checkpoint's position.
+     *
+     * @return array{0: array<string, int>, 1: array<int, array<string, mixed>>, 2: list<int>, 3: int, 4: int}
+     */
+    private function resume(array $base, int $pos): array
+    {
+        $checkpoint = intdiv($pos, self::CHECKPOINT_EVERY) * self::CHECKPOINT_EVERY;
+        [$counts, $ends] = $base['checkpoints'][$checkpoint];
+        $windows = [];
+        foreach ($ends as $i => $end) {
+            $windows[$i] = $base['windows'][$i];
+            $windows[$i]['end'] = $end;
+        }
+
+        return [$counts, $windows, array_keys($windows), count($base['windows']), $checkpoint];
+    }
+
+    /**
+     * Whether this replay state equals the baseline's before event $pos (a checkpoint): the same
+     * counts and the same windows that can still cover an event on or after $day (that event's day).
+     */
+    private function sameAsBaseline(array $base, int $pos, int $day, array $counts, array $windows, array $open): bool
+    {
+        [$baseCounts, $baseEnds] = $base['checkpoints'][$pos];
+        foreach ($this->streakLength as $type => $_) {
+            if (($counts[$type] ?? 0) !== ($baseCounts[$type] ?? 0)) {
+                return false;
+            }
+        }
+
+        $theirs = [];
+        foreach ($baseEnds as $i => $end) {
+            if ($end >= $day) {
+                $theirs[] = $base['windows'][$i]['type'].'|'.$base['windows'][$i]['start'].'|'.$end;
+            }
+        }
+        $mine = [];
+        foreach ($open as $key) {
+            if ($windows[$key]['end'] >= $day) {
+                $mine[] = $windows[$key]['type'].'|'.$windows[$key]['start'].'|'.$windows[$key]['end'];
+            }
+        }
+        sort($theirs);
+        sort($mine);
+
+        return $mine === $theirs;
+    }
+
+    /** The first position whose (day, shift_number) sorts after ($day, $shiftNumber). */
+    private static function upperBound(array $events, int $day, int $shiftNumber): int
+    {
+        $low = 0;
+        $high = count($events);
+        while ($low < $high) {
+            $mid = ($low + $high) >> 1;
+            if ($events[$mid]['day'] > $day || ($events[$mid]['day'] === $day && $events[$mid]['shift_number'] > $shiftNumber)) {
+                $high = $mid;
+            } else {
+                $low = $mid + 1;
+            }
+        }
+
+        return $low;
     }
 
     /**
@@ -321,79 +490,115 @@ final class StreakTimeline
 
     /**
      * Replays a sorted event list (0-based). 'covered' maps the position of every event that fell
-     * inside an open window to the index of the covering window ending last.
+     * inside an open window to the index of the covering window ending last. With $checkpoints,
+     * 'checkpoints' holds the state before every CHECKPOINT_EVERY-th event and where the replay
+     * stopped (after the last event, for a full replay), as [counts, open window index => its end then].
      *
      * @param  list<array<string, mixed>>  $events
-     * @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>, covered: array<int, int>}
+     * @return array{counts: array<string, int>, windows: list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>, covered: array<int, int>, checkpoints: array<int, array{0: array<string, int>, 1: array<int, int>}>}
      */
-    private function replayEvents(array $events, int $until): array
+    private function replayEvents(array $events, int $until, bool $checkpoints = false): array
     {
         $counts = [];
         $windows = [];
         $covered = [];
+        $saved = [];
         if ($this->rules->isEmpty()) {
-            return ['counts' => $counts, 'windows' => $windows, 'covered' => $covered];
+            return ['counts' => $counts, 'windows' => $windows, 'covered' => $covered, 'checkpoints' => $saved];
         }
 
         // Indexes into $windows that can still cover the current event. Events come in day order,
         // so a window ending before the current day can never cover (or be extended by) a later one.
         $open = [];
-        foreach ($events as $pos => $event) {
-            $day = $event['day'];
-            if ($day >= $until) {
+        $nextKey = 0;
+        $count = count($events);
+        for ($pos = 0; $pos < $count; $pos++) {
+            if ($events[$pos]['day'] >= $until) {
                 break;
             }
-
-            $covering = [];
-            foreach ($open as $k => $i) {
-                if ($windows[$i]['end'] < $day) {
-                    unset($open[$k]);
-                } elseif ($day >= $windows[$i]['start']) {
-                    $covering[] = $i;
-                }
+            if ($checkpoints && $pos % self::CHECKPOINT_EVERY === 0) {
+                $saved[$pos] = self::checkpoint($counts, $windows, $open);
             }
-
-            if ($covering !== []) {
-                $policy = $event['rest_policy'] ?? self::NOT_COUNTED;
-                if ($policy === self::EXTENDS_REST) {
-                    foreach ($covering as $i) {
-                        $candidate = $day + $this->restDays[$windows[$i]['type']];
-                        if ($candidate > $windows[$i]['end']) {
-                            $windows[$i]['end'] = $candidate;
-                        }
-                    }
-                }
-                $latest = $covering[0];
-                foreach ($covering as $i) {
-                    if ($windows[$i]['end'] > $windows[$latest]['end']) {
-                        $latest = $i;
-                    }
-                }
+            $latest = $this->step($events[$pos], $counts, $windows, $open, $nextKey);
+            if ($latest !== null) {
                 $covered[$pos] = $latest;
-                if ($policy !== self::COUNTS) {
-                    continue;
-                }
             }
+        }
+        if ($checkpoints) {
+            $saved[$pos] = self::checkpoint($counts, $windows, $open);
+        }
 
-            $type = $event['shift_type'];
-            if ($type === null || !isset($this->streakLength[$type])) {
-                continue;
-            }
+        return ['counts' => $counts, 'windows' => $windows, 'covered' => $covered, 'checkpoints' => $saved];
+    }
 
-            $counts[$type] = ($counts[$type] ?? 0) + 1;
-            if ($counts[$type] >= $this->streakLength[$type]) {
-                $windows[] = [
-                    'rule' => $this->rules->get($type),
-                    'type' => $type,
-                    'start' => $day + 1,
-                    'end' => $day + $this->restDays[$type],
-                ];
-                $open[] = count($windows) - 1;
-                $counts[$type] = 0;
+    /** @return array{0: array<string, int>, 1: array<int, int>} counts, open window index => end */
+    private static function checkpoint(array $counts, array $windows, array $open): array
+    {
+        $ends = [];
+        foreach ($open as $i) {
+            $ends[$i] = $windows[$i]['end'];
+        }
+
+        return [$counts, $ends];
+    }
+
+    /**
+     * Replays one event. Returns the key of the covering window ending last, or null if no window
+     * covers it. A new window is stored under $nextKey (then incremented) and added to $open.
+     */
+    private function step(array $event, array &$counts, array &$windows, array &$open, int &$nextKey): ?int
+    {
+        $day = $event['day'];
+        $covering = [];
+        foreach ($open as $k => $i) {
+            if ($windows[$i]['end'] < $day) {
+                unset($open[$k]);
+            } elseif ($day >= $windows[$i]['start']) {
+                $covering[] = $i;
             }
         }
 
-        return ['counts' => $counts, 'windows' => $windows, 'covered' => $covered];
+        $latest = null;
+        if ($covering !== []) {
+            $policy = $event['rest_policy'] ?? self::NOT_COUNTED;
+            if ($policy === self::EXTENDS_REST) {
+                foreach ($covering as $i) {
+                    $candidate = $day + $this->restDays[$windows[$i]['type']];
+                    if ($candidate > $windows[$i]['end']) {
+                        $windows[$i]['end'] = $candidate;
+                    }
+                }
+            }
+            $latest = $covering[0];
+            foreach ($covering as $i) {
+                if ($windows[$i]['end'] > $windows[$latest]['end']) {
+                    $latest = $i;
+                }
+            }
+            if ($policy !== self::COUNTS) {
+                return $latest;
+            }
+        }
+
+        $type = $event['shift_type'];
+        if ($type === null || !isset($this->streakLength[$type])) {
+            return $latest;
+        }
+
+        $counts[$type] = ($counts[$type] ?? 0) + 1;
+        if ($counts[$type] >= $this->streakLength[$type]) {
+            $windows[$nextKey] = [
+                'rule' => $this->rules->get($type),
+                'type' => $type,
+                'start' => $day + 1,
+                'end' => $day + $this->restDays[$type],
+            ];
+            $open[] = $nextKey;
+            $nextKey++;
+            $counts[$type] = 0;
+        }
+
+        return $latest;
     }
 
     /**
@@ -401,9 +606,9 @@ final class StreakTimeline
      * other than the one that was longest when the event was replayed, so this is read afterwards.
      *
      * @param  list<array{rule: ShiftStreakRule, type: string, start: int, end: int}>  $windows
-     * @return array{rule: ShiftStreakRule, type: string, start: int, end: int}
+     * @return array{rule: ShiftStreakRule, type: string, start: int, end: int}|null
      */
-    private static function longestCovering(array $windows, int $day): array
+    private static function longestCovering(array $windows, int $day): ?array
     {
         $best = null;
         foreach ($windows as $window) {

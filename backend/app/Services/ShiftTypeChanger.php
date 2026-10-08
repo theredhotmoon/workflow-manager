@@ -14,6 +14,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ShiftTypeChanger
 {
+    public function __construct(private RestPolicyJanitor $janitor)
+    {
+    }
+
     /**
      * @param  Collection<int, Shift>  $shifts
      * @return array{updated: int, rebooked: int}
@@ -42,6 +46,12 @@ class ShiftTypeChanger
                     if ($touchesRule) {
                         $rebooked += (int) ($assignmentCounts[$shift->id] ?? 0);
                     }
+                }
+
+                // A retype can take later shifts of the people on these shifts out of rest.
+                if ($group) {
+                    $userIds = ShiftAssignment::whereIn('shift_id', $groupShifts->pluck('id'))->distinct()->pluck('user_id')->all();
+                    $this->janitor->clearUncovered($group, $userIds);
                 }
             }
 

@@ -422,7 +422,7 @@
                   class="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-all" title="Open full page">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                 </router-link>
-                <button @click="showProcedureModal = false" class="p-2 text-slate-400 hover:text-white transition-colors">
+                <button @click="showProcedureModal = false" aria-label="Close procedure preview" class="p-2 text-slate-400 hover:text-white transition-colors">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -448,11 +448,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 
 const router = useRouter();
 const loading = ref(true);
@@ -594,8 +595,13 @@ function toggleSort(key) {
   }
 }
 
+// Apply / Reset overlap fetches (and the unfiltered mount fetch can land after an early Apply).
+// Only the latest may apply its rows, clear them on error or clear `loading`.
+const submissionsRequests = useLatestRequest();
+
 // Fetch data
 async function fetchData() {
+  const token = submissionsRequests.begin();
   loading.value = true;
   try {
     const params = { per_page: 1000 };
@@ -610,13 +616,14 @@ async function fetchData() {
       api.get('/api/checklist-templates'),
       api.get('/api/employees'),
     ]);
+    if (!submissionsRequests.isCurrent(token)) return;
     submissions.value = subRes.data.data || subRes.data || [];
     templates.value = tplRes.data || [];
     employees.value = empRes.data || [];
   } catch {
-    submissions.value = [];
+    if (submissionsRequests.isCurrent(token)) submissions.value = [];
   } finally {
-    loading.value = false;
+    if (submissionsRequests.isCurrent(token)) loading.value = false;
   }
 }
 
@@ -636,11 +643,14 @@ function resetFilters() {
   fetchData();
 }
 
-// Detail
+// Detail: clicking a second row before the first detail arrives must show the second.
+const detailRequests = useLatestRequest();
+
 async function viewDetail(id) {
+  const token = detailRequests.begin();
   try {
     const response = await api.get(`/api/checklist-submissions/${id}`);
-    detailData.value = response.data;
+    if (detailRequests.isCurrent(token)) detailData.value = response.data;
   } catch {}
 }
 
@@ -747,14 +757,21 @@ function exportCSV() {
 
 onMounted(fetchData);
 
+// Opening another procedure before the previous preview arrived supersedes it; a stale failure
+// must not close the preview the user is now looking at.
+const previewRequests = useLatestRequest();
+
 async function openProcedureModal(procedureId) {
+  const token = previewRequests.begin();
   showProcedureModal.value = true;
   procedurePreview.value = null;
   try {
-    procedurePreview.value = (await api.get(`/api/procedures/${procedureId}`)).data;
+    const res = await api.get(`/api/procedures/${procedureId}`);
+    if (!previewRequests.isCurrent(token)) return;
+    procedurePreview.value = res.data;
     setTimeout(() => procedureContentRef.value?.resetTab(), 0);
   } catch {
-    showProcedureModal.value = false;
+    if (previewRequests.isCurrent(token)) showProcedureModal.value = false;
   }
 }
 </script>

@@ -204,3 +204,46 @@ export async function reportProcedureIssue(context, procedureId, description) {
   if (!res.ok()) throw new Error(`report issue failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
+
+export async function createChecklistTemplate(
+  context,
+  { name, requiresConfirmation = false, procedureIds = [] },
+) {
+  const headers = await getXsrfHeader(context);
+  const items = procedureIds.length
+    ? procedureIds.map((procedureId, i) => ({
+        label: `${name} item ${i + 1}`,
+        type: 'checkbox',
+        requires_confirmation: requiresConfirmation,
+        procedure_id: procedureId,
+      }))
+    : [{ label: `${name} item`, type: 'checkbox', requires_confirmation: requiresConfirmation }];
+  const res = await send(context, 'post', '/api/checklist-templates', {
+    data: { name, is_active: true, groups: [{ name: `${name} group`, items }] },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create template failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+export async function createChecklistSubmission(
+  context,
+  { template, date, outgoingUserId, incomingUserId = null },
+) {
+  const headers = await getXsrfHeader(context);
+  const responses = template.groups
+    .flatMap((group) => group.items)
+    .map((item) => ({ checklist_item_id: item.id, value: 'true' }));
+  const res = await send(context, 'post', '/api/checklist-submissions', {
+    data: {
+      checklist_template_id: template.id,
+      date,
+      outgoing_user_id: outgoingUserId,
+      incoming_user_id: incomingUserId,
+      responses,
+    },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create submission failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}

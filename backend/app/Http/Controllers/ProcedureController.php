@@ -9,10 +9,14 @@ use App\Models\ProcedureUserRead;
 use App\Models\ProcedureVersion;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ProcedureController extends Controller
 {
+    /** Fields that make up a published version (and its ProcedureVersion snapshot). */
+    private const VERSIONED_FIELDS = ['title', 'purpose', 'requirements', 'content'];
+
     public function index(Request $request)
     {
         $query = Procedure::with(['owner:id,name', 'tags:id,name,color']);
@@ -122,17 +126,7 @@ class ProcedureController extends Controller
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
 
         // Save initial version snapshot
-        ProcedureVersion::create([
-            'procedure_id' => $procedure->id,
-            'version' => 1,
-            'title' => $procedure->title,
-            'purpose' => $procedure->purpose,
-            'requirements' => $procedure->requirements,
-            'content' => $procedure->content,
-            'change_reason' => 'Initial version',
-            'published_by' => $request->user()->id,
-            'published_at' => now(),
-        ]);
+        $this->snapshotVersion($procedure, 'Initial version', $request->user()->id);
 
         return response()->json($procedure, 201);
     }
@@ -170,9 +164,9 @@ class ProcedureController extends Controller
             ->skip(1)->first();
         $procedure->previous_access = $lastAccess?->accessed_at;
 
-        // Include draft info for owner/admin
-        $isOwnerOrAdmin = $request->user()->id === $procedure->owner_id || $request->user()->isAdmin();
-        $procedure->can_edit = $isOwnerOrAdmin;
+        // Editing (update, draft, publish, delete) is admin-only: every write route sits in the admin
+        // route group, so an owner who isn't an admin must not be offered the editor.
+        $procedure->can_edit = $request->user()->isAdmin();
 
         // Include latest version's change_reason
         $latestVersion = $procedure->versions()->where('version', $procedure->version)->first();
@@ -182,38 +176,68 @@ class ProcedureController extends Controller
         return response()->json($procedure);
     }
 
+    /**
+     * Edit the published procedure directly (admin route). Changing a versioned field (title,
+     * purpose, requirements, content) publishes a new version with its snapshot, as publishDraft()
+     * does. The owner is changed only through changeOwner(), which records who changed it and why.
+     */
     public function update(Request $request, Procedure $procedure)
     {
-        // Owner-only check
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Only the procedure owner can edit this procedure.'], 403);
-        }
-
         $validated = $request->validate([
             'title' => ['sometimes', 'string', 'max:255'],
             'purpose' => ['sometimes', 'nullable', 'string'],
             'requirements' => ['sometimes', 'nullable', 'string'],
             'content' => ['sometimes', 'nullable', 'string'],
-            // A deactivated owner can stay (the editor sends the current owner back), not be newly chosen.
-            'owner_id' => ['sometimes', Rule::exists('users', 'id')
-                ->where(fn ($q) => $q->whereNull('deactivated_at')->orWhere('id', $procedure->owner_id))],
+            // Clients may send the current owner back; a different owner goes through change-owner.
+            'owner_id' => ['sometimes', Rule::in([$procedure->owner_id])],
             'tag_ids' => ['sometimes', 'array'],
             'tag_ids.*' => ['exists:procedure_tags,id'],
+            'change_reason' => ['sometimes', 'nullable', 'string', 'max:1000'],
+        ], [
+            'owner_id.in' => 'Change the owner with change-owner, which records the reason.',
         ]);
 
-        // Bump version if content changed
-        if (isset($validated['content']) && $validated['content'] !== $procedure->content) {
-            $validated['version'] = $procedure->version + 1;
-        }
+        DB::transaction(function () use ($request, $procedure, $validated) {
+            // Lock the row, then re-read it: a concurrent edit or publish can't take the same version.
+            $procedure->newQuery()->whereKey($procedure->id)->lockForUpdate()->first();
+            $procedure->refresh();
 
-        $procedure->update(collect($validated)->except(['tag_ids'])->toArray());
+            $fields = collect($validated)->only(self::VERSIONED_FIELDS)->all();
+            $changed = collect($fields)->contains(fn ($value, $field) => $value !== $procedure->{$field});
 
-        if (isset($validated['tag_ids'])) {
-            $procedure->tags()->sync($validated['tag_ids']);
-        }
+            if ($changed) {
+                $fields['version'] = $procedure->version + 1;
+            }
+            $procedure->update($fields);
+
+            if ($changed) {
+                $reason = trim((string) ($validated['change_reason'] ?? ''));
+                $this->snapshotVersion($procedure, $reason !== '' ? $reason : 'Updated', $request->user()->id);
+            }
+
+            if (isset($validated['tag_ids'])) {
+                $procedure->tags()->sync($validated['tag_ids']);
+            }
+        });
 
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
         return response()->json($procedure);
+    }
+
+    /** Store the snapshot of the procedure's current (just published) version. */
+    private function snapshotVersion(Procedure $procedure, string $reason, int $publishedBy): ProcedureVersion
+    {
+        return ProcedureVersion::create([
+            'procedure_id' => $procedure->id,
+            'version' => $procedure->version,
+            'title' => $procedure->title,
+            'purpose' => $procedure->purpose,
+            'requirements' => $procedure->requirements,
+            'content' => $procedure->content,
+            'change_reason' => $reason,
+            'published_by' => $publishedBy,
+            'published_at' => now(),
+        ]);
     }
 
     /**
@@ -221,10 +245,6 @@ class ProcedureController extends Controller
      */
     public function saveDraft(Request $request, Procedure $procedure)
     {
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Only the procedure owner can edit this procedure.'], 403);
-        }
-
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'purpose' => ['sometimes', 'nullable', 'string'],
@@ -255,10 +275,6 @@ class ProcedureController extends Controller
      */
     public function publishDraft(Request $request, Procedure $procedure)
     {
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Only the procedure owner can publish this procedure.'], 403);
-        }
-
         if (!$procedure->has_draft) {
             return response()->json(['message' => 'No draft to publish.'], 422);
         }
@@ -267,39 +283,43 @@ class ProcedureController extends Controller
             'change_reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        $newVersion = $procedure->version + 1;
+        $published = DB::transaction(function () use ($request, $procedure, $validated) {
+            // Lock the row, then re-read it: a concurrent edit or publish can't take the same version.
+            $procedure->newQuery()->whereKey($procedure->id)->lockForUpdate()->first();
+            $procedure->refresh();
+            if (!$procedure->has_draft) {
+                return false; // a concurrent publish or discard got there first
+            }
+            $newVersion = $procedure->version + 1;
 
-        $procedure->update([
-            'title' => $procedure->draft_title,
-            'purpose' => $procedure->draft_purpose,
-            'requirements' => $procedure->draft_requirements,
-            'content' => $procedure->draft_content,
-            'version' => $newVersion,
-            'has_draft' => false,
-            'draft_title' => null,
-            'draft_purpose' => null,
-            'draft_requirements' => null,
-            'draft_content' => null,
-        ]);
+            $procedure->update([
+                'title' => $procedure->draft_title,
+                'purpose' => $procedure->draft_purpose,
+                'requirements' => $procedure->draft_requirements,
+                'content' => $procedure->draft_content,
+                'version' => $newVersion,
+                'has_draft' => false,
+                'draft_title' => null,
+                'draft_purpose' => null,
+                'draft_requirements' => null,
+                'draft_content' => null,
+            ]);
 
-        // Save version snapshot
-        ProcedureVersion::create([
-            'procedure_id' => $procedure->id,
-            'version' => $newVersion,
-            'title' => $procedure->title,
-            'purpose' => $procedure->purpose,
-            'requirements' => $procedure->requirements,
-            'content' => $procedure->content,
-            'change_reason' => $validated['change_reason'],
-            'published_by' => $request->user()->id,
-            'published_at' => now(),
-        ]);
+            // Save version snapshot
+            $this->snapshotVersion($procedure, $validated['change_reason'], $request->user()->id);
 
-        // Mark open feedbacks for previous versions as resolved
-        $procedure->feedbacks()
-            ->where('status', 'open')
-            ->where('for_version', '<', $newVersion)
-            ->update(['status' => 'resolved']);
+            // Mark open feedbacks for previous versions as resolved
+            $procedure->feedbacks()
+                ->where('status', 'open')
+                ->where('for_version', '<', $newVersion)
+                ->update(['status' => 'resolved']);
+
+            return true;
+        });
+
+        if (!$published) {
+            return response()->json(['message' => 'No draft to publish.'], 422);
+        }
 
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
         return response()->json($procedure);
@@ -310,10 +330,6 @@ class ProcedureController extends Controller
      */
     public function discardDraft(Request $request, Procedure $procedure)
     {
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
-            return response()->json(['message' => 'Only the procedure owner can discard the draft.'], 403);
-        }
-
         $procedure->update([
             'has_draft' => false,
             'draft_title' => null,

@@ -57,59 +57,15 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { useConfirmModal } from '../composables/useConfirm.js';
+import { useFocusTrap } from '../composables/useFocusTrap.js';
 
 const { isOpen, title, message, confirmLabel, danger, onConfirm, onCancel } = useConfirmModal();
 
+// The confirm usually opens over another dialog (an editor, a form): as the top layer of the
+// shared modal stack it alone gets Escape (= Cancel) and Tab. Focus starts on Cancel, the safer
+// default for destructive dialogs, and returns to where it was on close.
 const modalRef = ref(null);
-let triggerElement = null;
-
-function getFocusable() {
-  if (!modalRef.value) return [];
-  return Array.from(
-    modalRef.value.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((el) => !el.disabled);
-}
-
-function handleKeydown(e) {
-  if (e.key === 'Escape') {
-    onCancel();
-    return;
-  }
-  if (e.key === 'Tab') {
-    const focusable = getFocusable();
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
-}
-
-watch(isOpen, async (opened) => {
-  if (opened) {
-    triggerElement = document.activeElement;
-    document.addEventListener('keydown', handleKeydown);
-    await nextTick();
-    // Focus the Cancel button first (safer default for destructive dialogs)
-    const focusable = getFocusable();
-    if (focusable.length) focusable[0].focus();
-  } else {
-    document.removeEventListener('keydown', handleKeydown);
-    if (triggerElement instanceof HTMLElement) {
-      triggerElement.focus();
-      triggerElement = null;
-    }
-  }
-});
-
-onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
+useFocusTrap(modalRef, isOpen, { onEscape: onCancel });
 </script>

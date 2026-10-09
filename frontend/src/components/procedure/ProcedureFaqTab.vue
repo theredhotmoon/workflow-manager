@@ -3,7 +3,7 @@
     <form @submit.prevent="submitQuestion" class="mb-4 flex gap-2">
       <input v-model="newQuestion" type="text" placeholder="Ask a question about this procedure..."
         class="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
-      <button type="submit" :disabled="!newQuestion.trim()"
+      <button type="submit" :disabled="asking || !newQuestion.trim()"
         class="px-4 py-2 bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-xl text-sm font-medium hover:bg-indigo-500/30 transition-all disabled:opacity-40">
         Ask
       </button>
@@ -22,8 +22,9 @@
             </div>
           </div>
           <div class="flex items-center gap-1 shrink-0">
-            <button v-if="canManage(item)" @click="toggleOutdatedItem(item)"
+            <button v-if="canManage(item)" @click="toggleOutdatedItem(item)" :disabled="toggling[`item-${item.id}`]"
               :title="item.is_outdated ? 'Mark as current' : 'Mark as outdated'"
+              :aria-label="item.is_outdated ? 'Mark question as current' : 'Mark question as outdated'"
               :class="['text-xs p-1 transition-colors rounded',
                 item.is_outdated ? 'text-amber-400 hover:text-amber-300' : 'text-slate-500 hover:text-amber-400']">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43,8 +44,9 @@
               <p class="text-[10px] text-slate-500">{{ reply.author?.name }} · {{ fmtDate(reply.created_at) }}</p>
               <span v-if="reply.for_version" class="px-1.5 py-0.5 text-[9px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full tabular-nums">v{{ reply.for_version }}</span>
               <span v-if="reply.is_outdated" class="px-1.5 py-0.5 text-[9px] font-semibold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full">Outdated</span>
-              <button v-if="canManage(item)" @click="toggleOutdatedReply(reply)"
+              <button v-if="canManage(item)" @click="toggleOutdatedReply(reply)" :disabled="toggling[`reply-${reply.id}`]"
                 :title="reply.is_outdated ? 'Mark as current' : 'Mark as outdated'"
+                :aria-label="reply.is_outdated ? 'Mark reply as current' : 'Mark reply as outdated'"
                 :class="['text-[10px] p-0.5 transition-colors rounded',
                   reply.is_outdated ? 'text-amber-400 hover:text-amber-300' : 'text-slate-600 hover:text-amber-400']">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,7 +63,7 @@
           <input v-model="replyTexts[item.id]" type="text" placeholder="Add a reply..."
             @keyup.enter="submitReply(item)"
             class="flex-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
-          <button @click="submitReply(item)" :disabled="!replyTexts[item.id]?.trim()"
+          <button @click="submitReply(item)" :disabled="replying[item.id] || !replyTexts[item.id]?.trim()"
             class="px-3 py-1.5 text-xs text-indigo-400 bg-indigo-500/15 border border-indigo-500/20 rounded-lg hover:bg-indigo-500/25 transition-all disabled:opacity-40">
             Reply
           </button>
@@ -72,8 +74,11 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { reactive, ref } from 'vue';
+import { describeApiError } from '../../apiErrors.js';
 import api from '../../axios.js';
+import { confirm } from '../../composables/useConfirm.js';
+import { useToast } from '../../composables/useToast.js';
 
 const props = defineProps({
   procedureId: { type: Number, required: true },
@@ -84,9 +89,15 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:items']);
+const { showToast } = useToast();
 
 const newQuestion = ref('');
 const replyTexts = reactive({});
+// In-flight posts: a second Enter or click while one is on its way must not post it again.
+const asking = ref(false);
+const replying = reactive({});
+// Outdated toggles in flight (a double click would toggle twice and end where it started).
+const toggling = reactive({});
 
 function canManage(item) {
   return props.isAdmin || props.userId === props.ownerId;
@@ -101,55 +112,110 @@ function fmtDate(d) {
   });
 }
 
+function toastError(err, fallback) {
+  const e = describeApiError(err, fallback);
+  if (!e.silent) showToast(e.message, 'error', 6000);
+}
+
 async function submitQuestion() {
-  if (!newQuestion.value.trim()) return;
+  if (asking.value || !newQuestion.value.trim()) return;
+  asking.value = true;
   try {
     const res = await api.post(`/api/procedures/${props.procedureId}/faq`, {
       question: newQuestion.value,
     });
     emit('update:items', [{ ...res.data, replies: [] }, ...props.items]);
     newQuestion.value = '';
-  } catch {}
+  } catch (err) {
+    toastError(err, 'Could not post the question, try again');
+  } finally {
+    asking.value = false;
+  }
 }
 
 async function submitReply(item) {
   const body = replyTexts[item.id]?.trim();
-  if (!body) return;
+  if (!body || replying[item.id]) return;
+  replying[item.id] = true;
   try {
     const res = await api.post(`/api/procedure-faq/${item.id}/replies`, { body });
     item.replies.push(res.data);
     replyTexts[item.id] = '';
-  } catch {}
+  } catch (err) {
+    toastError(err, 'Could not post the reply, try again');
+  } finally {
+    replying[item.id] = false;
+  }
 }
 
-async function toggleOutdatedItem(item) {
+async function toggleOutdated(key, url, target, fallback) {
+  if (toggling[key]) return;
+  toggling[key] = true;
   try {
-    const res = await api.put(`/api/procedure-faq/${item.id}/toggle-outdated`);
-    item.is_outdated = res.data.is_outdated;
-  } catch {}
+    const res = await api.put(url);
+    target.is_outdated = res.data.is_outdated;
+  } catch (err) {
+    toastError(err, fallback);
+  } finally {
+    toggling[key] = false;
+  }
 }
 
-async function toggleOutdatedReply(reply) {
-  try {
-    const res = await api.put(`/api/procedure-faq-replies/${reply.id}/toggle-outdated`);
-    reply.is_outdated = res.data.is_outdated;
-  } catch {}
+function toggleOutdatedItem(item) {
+  return toggleOutdated(
+    `item-${item.id}`,
+    `/api/procedure-faq/${item.id}/toggle-outdated`,
+    item,
+    'Could not update the question, try again',
+  );
+}
+
+function toggleOutdatedReply(reply) {
+  return toggleOutdated(
+    `reply-${reply.id}`,
+    `/api/procedure-faq-replies/${reply.id}/toggle-outdated`,
+    reply,
+    'Could not update the reply, try again',
+  );
 }
 
 async function deleteFaqItem(item) {
+  const replies = item.replies?.length ?? 0;
+  const ok = await confirm({
+    title: 'Delete question',
+    message: replies
+      ? `Delete this question and its ${replies} ${replies === 1 ? 'reply' : 'replies'}? This cannot be undone.`
+      : 'Delete this question? This cannot be undone.',
+    confirmLabel: 'Delete',
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await api.delete(`/api/procedure-faq/${item.id}`);
     emit(
       'update:items',
       props.items.filter((i) => i.id !== item.id),
     );
-  } catch {}
+    showToast('Question deleted');
+  } catch (err) {
+    toastError(err, 'Could not delete the question, try again');
+  }
 }
 
 async function deleteFaqReply(reply, item) {
+  const ok = await confirm({
+    title: 'Delete reply',
+    message: 'Delete this reply? This cannot be undone.',
+    confirmLabel: 'Delete',
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await api.delete(`/api/procedure-faq-replies/${reply.id}`);
     item.replies = item.replies.filter((r) => r.id !== reply.id);
-  } catch {}
+    showToast('Reply deleted');
+  } catch (err) {
+    toastError(err, 'Could not delete the reply, try again');
+  }
 }
 </script>

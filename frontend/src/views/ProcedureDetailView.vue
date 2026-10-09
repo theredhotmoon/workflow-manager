@@ -51,7 +51,7 @@
           :procedure="displayProcedure"
           :user-id="currentUserId"
           :is-admin="isAdmin"
-          :editable="!isViewingOldVersion"
+          :editable="isAdmin && !isViewingOldVersion"
           :users="users"
           :change-reason="displayData.change_reason"
           :publisher="displayData.publisher"
@@ -92,7 +92,7 @@
                 </div>
                 <div class="flex justify-end gap-3">
                   <button type="button" @click="showFeedbackModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
-                  <button type="submit" class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50">Submit</button>
+                  <button type="submit" :disabled="submittingFeedback" class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ submittingFeedback ? 'Sending...' : 'Submit' }}</button>
                 </div>
               </form>
             </div>
@@ -129,7 +129,7 @@
                 </div>
                 <div class="flex justify-end gap-3">
                   <button type="button" @click="showTemplateModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
-                  <button type="submit" class="px-5 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50">{{ templateForm.id ? 'Update' : 'Create' }}</button>
+                  <button type="submit" :disabled="savingTemplate" class="px-5 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ templateForm.id ? 'Update' : 'Create' }}</button>
                 </div>
               </form>
             </div>
@@ -161,13 +161,16 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import ProcedureDiffModal from '../components/procedure/ProcedureDiffModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
+import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { useToast } from '../composables/useToast.js';
 import { isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser as authUser } from '../router/index.js';
 
@@ -179,7 +182,16 @@ const showFeedbackModal = ref(false);
 const showTemplateModal = ref(false);
 const showDiffModal = ref(false);
 const showEditor = ref(false);
+const submittingFeedback = ref(false);
+const savingTemplate = ref(false);
 const linkCopied = ref(false);
+const { showToast } = useToast();
+
+// A failed write keeps its dialog open and says why (401/419: sessionExpiry.js takes over).
+function toastError(err, fallback) {
+  const e = describeApiError(err, fallback);
+  if (!e.silent) showToast(e.message, 'error', 6000);
+}
 let linkCopiedTimer = null;
 const diffOldVersion = ref(0);
 const diffNewVersion = ref(0);
@@ -417,6 +429,8 @@ function openTemplateModal(tmpl) {
 }
 
 async function saveTemplate() {
+  if (savingTemplate.value) return;
+  savingTemplate.value = true;
   try {
     if (templateForm.id) {
       const res = await api.put(`/api/procedure-templates/${templateForm.id}`, {
@@ -426,6 +440,7 @@ async function saveTemplate() {
       });
       const idx = procedure.value.response_templates.findIndex((t) => t.id === templateForm.id);
       if (idx >= 0) procedure.value.response_templates[idx] = res.data;
+      showToast('Template updated');
     } else {
       const res = await api.post(`/api/procedures/${procedure.value.id}/templates`, {
         title: templateForm.title,
@@ -433,22 +448,40 @@ async function saveTemplate() {
         language: templateForm.language,
       });
       procedure.value.response_templates.push(res.data);
+      showToast('Template created');
     }
     showTemplateModal.value = false;
-  } catch {}
+  } catch (err) {
+    toastError(err, 'Could not save the template, try again');
+  } finally {
+    savingTemplate.value = false;
+  }
 }
 
 async function deleteTemplate(tmpl) {
+  const ok = await confirm({
+    title: 'Delete template',
+    message: `Delete the response template "${tmpl.title}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    danger: true,
+  });
+  if (!ok) return;
   try {
     await api.delete(`/api/procedure-templates/${tmpl.id}`);
     procedure.value.response_templates = procedure.value.response_templates.filter(
       (t) => t.id !== tmpl.id,
     );
-  } catch {}
+    showToast('Template deleted');
+  } catch (err) {
+    toastError(err, 'Could not delete the template, try again');
+  }
 }
 
-// Feedback
+// Feedback: one report per click — a double click must not file two reports (and alarm the
+// owner twice).
 async function submitFeedback() {
+  if (submittingFeedback.value) return;
+  submittingFeedback.value = true;
   try {
     const res = await api.post(`/api/procedures/${procedure.value.id}/feedback`, {
       ...feedbackForm,
@@ -456,7 +489,12 @@ async function submitFeedback() {
     procedure.value.feedbacks.unshift(res.data);
     showFeedbackModal.value = false;
     Object.assign(feedbackForm, { type: 'error', description: '', proposed_changes: '' });
-  } catch {}
+    showToast('Thanks, your report was sent.');
+  } catch (err) {
+    toastError(err, 'Could not send the report, try again');
+  } finally {
+    submittingFeedback.value = false;
+  }
 }
 
 function copyLink() {

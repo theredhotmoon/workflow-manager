@@ -24,7 +24,7 @@
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
             </button>
           </div>
-          <button @click="showEditor = true"
+          <button v-if="isAdmin" @click="showEditor = true"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all whitespace-nowrap">
             + New Procedure
           </button>
@@ -275,7 +275,7 @@
           <!-- Empty state -->
           <div v-else-if="!loading" class="text-center py-16">
             <p class="text-slate-500 text-sm mb-3">No procedures found.</p>
-            <button @click="showEditor = true" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">Create your first procedure →</button>
+            <button v-if="isAdmin" @click="showEditor = true" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">Create your first procedure →</button>
           </div>
 
           <!-- Pagination -->
@@ -324,6 +324,7 @@
       :procedure-id="null"
       @close="showEditor = false"
       @saved="onProcedureCreated" />
+    <AppToast />
   </AppLayout>
 </template>
 
@@ -332,6 +333,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
 import ProcedureTreeNode from '../components/procedure/ProcedureTreeNode.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';

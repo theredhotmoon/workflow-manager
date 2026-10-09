@@ -41,15 +41,20 @@
             <!-- Left: Editor (2/3) -->
             <div class="lg:col-span-2">
               <form @submit.prevent class="space-y-6">
+                <!-- What went wrong with the last save or load (field errors sit next to their fields) -->
+                <div v-if="formError" role="alert"
+                  class="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-300">{{ formError }}</div>
+
                 <!-- Title + Identifier -->
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <div class="sm:col-span-3">
-                    <label class="block text-sm font-medium text-slate-300 mb-1.5">Title <span class="text-red-400 ml-0.5">*</span></label>
-                    <input v-model="form.title" type="text" required placeholder="e.g. Password Reset via Database"
+                    <label for="procedure-editor-title" class="block text-sm font-medium text-slate-300 mb-1.5">Title <span class="text-red-400 ml-0.5">*</span></label>
+                    <input id="procedure-editor-title" v-model="form.title" type="text" required placeholder="e.g. Password Reset via Database"
                       @blur="touchedTitle = true"
+                      :aria-invalid="titleError ? 'true' : undefined"
                       :class="['w-full px-4 py-2.5 bg-white/5 border rounded-xl text-white text-sm focus:outline-none focus:ring-2 placeholder-slate-500',
                         titleError ? 'border-red-500/40 focus:ring-red-500/30' : 'border-white/10 focus:ring-indigo-500/50']" />
-                    <p v-if="titleError" class="mt-1 text-xs text-red-400">{{ titleError }}</p>
+                    <p v-if="titleError" data-testid="title-error" class="mt-1 text-xs text-red-400">{{ titleError }}</p>
                   </div>
                   <div>
                     <label class="block text-sm font-medium text-slate-300 mb-1.5">Identifier</label>
@@ -63,6 +68,7 @@
                   <label class="block text-sm font-medium text-slate-300 mb-1.5">Purpose</label>
                   <textarea v-model="form.purpose" rows="2" placeholder="Brief explanation of what the employee will achieve..."
                     class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500 resize-none"></textarea>
+                  <p v-if="serverError('purpose')" class="mt-1 text-xs text-red-400">{{ serverError('purpose') }}</p>
                 </div>
 
                 <!-- Requirements -->
@@ -70,20 +76,23 @@
                   <label class="block text-sm font-medium text-slate-300 mb-1.5">Requirements / Permissions / Tools</label>
                   <textarea v-model="form.requirements" rows="2" placeholder="Database access, admin panel..."
                     class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500 resize-none"></textarea>
+                  <p v-if="serverError('requirements')" class="mt-1 text-xs text-red-400">{{ serverError('requirements') }}</p>
                 </div>
 
                 <!-- Owner + Tags -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label class="block text-sm font-medium text-slate-300 mb-1.5">Owner <span class="text-red-400 ml-0.5">*</span></label>
-                    <select v-model="form.owner_id" required
+                    <select v-model="form.owner_id" required :disabled="isEdit"
                       @blur="touchedOwner = true"
-                      :class="['w-full px-4 py-2.5 bg-white/5 border rounded-xl text-white text-sm focus:outline-none focus:ring-2 appearance-none',
+                      :class="['w-full px-4 py-2.5 bg-white/5 border rounded-xl text-white text-sm focus:outline-none focus:ring-2 appearance-none disabled:opacity-60 disabled:cursor-not-allowed',
                         ownerError ? 'border-red-500/40 focus:ring-red-500/30' : 'border-white/10 focus:ring-indigo-500/50']">
                       <option value="" disabled class="bg-slate-800">Select owner...</option>
                       <option v-for="u in users" :key="u.id" :value="u.id" class="bg-slate-800">{{ u.name }}</option>
                     </select>
                     <p v-if="ownerError" class="mt-1 text-xs text-red-400">{{ ownerError }}</p>
+                    <!-- Saving never changes the owner; the Owners tab records who changed it and why. -->
+                    <p v-else-if="isEdit" class="mt-1 text-[10px] text-slate-500">Change the owner in the Owners tab.</p>
                   </div>
                   <div>
                     <label class="block text-sm font-medium text-slate-300 mb-1.5">Tags</label>
@@ -95,6 +104,7 @@
                         {{ tag.name }}
                       </button>
                     </div>
+                    <p v-if="serverError('tag_ids')" class="mt-1 text-xs text-red-400">{{ serverError('tag_ids') }}</p>
                   </div>
                 </div>
 
@@ -119,6 +129,7 @@
                     <!-- Editor content -->
                     <editor-content :editor="editor" class="tiptap-editor" />
                   </div>
+                  <p v-if="serverError('content')" class="mt-1 text-xs text-red-400">{{ serverError('content') }}</p>
                 </div>
 
                 <!-- Actions -->
@@ -134,7 +145,7 @@
                       class="px-5 py-2 bg-white/5 text-amber-400 border border-amber-500/30 font-semibold rounded-xl text-sm hover:bg-amber-500/10 transition-all disabled:opacity-50">
                       {{ saving ? 'Saving...' : 'Save Draft' }}
                     </button>
-                    <button type="button" @click="isEdit ? (showPublishModal = true) : publishOrCreate()" :disabled="saving || (isEdit && unresolvedCount > 0)"
+                    <button type="button" @click="isEdit ? openPublishModal() : publishOrCreate()" :disabled="saving || (isEdit && unresolvedCount > 0)"
                       :title="isEdit && unresolvedCount > 0 ? 'Resolve all feedback first' : ''"
                       class="px-6 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-violet-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                       {{ saving ? 'Saving...' : (isEdit ? `Publish v${originalVersion + 1}` : 'Create') }}
@@ -171,10 +182,14 @@
               <h3 id="publish-modal-title" class="text-white font-bold text-lg mb-1">Publish v{{ originalVersion + 1 }}</h3>
               <p class="text-slate-400 text-sm mb-4">Describe what changed in this version.</p>
               <form @submit.prevent="publishOrCreate" class="space-y-4">
+                <div v-if="publishError" role="alert"
+                  class="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-300">{{ publishError }}</div>
                 <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Reason for Changes <span class="text-red-400">*</span></label>
-                  <textarea v-model="changeReason" rows="3" required placeholder="e.g. Updated step 3 with new admin panel screenshots, fixed incorrect SQL query..."
+                  <label for="procedure-change-reason" class="block text-sm font-medium text-slate-300 mb-1.5">Reason for Changes <span class="text-red-400">*</span></label>
+                  <textarea id="procedure-change-reason" v-model="changeReason" rows="3" required placeholder="e.g. Updated step 3 with new admin panel screenshots, fixed incorrect SQL query..."
+                    :aria-invalid="serverError('change_reason') ? 'true' : undefined"
                     class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500 resize-none"></textarea>
+                  <p v-if="serverError('change_reason')" data-testid="change-reason-error" class="mt-1 text-xs text-red-400">{{ serverError('change_reason') }}</p>
                 </div>
                 <div class="flex justify-end gap-3">
                   <button type="button" @click="showPublishModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
@@ -268,10 +283,12 @@ import StarterKit from '@tiptap/starter-kit';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { describeApiError, fieldError } from '../../apiErrors.js';
 import api from '../../axios.js';
 import { confirm } from '../../composables/useConfirm.js';
 import { useFocusTrap } from '../../composables/useFocusTrap.js';
 import { useLatestRequest } from '../../composables/useLatestRequest.js';
+import { useToast } from '../../composables/useToast.js';
 import { isAdmin } from '../../roles.js';
 import { currentUser as authUser } from '../../router/index.js';
 
@@ -283,6 +300,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved']);
 
 const router = useRouter();
+const { showToast } = useToast();
 const isEdit = computed(() => !!props.procedureId);
 const saving = ref(false);
 const users = ref([]);
@@ -314,15 +332,81 @@ const form = reactive({
   tag_ids: [],
 });
 
-// Validation
+// Validation: the server's field errors from the last failed save win over the client checks.
 const touchedTitle = ref(false);
 const touchedOwner = ref(false);
-const titleError = computed(() =>
-  touchedTitle.value && !form.title.trim() ? 'Title is required.' : '',
+const serverErrors = ref({});
+const formError = ref(''); // summary of the last failed save or load, shown above the form
+const publishError = ref(''); // a failed publish that isn't about a form field, shown in its dialog
+const serverError = (name) => fieldError(serverErrors.value, name);
+const titleError = computed(
+  () =>
+    serverError('title') || (touchedTitle.value && !form.title.trim() ? 'Title is required.' : ''),
 );
-const ownerError = computed(() =>
-  touchedOwner.value && !form.owner_id ? 'Owner is required.' : '',
+const ownerError = computed(
+  () =>
+    serverError('owner_id') || (touchedOwner.value && !form.owner_id ? 'Owner is required.' : ''),
 );
+
+function clearErrors() {
+  serverErrors.value = {};
+  formError.value = '';
+  publishError.value = '';
+}
+
+// Shows why a save failed and keeps everything the user typed. 401/419 are left to sessionExpiry.js
+// (it sends the user to the login page). A field error under the publish dialog closes that dialog
+// so the field is visible; the change reason is kept.
+function showSaveError(err, fallback = 'Could not save, try again') {
+  const e = describeApiError(err, fallback);
+  if (e.silent) return;
+  serverErrors.value = e.fieldErrors;
+  const fields = Object.keys(e.fieldErrors);
+  if (showPublishModal.value && fields.every((f) => f === 'change_reason')) {
+    if (!fields.length) publishError.value = e.message;
+    return;
+  }
+  showPublishModal.value = false;
+  formError.value = e.message;
+}
+
+function showActionError(err, fallback) {
+  const e = describeApiError(err, fallback);
+  if (!e.silent) showToast(e.message, 'error', 6000);
+}
+
+// Unsaved changes: the form as last loaded or saved, compared with what is on screen now.
+const savedForm = ref(null);
+const formSnapshot = () => JSON.stringify({ ...form, tag_ids: [...form.tag_ids].sort() });
+// A save stores the snapshot taken when its request was sent, not when it returns: what the user
+// types while the request is in flight was not saved and must still count as a change.
+function markSaved(snapshot = formSnapshot()) {
+  savedForm.value = snapshot;
+}
+
+// A server error on a field goes away once the user edits that field (the summary stays until the
+// next attempt).
+function clearServerError(name) {
+  const keys = Object.keys(serverErrors.value).filter(
+    (k) => k === name || k.startsWith(`${name}.`),
+  );
+  if (!keys.length) return;
+  const next = { ...serverErrors.value };
+  for (const k of keys) delete next[k];
+  serverErrors.value = next;
+}
+for (const name of ['title', 'purpose', 'requirements', 'content', 'owner_id']) {
+  watch(
+    () => form[name],
+    () => clearServerError(name),
+  );
+}
+watch(
+  () => [...form.tag_ids],
+  () => clearServerError('tag_ids'),
+);
+watch(changeReason, () => clearServerError('change_reason'));
+const isDirty = computed(() => savedForm.value !== null && formSnapshot() !== savedForm.value);
 
 const pendingFeedbacks = computed(() => {
   const prevVersion = originalVersion.value - 1;
@@ -463,37 +547,74 @@ function toggleTag(id) {
   idx >= 0 ? form.tag_ids.splice(idx, 1) : form.tag_ids.push(id);
 }
 
-function handleClose() {
+// Escape, the ✕ and Cancel all come here. With unsaved changes the user confirms first: the next
+// open starts from the server's copy, so closing throws the changes away.
+let askingToClose = false;
+async function handleClose() {
+  if (askingToClose) return;
+  if (isDirty.value) {
+    askingToClose = true;
+    const ok = await confirm({
+      title: 'Discard unsaved changes?',
+      message: 'Your changes have not been saved. Close the editor and lose them?',
+      confirmLabel: 'Discard changes',
+      danger: true,
+    });
+    askingToClose = false;
+    if (!ok) return;
+  }
   emit('close');
 }
 
+function openPublishModal() {
+  publishError.value = '';
+  showPublishModal.value = true;
+}
+
 async function saveDraft() {
+  if (saving.value) return;
+  clearErrors();
   saving.value = true;
   try {
+    const sent = formSnapshot();
     await api.put(`/api/procedures/${props.procedureId}/draft`, form);
     hasDraft.value = true;
-  } catch {
+    markSaved(sent);
+    showToast('Draft saved');
+  } catch (err) {
+    showSaveError(err);
   } finally {
     saving.value = false;
   }
 }
 
 async function publishOrCreate() {
+  if (saving.value) return;
+  clearErrors();
   saving.value = true;
   try {
     if (isEdit.value) {
       // Save draft first, then publish with change_reason
+      const sent = formSnapshot();
       await api.put(`/api/procedures/${props.procedureId}/draft`, form);
+      hasDraft.value = true;
+      markSaved(sent);
+      const nextVersion = originalVersion.value + 1;
       await api.post(`/api/procedures/${props.procedureId}/publish`, {
         change_reason: changeReason.value,
       });
       showPublishModal.value = false;
+      showToast(`Published v${nextVersion}`);
       emit('saved', props.procedureId);
     } else {
+      const sent = formSnapshot();
       const res = await api.post('/api/procedures', form);
+      markSaved(sent);
+      showToast('Procedure created');
       emit('saved', res.data.id);
     }
-  } catch {
+  } catch (err) {
+    showSaveError(err, isEdit.value ? 'Could not publish, try again' : 'Could not save, try again');
   } finally {
     saving.value = false;
   }
@@ -509,8 +630,11 @@ async function deleteProcedure() {
   if (!ok) return;
   try {
     await api.delete(`/api/procedures/${props.procedureId}`);
+    showToast('Procedure deleted');
     emit('saved', null); // null signals deletion
-  } catch {}
+  } catch (err) {
+    showActionError(err, 'Could not delete the procedure, try again');
+  }
 }
 
 async function discardDraft() {
@@ -524,10 +648,19 @@ async function discardDraft() {
   try {
     await api.delete(`/api/procedures/${props.procedureId}/draft`);
     hasDraft.value = false;
-    // Reload original data
+  } catch (err) {
+    showActionError(err, 'Could not discard the draft, try again');
+    return;
+  }
+  showToast('Draft discarded');
+  clearErrors();
+  // Reload the published version into the form
+  try {
     const res = await api.get(`/api/procedures/${props.procedureId}`);
     loadFromResponse(res.data);
-  } catch {}
+  } catch (err) {
+    showActionError(err, 'Could not reload the procedure, close and reopen the editor');
+  }
 }
 
 async function submitFeedbackReview(fb) {
@@ -542,7 +675,9 @@ async function submitFeedbackReview(fb) {
     fb.owner_comment = (fb._comment || '').trim() || null;
     fb.status = 'resolved';
     fb._resolved = true;
-  } catch {}
+  } catch (err) {
+    showActionError(err, 'Could not save the review, try again');
+  }
 }
 
 function loadFromResponse(data) {
@@ -574,7 +709,10 @@ function loadFromResponse(data) {
       tag_ids: (data.tags || []).map((t) => t.id),
     });
   }
+  // setContent fires onUpdate, which stores the editor's normalized HTML in form.content: take the
+  // clean snapshot after it, or every freshly opened editor would count as changed.
   editor.value?.commands.setContent(form.content);
+  markSaved();
 }
 
 function resetForm() {
@@ -595,6 +733,8 @@ function resetForm() {
   showPublishModal.value = false;
   changeReason.value = '';
   loaded.value = false;
+  clearErrors();
+  savedForm.value = null; // nothing to lose until the form is loaded
   editor.value?.commands.setContent('');
 }
 
@@ -614,25 +754,32 @@ async function loadData() {
     if (!loadRequests.isCurrent(token)) return;
     users.value = usersRes.data;
     allTags.value = tagsRes.data;
-  } catch {}
+  } catch (err) {
+    if (!loadRequests.isCurrent(token)) return;
+    const e = describeApiError(err, 'Could not load the owner list and tags, try again');
+    if (!e.silent) formError.value = `Could not load the owner list and tags: ${e.message}`;
+  }
   if (!loadRequests.isCurrent(token)) return;
 
   if (isEdit.value) {
+    // Editing is admin-only (every procedure write route is); the views only offer it to admins.
+    if (!isAdmin(authUser.value)) {
+      emit('close');
+      return;
+    }
     try {
       const res = await api.get(`/api/procedures/${props.procedureId}`);
       if (!loadRequests.isCurrent(token)) return;
-      // Owner check
-      if (res.data.owner_id !== authUser.value?.id && !isAdmin(authUser.value)) {
-        emit('close');
-        return;
-      }
       loadFromResponse(res.data);
-    } catch {
+    } catch (err) {
       if (!loadRequests.isCurrent(token)) return;
+      showActionError(err, 'Could not open the procedure, try again');
       emit('close');
+      return;
     }
   } else {
     form.owner_id = authUser.value?.id || '';
+    markSaved();
   }
   loaded.value = true;
 }

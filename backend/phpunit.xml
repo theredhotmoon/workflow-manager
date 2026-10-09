@@ -18,6 +18,8 @@
         </include>
     </coverage>
     <php>
+        <!-- The CLI default (128M, e.g. php:8.0 images) no longer fits the whole suite in one process. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="API_RATE_LIMIT" value="60"/>
         <env name="BCRYPT_ROUNDS" value="4"/>

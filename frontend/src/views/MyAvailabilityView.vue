@@ -203,7 +203,6 @@ function nextMonth() {
 
 const calendarWeeks = computed(() => {
   const first = new Date(currentYear.value, currentMonth.value, 1);
-  const last = new Date(currentYear.value, currentMonth.value + 1, 0);
   const today = localDateStr(new Date());
   let startDay = first.getDay() === 0 ? 6 : first.getDay() - 1;
   const weeks = [];

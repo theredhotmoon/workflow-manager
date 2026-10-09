@@ -110,8 +110,8 @@
 </template>
 
 <script setup>
-import { computed, ref, toRef } from 'vue';
 import { diffLines, diffWords } from 'diff';
+import { computed, ref, toRef } from 'vue';
 import { useFocusTrap } from '../../composables/useFocusTrap.js';
 
 const props = defineProps({

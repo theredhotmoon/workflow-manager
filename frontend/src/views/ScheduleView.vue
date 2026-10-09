@@ -1928,7 +1928,7 @@ function getEmployeeShiftCount(userId) {
     const dayShifts = schedule.value[dateStr];
     if (!dayShifts) continue;
     for (const shift of dayShifts) {
-      if (shift.assignments && shift.assignments.some((a) => a.user_id === userId)) {
+      if (shift.assignments?.some((a) => a.user_id === userId)) {
         count++;
       }
     }
@@ -2103,7 +2103,7 @@ async function fetchSchedule({ quiet = false } = {}) {
     fetchNewbies(); // Always fetch for newbie star display
     fetchShiftColors(); // Load global color definitions
     if (showClosures.value) fetchClosures(); // Keep the closure overlay on the displayed month
-  } catch (err) {
+  } catch {
     if (scheduleRequests.isCurrent(token)) showToast('Failed to load schedule.', 'error');
   } finally {
     if (scheduleRequests.isCurrent(token)) loading.value = false;
@@ -2339,7 +2339,7 @@ async function doGenerateMonth() {
     });
     showToast(response.data.message);
     await fetchSchedule();
-  } catch (err) {
+  } catch {
     showToast('Failed to generate month.', 'error');
   } finally {
     generating.value = false;
@@ -2541,7 +2541,7 @@ const pendingMoves = new WeakMap();
 
 async function onDrop(evt, shift, dateStr) {
   const item = shift.assignments[evt.newIndex];
-  if (!item || !item.user_id) return;
+  if (!item?.user_id) return;
   // Roster cards are clones without an id; a chip from another shift still carries its assignment id.
   if (evt.from !== evt.to && evt.from?.dataset?.shiftId && item.id) {
     pendingMoves.set(item, item.id);
@@ -3017,7 +3017,7 @@ const changeRequestModal = ref({
   submitting: false,
 });
 
-function isShiftFuture(shift, dateStr) {
+function isShiftFuture(_shift, dateStr) {
   if (!dateStr) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);

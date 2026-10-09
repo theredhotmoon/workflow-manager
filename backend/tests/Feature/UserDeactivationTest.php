@@ -7,10 +7,12 @@ use App\Models\DelegationLog;
 use App\Models\NewbiePeriod;
 use App\Models\OfficeClosure;
 use App\Models\OnCallAssignment;
+use App\Models\OnCallCallback;
 use App\Models\Procedure;
 use App\Models\ProcedureAccessLog;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
+use App\Models\ShiftChangeRequest;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use Illuminate\Database\QueryException;
@@ -277,4 +279,61 @@ it('refuses a new handover to a deactivated incoming user with a clear message',
         'responses' => [['checklist_item_id' => $item->id, 'value' => true]],
     ])->assertStatus(422)
         ->assertJsonPath('errors.incoming_user_id.0', 'The incoming user has been deactivated. Pick someone else.');
+});
+
+it('refuses deactivation and reactivation to anyone but an admin', function (string $role) {
+    $actor = User::factory()->create(['role' => $role]);
+    $user = cdlEmployee();
+
+    $this->actingAs($actor)->postJson("/api/users/{$user->id}/deactivate")->assertForbidden();
+    expect($user->fresh()->deactivated_at)->toBeNull();
+
+    $user->forceFill(['deactivated_at' => now()])->save();
+    $this->actingAs($actor)->postJson("/api/users/{$user->id}/reactivate")->assertForbidden();
+    expect($user->fresh()->deactivated_at)->not->toBeNull();
+})->with(['employee', 'schedule_maintainer']);
+
+it('keeps delegation memberships and the original deactivation time, and revokes API tokens', function () {
+    $admin = cdlUserAdmin();
+    $user = cdlEmployee();
+    $h = cdlUserWithHistory($user);
+    $h['delegation']->users()->attach($user->id, ['status' => 'approved']);
+    $user->createToken('cli');
+
+    $this->actingAs($admin)->postJson("/api/users/{$user->id}/deactivate")->assertOk();
+    $first = $user->fresh()->deactivated_at;
+    Carbon::setTestNow('2026-10-10 10:00:00');
+    $this->actingAs($admin)->postJson("/api/users/{$user->id}/deactivate")->assertOk();
+
+    expect($user->fresh()->deactivated_at->equalTo($first))->toBeTrue();
+    expect($user->tokens()->count())->toBe(0);
+    expect($h['delegation']->users()->whereKey($user->id)->exists())->toBeTrue();
+});
+
+it('drops pending change requests of removed future shifts and keeps the ones on kept shifts', function () {
+    // Current behaviour: cascades; see follow-up. The request on the removed future assignment is
+    // acknowledged and then deleted with the assignment by the FK cascade; callbacks of a removed
+    // future on-call duty go with it too.
+    $admin = cdlUserAdmin();
+    $user = cdlEmployee();
+    $h = cdlUserWithHistory($user);
+    $requests = [];
+    foreach (['today', 'future'] as $key) {
+        $requests[$key] = ShiftChangeRequest::create([
+            'shift_assignment_id' => $h['assignments'][$key]->id, 'user_id' => $user->id,
+            'shift_id' => $h['assignments'][$key]->shift_id, 'reason' => 'Leaving', 'status' => 'pending',
+        ]);
+    }
+    $callback = OnCallCallback::create([
+        'on_call_assignment_id' => $h['onCall']['future']->id,
+        'starts_at' => '2026-10-20 22:00:00', 'ends_at' => '2026-10-20 23:00:00',
+    ]);
+
+    $this->actingAs($admin)
+        ->postJson("/api/users/{$user->id}/deactivate", ['remove_future_assignments' => true])
+        ->assertOk();
+
+    expect($requests['future']->fresh())->toBeNull()
+        ->and($callback->fresh())->toBeNull()
+        ->and($requests['today']->fresh()->status)->toBe('pending');
 });

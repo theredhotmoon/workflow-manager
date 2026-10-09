@@ -242,3 +242,26 @@ it('makes a stray hard delete of checklist history fail instead of cascading', f
 
     expect($delete)->toThrow(QueryException::class);
 })->with(['item', 'group', 'template']);
+
+it('refuses archiving a template to anyone but an admin', function (string $role) {
+    $t = cdlTemplateWithSubmission(cdlAdmin());
+
+    $this->actingAs(User::factory()->create(['role' => $role]))
+        ->deleteJson("/api/checklist-templates/{$t['template']->id}")
+        ->assertForbidden();
+
+    expect($t['template']->fresh()->archived_at)->toBeNull();
+})->with(['employee', 'schedule_maintainer']);
+
+it('keeps the first archive time when an archived template is archived again', function () {
+    Carbon::setTestNow('2026-10-09 10:00:00');
+    $admin = cdlAdmin();
+    $t = cdlTemplateWithSubmission($admin);
+    $this->actingAs($admin)->deleteJson("/api/checklist-templates/{$t['template']->id}")->assertOk();
+    $first = $t['template']->fresh()->archived_at;
+
+    Carbon::setTestNow('2026-10-12 10:00:00');
+    $this->actingAs($admin)->deleteJson("/api/checklist-templates/{$t['template']->id}")->assertOk();
+
+    expect($t['template']->fresh()->archived_at->equalTo($first))->toBeTrue();
+});

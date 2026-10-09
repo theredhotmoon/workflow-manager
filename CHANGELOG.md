@@ -4,6 +4,37 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🧪 Tests for destructive endpoints, lint and build in CI, npm vulnerabilities cleared
+
+> **Deploy notes**
+> - No migrations. Frontend dependencies changed (in-range bumps): run `npm ci` and rebuild the frontend image.
+>
+> **Behaviour changes**
+> - None in the app. CI now fails a frontend change that has a Biome error or does not build, before e2e runs, and builds both Docker images.
+
+- **Destructive endpoints and the shift change request flow had no backend tests.** New Pest feature tests cover shift group delete, procedure delete, delegation delete, user deactivation gaps and checklist template archiving (roles, status codes, what happens to related rows), plus the change request endpoints. Deletes that still wipe history are pinned as current behaviour, marked `// Current behaviour: cascades; see follow-up`, and left for a decision: **shift group delete** removes the group's shifts, assignments, change requests, shift checklists, streak rules, on-call duties and callbacks (handovers stay, unlinked from the shift); **procedure delete** removes its versions, FAQ items and replies, response templates, feedback, read receipts, access log, owner changes and tag links (child procedures move to the root, checklist items lose the link); **delegation delete** removes its members and log; **unassigning, moving, or deactivating with "remove future shifts"** acknowledges a pending change request and then the FK cascade deletes it with the assignment; **deleting a shift** deletes its change requests. The change request flow has no approve/reject/cancel or swap step (a manager edits the schedule and acknowledges); no bugs found. (M25)
+- **CI had no lint, format or build step, and Biome had a backlog.** Safe fixes (import order) applied; genuinely unused code removed by hand; `noUnusedVariables`/`noUnusedImports` turned off for `.vue` files, where Biome cannot see template usage (~440 of the 459 warnings were such false positives). Biome: 6 errors / 459 warnings / 32 infos → 0 / 0 / 32. New `lint-build` CI job (`npm run lint`, `npm run build`) gates e2e; new Docker Build workflow builds both images. Pint is installed but not enforced: it would reformat 136 of 249 PHP files. (M27)
+- **npm audit reported 8 vulnerabilities (7 high).** In-range bumps and `npm audit fix` clear all of them (0 in `npm audit` and `npm audit --omit=dev`). (M28)
+
+### Backend
+| What | Details |
+|------|---------|
+| Tests | New `ShiftGroupDeleteTest`, `ProcedureDeleteTest`, `DelegationDeleteTest`, `ShiftChangeRequestTest` (file, duplicate, validation, someone else's assignment for every role, mine, month list for managers only, acknowledge by admin/maintainer and not by employees, 404, reassigned shift, deleted shift). `UserDeactivationTest`: non-admins refused, delegation memberships kept, first deactivation time kept, API tokens revoked, change requests and on-call callbacks of removed future work. `ChecklistTemplateHistoryTest`: non-admins cannot archive, re-archiving keeps the first `archived_at` |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Changed | `npm run lint` is `biome check --diagnostic-level=error .` (lint + format + import order, as the pre-commit hook); `lint:fix` is `biome check --write .` |
+| Changed | `biome.json`: override turning `noUnusedVariables`/`noUnusedImports` off for `**/*.vue` |
+| Changed | Removed unused code: `useRouter`/`useRoute` handles in `ProcedureEditorModal`, `ChecklistBuilderView`, `ChecklistFillView`, `ProceduresToLearnView`; `collectIds` (`ProceduresListView`), `fmtDate` (`ProcedureDetailView`), `formatTime` (`MyShiftsView`), an unused local in `MyAvailabilityView`. `Number.isNaN`, optional chains and optional catch bindings where Biome flagged them (same behaviour) |
+| Dependencies | `@tiptap/*` 3.20.0 → 3.31.4, `vue` 3.5.28 → 3.5.43, `vite` 7.3.6 → 7.3.7, `axios` 1.19.0 → 1.20.0; transitive `prosemirror-view` 1.42.6, `nanoid` 3.3.20, `source-map-js` 1.2.2, `markdown-it` via `npm audit fix` |
+
+### CI
+| What | Details |
+|------|---------|
+| Added | `frontend-tests.yml`: `lint-build` job (npm ci, lint, build); the e2e `test` job `needs` it |
+| Added | `docker-build.yml`: `docker build` of `backend/` and `frontend/` (matrix, no push) on backend/frontend changes |
+
 ## 2026-10-09 — 🔕 No more silent failures: delegations, expired sessions, My Shifts, dashboard and the checklist archive
 
 > **Deploy notes**

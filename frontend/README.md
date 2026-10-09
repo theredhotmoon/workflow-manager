@@ -7,8 +7,8 @@ Vue 3 (Composition API, `<script setup>`) + Vite.
 This project uses [Biome](https://biomejs.dev/) for linting and formatting (no ESLint/Prettier).
 
 ```bash
-npm run lint          # check for lint errors
-npm run lint:fix      # auto-fix lint errors (safe fixes only)
+npm run lint          # biome check (lint + format + import order), fails on errors only; CI runs this
+npm run lint:fix      # biome check --write (safe fixes only)
 npm run format        # reformat all files
 npm run format:check  # check formatting without writing
 npm run check         # lint + format check combined
@@ -29,7 +29,8 @@ correctly leaves these alone, but running `biome lint --write --unsafe` or
 `biome check --write --unsafe` manually **will delete these imports and break the components
 at runtime** (the exact class of blank-page bug this tooling exists to prevent). Treat
 `noUnusedVariables`/`noUnusedImports` warnings as advisory only until Biome's Vue template
-analysis matures — do not "clean them up" with an unsafe fix pass.
+analysis matures — do not "clean them up" with an unsafe fix pass. For that reason `biome.json`
+turns both rules off for `.vue` files (they stay on for `.js`).
 
 ### After pulling this for the first time
 

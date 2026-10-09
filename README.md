@@ -238,6 +238,7 @@ npx playwright install chromium
 **Commands** (run from `frontend/`)
 
 ```bash
+npm run lint       # Biome (lint + format + import order), errors only — CI gate
 npm run test       # unit tests (composables), no backend needed
 npm run test:e2e   # end-to-end tests; starts `npm run dev:hybrid` on :5173 itself
 npm run test:all   # unit, then e2e

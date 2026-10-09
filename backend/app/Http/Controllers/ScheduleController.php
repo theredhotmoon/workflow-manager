@@ -189,6 +189,14 @@ class ScheduleController extends Controller
 
     /**
      * Update the number of shift slots for a specific day.
+     *
+     * Growing adds slots with default times. Shrinking removes empty slots first (latest first);
+     * only when there are not enough empty slots are staffed ones removed, and then only with
+     * confirm_remove_staffed: otherwise the answer is 409 staffed_shifts_removal listing them
+     * (with expected_remove_ids from that list, a changed list asks again). The remaining slots
+     * are renumbered 1..n in their order. Removing a slot deletes its assignments, their change
+     * requests and the slot's checklist settings; handover submissions keep their date and
+     * template (shift_id is set null). Everything runs in one transaction.
      */
     public function updateDayShifts(Request $request, RestPolicyJanitor $janitor)
     {
@@ -196,41 +204,78 @@ class ScheduleController extends Controller
             'date' => ['required', 'date'],
             'count' => ['required', 'integer', 'min:1', 'max:10'],
             'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
+            'confirm_remove_staffed' => ['sometimes', 'boolean'],
+            'expected_remove_ids' => ['sometimes', 'array'],
+            'expected_remove_ids.*' => ['integer'],
         ]);
 
-        $date = $request->date;
-        $desiredCount = $request->count;
+        $date = Carbon::parse($request->date)->toDateString();
+        $desiredCount = (int) $request->count;
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
-        $currentShifts = Shift::where('date', $date)->where('shift_group_id', $groupId)->orderBy('shift_number')->get();
-        $currentCount = $currentShifts->count();
 
-        if ($desiredCount > $currentCount) {
-            // Add more shift slots with default times
-            $defaults = $this->defaultShiftTimes($desiredCount);
-            for ($i = $currentCount + 1; $i <= $desiredCount; $i++) {
-                $times = $defaults[$i - 1] ?? [];
-                Shift::create([
-                    'date' => $date,
-                    'shift_number' => $i,
-                    'shift_group_id' => $groupId,
-                    'start_time' => $times['start_time'] ?? null,
-                    'end_time' => $times['end_time'] ?? null,
-                ]);
+        $refusal = DB::transaction(function () use ($request, $date, $desiredCount, $groupId, $janitor) {
+            // Locked so a concurrent assign or count change waits for this one.
+            $currentShifts = Shift::where('date', $date)->where('shift_group_id', $groupId)
+                ->orderBy('shift_number')->lockForUpdate()->get();
+            $currentCount = $currentShifts->count();
+
+            if ($desiredCount > $currentCount) {
+                // Add more shift slots with default times
+                $defaults = $this->defaultShiftTimes($desiredCount);
+                for ($i = $currentCount + 1; $i <= $desiredCount; $i++) {
+                    $times = $defaults[$i - 1] ?? [];
+                    Shift::create([
+                        'date' => $date,
+                        'shift_number' => $i,
+                        'shift_group_id' => $groupId,
+                        'start_time' => $times['start_time'] ?? null,
+                        'end_time' => $times['end_time'] ?? null,
+                    ]);
+                }
+
+                return null;
             }
-        } elseif ($desiredCount < $currentCount) {
-            // Remove excess shift slots (from the end, unassigned first)
-            $toRemove = $currentShifts->slice($desiredCount);
-            DB::transaction(function () use ($toRemove, $groupId, $janitor) {
-                $userIds = ShiftAssignment::whereIn('shift_id', $toRemove->pluck('id'))->pluck('user_id')->all();
-                foreach ($toRemove as $shift) {
-                    $shift->delete(); // cascades to assignments
+
+            if ($desiredCount === $currentCount) {
+                return null;
+            }
+
+            $toRemove = $this->slotsToRemove($currentShifts, $currentCount - $desiredCount);
+            $staffed = $toRemove->filter(fn (Shift $shift) => $shift->assignments->isNotEmpty())->values();
+
+            if ($staffed->isNotEmpty()) {
+                $staffedIds = $staffed->pluck('id')->sort()->values()->all();
+                $expected = $request->has('expected_remove_ids')
+                    ? collect($request->input('expected_remove_ids'))->map(fn ($id) => (int) $id)->sort()->values()->all()
+                    : null;
+                if (!$request->boolean('confirm_remove_staffed') || ($expected !== null && $expected !== $staffedIds)) {
+                    return $this->staffedRemovalRefusal($staffed);
                 }
-                // Later shifts the removed assignments kept in rest lose their policy.
-                $group = ShiftGroup::find($groupId);
-                if ($group) {
-                    $janitor->clearUncovered($group, $userIds);
+            }
+
+            $userIds = $toRemove->flatMap(fn (Shift $shift) => $shift->assignments->pluck('user_id'))->unique()->values()->all();
+            Shift::whereIn('id', $toRemove->pluck('id'))->delete(); // cascades to assignments
+
+            // Close the gaps: the kept slots become 1..n in their order (moving down only, so
+            // every target number is already free).
+            $kept = $currentShifts->reject(fn (Shift $shift) => $toRemove->contains('id', $shift->id))->values();
+            foreach ($kept as $index => $shift) {
+                if ((int) $shift->shift_number !== $index + 1) {
+                    $shift->update(['shift_number' => $index + 1]);
                 }
-            });
+            }
+
+            // Later shifts the removed assignments kept in rest lose their policy.
+            $group = ShiftGroup::find($groupId);
+            if ($group && $userIds !== []) {
+                $janitor->clearUncovered($group, $userIds);
+            }
+
+            return null;
+        });
+
+        if ($refusal !== null) {
+            return $refusal;
         }
 
         // Return updated shifts for that day, in the same shape as index()
@@ -669,6 +714,54 @@ class ScheduleController extends Controller
             ->get();
 
         return response()->json($changer->change($shifts, $request->input('shift_type')));
+    }
+
+    /**
+     * Which slots a reduction by $count removes: empty slots first, then staffed ones, each
+     * group from the end of the day. Loads assignments (with users and pending change requests).
+     *
+     * @return Collection<int, Shift>
+     */
+    private function slotsToRemove(Collection $shifts, int $count): Collection
+    {
+        $shifts->load([
+            'assignments.user:id,name',
+            'assignments.changeRequests' => fn ($q) => $q->where('status', 'pending'),
+        ]);
+        [$staffed, $empty] = $shifts->partition(fn (Shift $shift) => $shift->assignments->isNotEmpty());
+
+        return $empty->sortByDesc('shift_number')
+            ->concat($staffed->sortByDesc('shift_number'))
+            ->take($count)
+            ->values();
+    }
+
+    /**
+     * The 409 asking the manager to confirm removing staffed slots.
+     *
+     * @param  Collection<int, Shift>  $staffed
+     */
+    private function staffedRemovalRefusal(Collection $staffed): JsonResponse
+    {
+        $shifts = $staffed->sortBy('shift_number')->values()->map(fn (Shift $shift) => [
+            'id' => $shift->id,
+            'date' => $shift->date->format('Y-m-d'),
+            'shift_number' => $shift->shift_number,
+            'start_time' => $shift->start_time ? substr($shift->start_time, 0, 5) : null,
+            'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
+            'assigned_users' => $shift->assignments->map(fn ($a) => $a->user?->name)->filter()->values()->all(),
+            'pending_change_requests' => $shift->assignments->sum(fn ($a) => $a->changeRequests->count()),
+        ])->all();
+
+        $n = count($shifts);
+
+        return response()->json([
+            'code' => 'staffed_shifts_removal',
+            'message' => $n === 1
+                ? 'Removing this slot would delete a staffed shift. Confirm to remove it with its assignments.'
+                : "Removing these slots would delete {$n} staffed shifts. Confirm to remove them with their assignments.",
+            'shifts' => $shifts,
+        ], 409);
     }
 
     /**

@@ -7,7 +7,7 @@ use App\Models\ShiftAssignment;
 use App\Models\Shift;
 use App\Models\Alarm;
 use App\Services\AlarmService;
-use Carbon\Carbon;
+use App\Support\BusinessDate;
 use Illuminate\Http\Request;
 use App\Support\Month;
 
@@ -30,8 +30,8 @@ class ShiftChangeRequestController extends Controller
             return response()->json(['message' => 'You can only request changes for your own assignments.'], 403);
         }
 
-        // Ensure the shift is today or in the future
-        if ($assignment->shift->date < Carbon::today()) {
+        // Ensure the shift is today or in the future (the business timezone's today)
+        if ($assignment->shift->date->toDateString() < BusinessDate::todayString()) {
             return response()->json(['message' => 'Cannot request changes for past shifts.'], 422);
         }
 

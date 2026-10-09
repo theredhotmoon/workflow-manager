@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Delegation;
 use App\Models\DelegationLog;
 use App\Models\User;
+use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Support\Month;
@@ -237,7 +238,8 @@ class DelegationController extends Controller
     {
         $delegations = Delegation::with(['users:id,name', 'creator:id,name'])
             ->where('registration_open', true)
-            ->where('end_datetime', '>=', now())
+            // Open through its last day: delegations are date-only, compared with the business date.
+            ->whereDate('end_datetime', '>=', BusinessDate::todayString())
             ->orderBy('start_datetime')
             ->get();
 

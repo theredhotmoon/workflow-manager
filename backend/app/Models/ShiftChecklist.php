@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\BusinessDate;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
 
 class ShiftChecklist extends Model
 {
@@ -33,35 +34,23 @@ class ShiftChecklist extends Model
     }
 
     /**
-     * Calculate the absolute deadline datetime based on shift date/times.
+     * The handover's absolute deadline, in the business timezone: deadline_minutes after the shift
+     * starts, or before it ends (an overnight shift ends the next day). A shift without the
+     * reference time counts from its start, or from 00:00 of its date.
      *
-     * @param string $shiftDate  e.g. "2026-03-04"
-     * @param string|null $startTime e.g. "06:00"
-     * @param string|null $endTime   e.g. "14:00"
-     * @return Carbon|null
+     * The minutes are elapsed time, so they are counted in UTC: on a DST night 300 minutes after
+     * 22:00 is 02:00 or 04:00 on the local clock, not 03:00.
      */
-    public function getDeadlineDatetime($shiftDate, $startTime, $endTime)
+    public function getDeadlineDatetime(Shift $shift): ?Carbon
     {
         if (!$this->deadline_minutes) {
             return null;
         }
 
-        if ($this->deadline_reference === 'shift_end' && $endTime) {
-            $base = Carbon::parse($shiftDate . ' ' . $endTime);
-            // If end_time is before start_time, it crosses midnight
-            if ($startTime && $endTime < $startTime) {
-                $base->addDay();
-            }
-            return $base->subMinutes($this->deadline_minutes);
+        if ($this->deadline_reference === 'shift_end' && $shift->end_time) {
+            return BusinessDate::shiftEnd($shift)->utc()->subMinutes($this->deadline_minutes)->setTimezone(BusinessDate::timezone());
         }
 
-        // Default: from shift_start
-        if ($startTime) {
-            return Carbon::parse($shiftDate . ' ' . $startTime)
-                ->addMinutes($this->deadline_minutes);
-        }
-
-        // If no times, use start of day + offset
-        return Carbon::parse($shiftDate)->addMinutes($this->deadline_minutes);
+        return BusinessDate::shiftStart($shift)->utc()->addMinutes($this->deadline_minutes)->setTimezone(BusinessDate::timezone());
     }
 }

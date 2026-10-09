@@ -119,13 +119,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
             $dateStr = $s->date->format('Y-m-d');
 
             // Build per-checklist data
-            $checklistsData = $s->shiftChecklists->map(function ($sc) use ($s, $dateStr) {
+            $checklistsData = $s->shiftChecklists->map(function ($sc) use ($s) {
                 $submission = $s->submissions->first(fn($sub) => $sub->checklist_template_id === $sc->checklist_template_id);
-                $deadline = $sc->getDeadlineDatetime(
-                    $dateStr,
-                    $s->start_time ? substr($s->start_time, 0, 5) : null,
-                    $s->end_time ? substr($s->end_time, 0, 5) : null
-                );
+                // Business-timezone deadline: the ISO string carries its offset (e.g. +02:00).
+                $deadline = $sc->getDeadlineDatetime($s);
                 return [
                     'id' => $sc->id,
                     'checklist_template_id' => $sc->checklist_template_id,

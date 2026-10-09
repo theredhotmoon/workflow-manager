@@ -16,6 +16,9 @@ on:
       - 'docker-compose.dev.yml'
       - '.github/workflows/frontend-tests.yml'
 
+permissions:
+  contents: read
+
 jobs:
   lint-build:
     # Fast gate before the e2e job spins up Docker: Biome (errors only, the checks the pre-commit

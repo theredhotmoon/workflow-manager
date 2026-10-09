@@ -92,7 +92,7 @@ class ShiftAutoAssignController extends Controller
             return response()->json(['message' => 'No shifts found for this month. Generate shifts first.'], 422);
         }
 
-        $employees = User::active()->where('is_admin', false)->orderBy('name')->get();
+        $employees = User::active()->notAdmins()->orderBy('name')->get();
         $employees = $this->applyPlayerFilter($employees, $request);
 
         if ($employees->isEmpty()) {
@@ -221,7 +221,7 @@ class ShiftAutoAssignController extends Controller
             return response()->json(['message' => 'No shifts found for this month. Generate shifts first.'], 422);
         }
 
-        $employees = User::active()->where('is_admin', false)->orderBy('name')->get();
+        $employees = User::active()->notAdmins()->orderBy('name')->get();
         $employees = $this->applyPlayerFilter($employees, $request);
 
         if ($employees->isEmpty()) {
@@ -598,7 +598,7 @@ class ShiftAutoAssignController extends Controller
             return response()->json(['message' => 'No shifts found for this month. Generate shifts first.'], 422);
         }
 
-        $employees = User::active()->where('is_admin', false)->orderBy('name')->get();
+        $employees = User::active()->notAdmins()->orderBy('name')->get();
         $employees = $this->applyPlayerFilter($employees, $request);
 
         if ($employees->isEmpty()) {

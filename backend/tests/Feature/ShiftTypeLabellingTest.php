@@ -77,7 +77,7 @@ function stlNightRule(ShiftGroup $group): ShiftStreakRule
 
 function stlEmployee(): User
 {
-    return User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    return User::factory()->create(['role' => 'employee']);
 }
 
 function stlAssign($test, User $maintainer, Shift $shift, User $employee): void

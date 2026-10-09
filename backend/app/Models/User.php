@@ -16,11 +16,16 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    /** role is the only source of admin / schedule-maintainer status. */
+    public const ROLE_ADMIN = 'admin';
+    public const ROLE_SCHEDULE_MAINTAINER = 'schedule_maintainer';
+    public const ROLE_EMPLOYEE = 'employee';
+    public const ROLES = [self::ROLE_ADMIN, self::ROLE_SCHEDULE_MAINTAINER, self::ROLE_EMPLOYEE];
+
     protected $fillable = [
         'name',
         'email',
         'password',
-        'is_admin',
         'role',
     ];
 
@@ -31,11 +36,28 @@ class User extends Authenticatable
 
     protected $casts = [
         'email_verified_at' => 'datetime',
-        'is_admin' => 'boolean',
         'deactivated_at' => 'datetime',
     ];
 
     protected $appends = [];
+
+    /**
+     * Read-only is_admin, derived from role, for API clients that still read the old flag. Only added
+     * when role was loaded, so a partial select (e.g. owner:id,name) doesn't claim false for an admin.
+     */
+    protected function getArrayableAppends()
+    {
+        $appends = parent::getArrayableAppends();
+
+        return array_key_exists('role', $this->attributes)
+            ? array_values(array_unique(array_merge($appends, ['is_admin'])))
+            : $appends;
+    }
+
+    public function getIsAdminAttribute(): bool
+    {
+        return $this->isAdmin();
+    }
 
     /** Users who can log in and be picked for new work; deactivated ones only appear in history. */
     public function scopeActive($query)
@@ -61,17 +83,33 @@ class User extends Authenticatable
 
     public function isAdmin(): bool
     {
-        return $this->role === 'admin' || $this->is_admin;
+        return $this->role === self::ROLE_ADMIN;
     }
 
     public function isScheduleMaintainer(): bool
     {
-        return $this->role === 'schedule_maintainer';
+        return $this->role === self::ROLE_SCHEDULE_MAINTAINER;
     }
 
     public function canManageSchedule(): bool
     {
         return $this->isAdmin() || $this->isScheduleMaintainer();
+    }
+
+    /** Query counterparts of isAdmin() / canManageSchedule(). */
+    public function scopeAdmins($query)
+    {
+        return $query->where('role', self::ROLE_ADMIN);
+    }
+
+    public function scopeNotAdmins($query)
+    {
+        return $query->where('role', '!=', self::ROLE_ADMIN);
+    }
+
+    public function scopeScheduleManagers($query)
+    {
+        return $query->whereIn('role', [self::ROLE_ADMIN, self::ROLE_SCHEDULE_MAINTAINER]);
     }
 
     public function groups(): BelongsToMany

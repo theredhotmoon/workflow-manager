@@ -36,7 +36,7 @@ it('returns the requested month from the schedule endpoint on the 31st', functio
 
 it('returns the requested month from my-shifts on the 31st', function () {
     Carbon::setTestNow('2026-10-31 12:00:00');
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     foreach (['2027-02-10', '2027-03-05'] as $date) {
         $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id]);

@@ -13,7 +13,7 @@ beforeEach(function () {
     $this->maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $this->group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     ShiftStreakRule::create(['shift_group_id' => $this->group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $this->employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $this->employee = User::factory()->create(['role' => 'employee']);
     $this->shifts = [];
     foreach (['2029-01-01', '2029-01-02', '2029-01-03', '2029-01-04', '2029-01-07'] as $date) {
         $this->shifts[$date] = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $this->group->id, 'shift_type' => 'night']);

@@ -29,7 +29,7 @@ beforeEach(function () {
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01',
     ]);
     ShiftStreakRule::create(['shift_group_id' => $this->group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $this->employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $this->employee = User::factory()->create(['role' => 'employee']);
 });
 
 afterEach(function () {

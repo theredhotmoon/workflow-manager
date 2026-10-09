@@ -171,7 +171,7 @@ class ProcedureController extends Controller
         $procedure->previous_access = $lastAccess?->accessed_at;
 
         // Include draft info for owner/admin
-        $isOwnerOrAdmin = $request->user()->id === $procedure->owner_id || $request->user()->is_admin;
+        $isOwnerOrAdmin = $request->user()->id === $procedure->owner_id || $request->user()->isAdmin();
         $procedure->can_edit = $isOwnerOrAdmin;
 
         // Include latest version's change_reason
@@ -185,7 +185,7 @@ class ProcedureController extends Controller
     public function update(Request $request, Procedure $procedure)
     {
         // Owner-only check
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->is_admin) {
+        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Only the procedure owner can edit this procedure.'], 403);
         }
 
@@ -221,7 +221,7 @@ class ProcedureController extends Controller
      */
     public function saveDraft(Request $request, Procedure $procedure)
     {
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->is_admin) {
+        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Only the procedure owner can edit this procedure.'], 403);
         }
 
@@ -255,7 +255,7 @@ class ProcedureController extends Controller
      */
     public function publishDraft(Request $request, Procedure $procedure)
     {
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->is_admin) {
+        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Only the procedure owner can publish this procedure.'], 403);
         }
 
@@ -310,7 +310,7 @@ class ProcedureController extends Controller
      */
     public function discardDraft(Request $request, Procedure $procedure)
     {
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->is_admin) {
+        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Only the procedure owner can discard the draft.'], 403);
         }
 

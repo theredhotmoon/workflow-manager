@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
+import { isAdmin } from '../roles.js';
 import AlarmsView from '../views/AlarmsView.vue';
 import ChecklistBuilderView from '../views/ChecklistBuilderView.vue';
 import ChecklistFillView from '../views/ChecklistFillView.vue';
@@ -184,11 +185,7 @@ router.beforeEach(async (to, from, next) => {
     try {
       currentUser.value = await fetchCurrentUser();
 
-      if (
-        to.meta.requiresAdmin &&
-        !currentUser.value.is_admin &&
-        currentUser.value.role !== 'admin'
-      ) {
+      if (to.meta.requiresAdmin && !isAdmin(currentUser.value)) {
         next({ name: 'dashboard' });
       } else {
         next();

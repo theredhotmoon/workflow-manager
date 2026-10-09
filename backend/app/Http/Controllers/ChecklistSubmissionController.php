@@ -47,6 +47,20 @@ class ChecklistSubmissionController extends Controller
     }
 
     /**
+     * Handovers waiting for the current user's confirmation: only those naming them as the incoming
+     * user (the history list, index(), shows both directions).
+     */
+    public function pendingConfirmations(Request $request)
+    {
+        return response()->json(ChecklistSubmission::with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name'])
+            ->where('status', 'pending_confirmation')
+            ->where('incoming_user_id', $request->user()->id)
+            ->orderBy('date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->get());
+    }
+
+    /**
      * Outgoing user creates and fills a submission.
      */
     public function store(Request $request)
@@ -161,10 +175,15 @@ class ChecklistSubmissionController extends Controller
     }
 
     /**
-     * Incoming user confirms flagged items.
+     * Incoming user confirms flagged items. Only they can: not the outgoing user, and not an admin on
+     * their behalf, so the handover keeps its two-person check.
      */
     public function confirm(Request $request, ChecklistSubmission $checklistSubmission)
     {
+        if ($request->user()->id !== $checklistSubmission->incoming_user_id) {
+            return response()->json(['message' => 'Only the incoming user named on this handover can confirm it.'], 403);
+        }
+
         if ($checklistSubmission->status !== 'pending_confirmation') {
             return response()->json(['message' => 'This submission is not awaiting confirmation.'], 422);
         }
@@ -184,11 +203,12 @@ class ChecklistSubmissionController extends Controller
             $checklistSubmission->update([
                 'status' => 'completed',
                 'confirmed_at' => now(),
+                'confirmed_by_id' => $request->user()->id,
                 'general_comments' => $request->general_comments ?? $checklistSubmission->general_comments,
             ]);
         });
 
-        $checklistSubmission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'responses']);
+        $checklistSubmission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'confirmedBy:id,name', 'responses']);
         return response()->json($checklistSubmission);
     }
 }

@@ -4,6 +4,41 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🔒 Closed three privilege gaps: handover confirmation, procedure ownership, admin status
+
+- **Anyone could confirm anyone's handover.** The outgoing employee (or any user) could confirm a handover in place of the incoming one, which defeats the two-person check. Now only the incoming user named on the handover can confirm it (admins can't confirm on someone's behalf); everyone else gets *"Only the incoming user named on this handover can confirm it."* The confirmation records who confirmed. **View Pending Confirmations** now lists only handovers naming you as the incoming user (it used to list your own outgoing ones too); Checklist History still shows both directions.
+- **Any employee could take over a procedure or rearrange the procedure tree.** Changing a procedure's owner and moving it in the tree are now admin-only on the server too (the screens already showed these controls to admins only).
+- **Admin status had two sources of truth** (an `is_admin` flag and `role`), and screens disagreed: unticking *Admin* left a user whose role was admin an admin; admins created on the Users screen got no change-request alarms; role-only admins were picked by auto-fill. Now `role` (**Admin** / **Schedule maintainer** / **Employee**) is the only one. The Users screen has a **Role** select instead of the Admin switch and shows a role badge. An admin can't change their own role, and the last active admin can't be demoted or deactivated (*"There must be at least one active admin. Make someone else an admin first."*).
+
+> **Deploy note:** a migration converts `is_admin` into `role` (everyone with `is_admin = true` becomes `role = 'admin'`; existing roles are kept otherwise) and then **drops the `is_admin` column**. `down()` re-adds it from `role`. Another migration adds `checklist_submissions.confirmed_by_id`. API clients must send `role` instead of `is_admin` when creating or editing users (`is_admin` is now refused with 422); users' JSON still carries a read-only `is_admin` derived from `role`.
+
+### Backend
+| What | Details |
+|------|---------|
+| Changed | `PUT /api/checklist-submissions/{id}/confirm` answers 403 unless the caller is the submission's `incoming_user_id`, and sets the new nullable `confirmed_by_id` (FK `users`, restrict on delete); the response includes it and `confirmed_by` |
+| Added | `GET /api/checklist-submissions/pending-confirmations`: the caller's handovers awaiting confirmation as incoming user (plain array). `GET /api/checklist-submissions` (history, both directions) is unchanged |
+| Changed | `PUT /api/procedures/{id}/move` and `PUT /api/procedures/{id}/change-owner` moved into the `admin` route group (403 for employees and schedule maintainers) |
+| Changed | `role` is the single source of truth: `User::isAdmin()` checks `role === 'admin'` only; new `User::ROLES` constants and `admins()` / `notAdmins()` / `scheduleManagers()` scopes. Procedure and FAQ owner-or-admin checks, change-request alarm recipients (`AlarmService`) and the auto-fill pools (admins excluded) all go through them |
+| Changed | `POST /api/users` and `PUT /api/users/{id}` take `role` (`admin` / `schedule_maintainer` / `employee`, default `employee`) and refuse `is_admin` (422). Changing your own role or demoting the last active admin answers 422; deactivating the last active admin too. `GET /api/users`, `GET /api/users/{id}`, the schedule's employee pool and `GET /api/employees` return `role`; users' JSON carries a read-only `is_admin` (derived from `role`) whenever `role` is loaded |
+| Changed | Seeders and `UserFactory` set `role` (factory default `employee`) |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Added | `src/roles.js`: `isAdmin(user)`, `canManageSchedule(user)`, `ROLE_OPTIONS`, `roleLabel()`. The router guard, sidebar, dashboard, schedule, procedures, procedure editor and auto-fill player list use it instead of reading `is_admin` / `role` themselves |
+| Changed | Users screen: **Role** select (disabled with *"You cannot change your own role."* when editing yourself) instead of the Administrator switch; Admin / Schedule maintainer badge in the list |
+| Changed | Fill checklist → **View Pending Confirmations** uses the new endpoint. A 403 on confirm shows the server's message and goes back to the pending list |
+| Fixed | The auto-fill player list now leaves admins out, matching the server (it used to read an `is_admin` that `/api/employees` never returned) |
+
+### Tests
+| What | Details |
+|------|---------|
+| Added | `tests/Feature/PrivilegeGapsTest.php`: only the incoming user confirms (outgoing, third user, maintainer and admin get 403) and `confirmed_by_id` is set; pending list excludes your own outgoing handover; move/change-owner 403 for employee and maintainer, admin succeeds; one route per `admin` / `admin:schedule` group per role; the migration's `is_admin` → `role` mapping and `down()`; a demoted admin loses admin routes; role on create/update with `is_admin` refused; self-demotion and last-admin demotion refused; Users-screen admins get change-request alarms; admins left out of all three auto-fill modes |
+| Changed | Existing tests create users by `role` only |
+| Added | `src/roles.test.js` (unit); `e2e/users/roles.spec.js` (role select on a throwaway user, checked through the API; own role locked); `e2e/checklists/fill.spec.js` checks the outgoing employee doesn't see their own handover to confirm while the incoming admin does |
+
+---
+
 ## 2026-10-09 — 🛡️ Editing or deleting a checklist template, or deleting a user, no longer wipes history
 
 Three data-loss bugs are fixed:

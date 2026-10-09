@@ -16,6 +16,13 @@ use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
+    private const LAST_ADMIN_MESSAGE = 'There must be at least one active admin. Make someone else an admin first.';
+
+    private const ROLE_MESSAGES = [
+        'role.in' => 'The role must be admin, schedule_maintainer or employee.',
+        'is_admin.prohibited' => 'Admin status is set with role now (admin, schedule_maintainer or employee).',
+    ];
+
     /**
      * List users. Deactivated ones are left out unless include_deactivated is set (Users screen).
      */
@@ -24,7 +31,7 @@ class UserController extends Controller
         $users = User::with('groups:id,name,enum')
             ->when(!$request->boolean('include_deactivated'), fn ($q) => $q->active())
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'is_admin', 'deactivated_at', 'created_at', 'updated_at']);
+            ->get(['id', 'name', 'email', 'role', 'deactivated_at', 'created_at', 'updated_at']);
 
         return response()->json($users);
     }
@@ -38,14 +45,15 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'is_admin' => ['sometimes', 'boolean'],
-        ]);
+            'role' => ['sometimes', Rule::in(User::ROLES)],
+            'is_admin' => ['prohibited'],
+        ], self::ROLE_MESSAGES);
 
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
-            'is_admin' => $validated['is_admin'] ?? false,
+            'role' => $validated['role'] ?? User::ROLE_EMPLOYEE,
         ]);
 
         return response()->json($user, 201);
@@ -58,7 +66,7 @@ class UserController extends Controller
     public function show(User $user)
     {
         return response()->json(array_merge(
-            $user->only(['id', 'name', 'email', 'is_admin', 'deactivated_at', 'created_at', 'updated_at']),
+            $user->only(['id', 'name', 'email', 'role', 'is_admin', 'deactivated_at', 'created_at', 'updated_at']),
             [
                 'future_assignments_count' => $this->futureAssignments($user)->count(),
                 'future_on_call_count' => $this->futureOnCall($user)->count(),
@@ -67,17 +75,38 @@ class UserController extends Controller
     }
 
     /**
-     * Update an existing user.
+     * Update an existing user. Their role may change, except an admin's own and never so that no
+     * active admin is left.
      */
     public function update(Request $request, User $user)
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'is_admin' => ['sometimes', 'boolean'],
-        ]);
+            'role' => ['sometimes', Rule::in(User::ROLES)],
+            'is_admin' => ['prohibited'],
+        ], self::ROLE_MESSAGES);
 
-        $user->update($validated);
+        $roleChanges = isset($validated['role']) && $validated['role'] !== $user->role;
+
+        $refusal = DB::transaction(function () use ($request, $user, $validated, $roleChanges) {
+            if ($roleChanges) {
+                if ($user->isAdmin() && $this->wouldLeaveNoActiveAdmin($user)) {
+                    return self::LAST_ADMIN_MESSAGE;
+                }
+                if ($user->id === $request->user()->id) {
+                    return 'You cannot change your own role.';
+                }
+            }
+
+            $user->update($validated);
+
+            return null;
+        });
+
+        if ($refusal) {
+            return response()->json(['message' => $refusal], 422);
+        }
 
         return response()->json($user);
     }
@@ -100,7 +129,11 @@ class UserController extends Controller
             ], 422);
         }
 
-        [$removedAssignments, $removedOnCall] = DB::transaction(function () use ($request, $user, $janitor) {
+        $result = DB::transaction(function () use ($request, $user, $janitor) {
+            if ($user->isAdmin() && $this->wouldLeaveNoActiveAdmin($user)) {
+                return null;
+            }
+
             $user->forceFill(['deactivated_at' => $user->deactivated_at ?? now()])->save();
             $user->tokens()->delete();
 
@@ -126,6 +159,11 @@ class UserController extends Controller
 
             return [$assignments->count(), $removedOnCall];
         });
+
+        if ($result === null) {
+            return response()->json(['message' => self::LAST_ADMIN_MESSAGE], 422);
+        }
+        [$removedAssignments, $removedOnCall] = $result;
 
         return response()->json([
             'message' => "User \"{$user->name}\" deactivated.",
@@ -158,6 +196,17 @@ class UserController extends Controller
         ]);
 
         return response()->json(['message' => 'Password changed successfully.']);
+    }
+
+    /**
+     * Whether demoting or deactivating $admin leaves no other active admin. Locks the active admins'
+     * rows (inside the caller's transaction) so two admins can't demote each other at once.
+     */
+    private function wouldLeaveNoActiveAdmin(User $admin): bool
+    {
+        $activeAdminIds = User::active()->admins()->lockForUpdate()->pluck('id');
+
+        return $activeAdminIds->reject(fn ($id) => $id === $admin->id)->isEmpty();
     }
 
     /** The user's assignments on shifts from tomorrow on (business timezone). */

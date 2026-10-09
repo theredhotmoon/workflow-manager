@@ -335,6 +335,7 @@ import AppLayout from '../components/AppLayout.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
 import ProcedureTreeNode from '../components/procedure/ProcedureTreeNode.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser as authUser } from '../router/index.js';
 
 const router = useRouter();
@@ -358,7 +359,7 @@ const searchQuery = ref('');
 const selectedTags = ref([]);
 const selectedNodeId = ref(null);
 const rootExpanded = ref(true);
-const isAdmin = computed(() => authUser.value?.is_admin);
+const isAdmin = computed(() => userIsAdmin(authUser.value));
 const showEditor = ref(false);
 
 function onProcedureCreated(id) {

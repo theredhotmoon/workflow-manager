@@ -150,7 +150,7 @@ it('loads only the group\'s assignments before $until, with their rest_policy', 
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     $other = ShiftGroup::create(['name' => 'Other', 'sort_order' => 1]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     foreach (['2029-01-01', '2029-01-02'] as $date) {
         $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);
         ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
@@ -284,7 +284,7 @@ it('lists the assignments currently covered by a rest window', function () {
 it('loads every date when until is null, with assignment ids', function () {
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $ids = [];
     foreach (['2029-01-01', '2029-01-02', '2031-06-01', '2031-06-02'] as $date) {
         $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night']);

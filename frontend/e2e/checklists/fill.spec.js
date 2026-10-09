@@ -114,6 +114,36 @@ test.describe('Fill shift checklist', () => {
     );
   });
 
+  test('pending confirmations list only handovers naming you as the incoming user', async ({
+    adminPage,
+    employeePage,
+  }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    const regularId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    const name = `Incoming Only ${Date.now()}`;
+    const template = await createChecklistTemplate(context, { name, requiresConfirmation: true });
+    await createChecklistSubmission(context, {
+      template,
+      date: '2097-05-06',
+      outgoingUserId: regularId,
+      incomingUserId: adminId,
+    });
+
+    // The outgoing employee doesn't get their own handover to confirm...
+    await employeePage.goto('/checklist/fill');
+    await employeePage.getByRole('button', { name: 'View Pending Confirmations' }).click();
+    await expect(
+      employeePage.getByRole('heading', { level: 1, name: 'Confirm Handover' }),
+    ).toBeVisible();
+    await expect(employeePage.getByRole('heading', { level: 3, name })).toHaveCount(0);
+
+    // ...the incoming admin does.
+    await adminPage.goto('/checklist/fill');
+    await adminPage.getByRole('button', { name: 'View Pending Confirmations' }).click();
+    await expect(adminPage.getByRole('heading', { level: 3, name })).toBeVisible();
+  });
+
   test('a slow read-status check for the previous template does not gate the next one', async ({
     adminPage,
   }) => {

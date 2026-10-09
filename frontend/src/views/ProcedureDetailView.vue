@@ -168,6 +168,7 @@ import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import ProcedureDiffModal from '../components/procedure/ProcedureDiffModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser as authUser } from '../router/index.js';
 
 const route = useRoute();
@@ -203,7 +204,7 @@ function showLatestVersion() {
 }
 
 const currentUserId = computed(() => authUser.value?.id);
-const isAdmin = computed(() => authUser.value?.is_admin);
+const isAdmin = computed(() => userIsAdmin(authUser.value));
 const isViewingOldVersion = computed(
   () => procedure.value && viewingVersion.value < procedure.value.version,
 );

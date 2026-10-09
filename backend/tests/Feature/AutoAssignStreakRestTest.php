@@ -12,7 +12,7 @@ function aasSetup(): array
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     // Two worked nights → resting 2029-01-03 and 2029-01-04.
     foreach (['2029-01-01', '2029-01-02'] as $date) {
         $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
@@ -66,7 +66,7 @@ it('feeds its own assignments into the replay so later days see the rest', funct
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 1, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     foreach (['2029-01-01', '2029-01-02', '2029-01-03', '2029-01-04'] as $date) {
         Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id, 'shift_type' => 'night',
             'start_time' => '22:00', 'end_time' => '06:00']);
@@ -84,7 +84,7 @@ it('skips rest days that the back-to-back rule cannot explain', function (string
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 3]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     // Two worked nights → resting 2029-01-03..2029-01-05. No shift on 01-03, so 01-04 has no previous-day
     // neighbour and 01-05's neighbour (01-04) stays unassigned: only the rest window can exclude them.
     foreach (['2029-01-01', '2029-01-02'] as $date) {
@@ -112,7 +112,7 @@ it('does not assign a shift that would turn the employee\'s existing later shift
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2029-01-01', 'weekly_hour_cap' => 168,
     ]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 3]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     // Empty nights on 01-01 and 01-03 (not adjacent, so the back-to-back rules allow both); the employee already
     // works 01-05. Nights 01-01 + 01-03 would complete the streak and rest 01-04..01-06, covering 01-05.
     foreach (['2029-01-01', '2029-01-03', '2029-01-05'] as $date) {
@@ -137,7 +137,7 @@ it('sees the employee\'s existing shift in the next month when skipping a shift 
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 3]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     // Empty nights 01-27 and 01-29 would complete the streak and rest 01-30..02-01, covering the
     // employee's existing night on 02-01 — outside the month being filled.
     foreach (['2029-01-27', '2029-01-29', '2029-02-01'] as $date) {

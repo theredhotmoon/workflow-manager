@@ -38,10 +38,7 @@ class AlarmService
         ?string $linkUrl = null,
         ?string $linkLabel = null
     ): void {
-        $users = User::active()->where(function ($q) {
-            $q->where('role', 'admin')
-              ->orWhere('role', 'schedule_maintainer');
-        })->get();
+        $users = User::active()->scheduleManagers()->get();
 
         foreach ($users as $user) {
             $this->createAlarm($type, $user->id, $shortMessage, $details, $linkUrl, $linkLabel);

@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 
 function cdlAdmin(): User
 {
-    return User::factory()->create(['is_admin' => true, 'role' => 'admin']);
+    return User::factory()->create(['role' => 'admin']);
 }
 
 /** A template with two groups (two items, one item) and one submission answering every item. */

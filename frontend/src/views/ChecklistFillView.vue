@@ -874,16 +874,11 @@ async function submitChecklist() {
   }
 }
 
-// Confirmation flow
+// Confirmation flow: only handovers naming the current user as incoming (only they may confirm).
 async function loadPendingConfirmations() {
   try {
-    const response = await api.get('/api/checklist-submissions', {
-      params: {
-        status: 'pending_confirmation',
-        user_id: currentUser.value?.id,
-      },
-    });
-    pendingSubmissions.value = response.data.data || [];
+    const response = await api.get('/api/checklist-submissions/pending-confirmations');
+    pendingSubmissions.value = response.data || [];
     step.value = 'confirm';
   } catch {
     showToast('Failed to load pending confirmations.', 'error');
@@ -969,6 +964,17 @@ async function submitConfirmation() {
     confirmationRequests.invalidate();
     step.value = 'setup';
   } catch (err) {
+    if (err.response?.status === 403) {
+      // Not this user's handover to confirm (only its incoming user can): back to their own list.
+      showToast(
+        err.response.data?.message ||
+          'Only the incoming user named on this handover can confirm it.',
+        'error',
+      );
+      confirmationRequests.invalidate();
+      await loadPendingConfirmations();
+      return;
+    }
     const msg = err.response?.data?.message || 'Failed to confirm checklist.';
     showToast(msg, 'error');
   } finally {

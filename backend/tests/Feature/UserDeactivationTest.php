@@ -18,12 +18,12 @@ use Illuminate\Support\Carbon;
 
 function cdlUserAdmin(): User
 {
-    return User::factory()->create(['is_admin' => true, 'role' => 'admin']);
+    return User::factory()->create(['role' => 'admin']);
 }
 
 function cdlEmployee(array $fields = []): User
 {
-    return User::factory()->create(array_merge(['is_admin' => false, 'role' => 'employee'], $fields));
+    return User::factory()->create(array_merge(['role' => 'employee'], $fields));
 }
 
 /**
@@ -211,7 +211,7 @@ it('hides a deactivated user from the schedule pool, pickers and user lists', fu
 });
 
 it('leaves deactivated users out of auto-fill', function (string $endpoint, array $extra) {
-    $maintainer = User::factory()->create(['role' => 'schedule_maintainer', 'is_admin' => true]);
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     $active = cdlEmployee();
     $gone = cdlEmployee();

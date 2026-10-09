@@ -223,7 +223,7 @@
       <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
         <h2 class="text-lg font-semibold text-white mb-4">Quick Actions</h2>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <router-link v-if="currentUser?.is_admin" to="/schedule" class="flex items-center gap-3 px-5 py-4 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl transition-all duration-200 text-left group">
+          <router-link v-if="isAdmin(currentUser)" to="/schedule" class="flex items-center gap-3 px-5 py-4 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl transition-all duration-200 text-left group">
             <div class="w-10 h-10 rounded-xl bg-indigo-500/20 group-hover:bg-indigo-500/30 flex items-center justify-center transition-colors">
               <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -234,7 +234,7 @@
               <p class="text-slate-400 text-xs">Plan monthly work shifts</p>
             </div>
           </router-link>
-          <router-link v-if="currentUser?.is_admin" to="/users" class="flex items-center gap-3 px-5 py-4 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 rounded-xl transition-all duration-200 text-left group">
+          <router-link v-if="isAdmin(currentUser)" to="/users" class="flex items-center gap-3 px-5 py-4 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 rounded-xl transition-all duration-200 text-left group">
             <div class="w-10 h-10 rounded-xl bg-violet-500/20 group-hover:bg-violet-500/30 flex items-center justify-center transition-colors">
               <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -268,6 +268,7 @@ import { useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
+import { isAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
 const router = useRouter();

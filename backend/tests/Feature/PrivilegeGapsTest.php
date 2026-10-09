@@ -22,22 +22,35 @@ function prvUser(string $role = 'employee', array $fields = []): User
  * $outgoing submits a handover naming $incoming, on a template with an item needing confirmation,
  * through the API. Returns the pending submission.
  */
-function prvPendingHandover(User $outgoing, User $incoming): ChecklistSubmission
+/** A template whose one item needs the incoming user's confirmation. */
+function prvConfirmTemplate(): ChecklistItem
 {
     $template = ChecklistTemplate::create(['name' => 'Handover', 'is_active' => true]);
     $group = ChecklistGroup::create(['checklist_template_id' => $template->id, 'name' => 'Doors', 'sort_order' => 0]);
-    $item = ChecklistItem::create([
+
+    return ChecklistItem::create([
         'checklist_group_id' => $group->id, 'label' => 'Front door locked', 'type' => 'checkbox',
         'requires_confirmation' => true, 'sort_order' => 0,
     ]);
+}
 
-    $id = test()->actingAs($outgoing)->postJson('/api/checklist-submissions', [
-        'checklist_template_id' => $template->id,
+/** $filer POSTs a handover from $outgoingId to $incomingId (ids as given, so strings can be sent). */
+function prvFile(User $filer, $outgoingId, $incomingId, ?ChecklistItem $item = null)
+{
+    $item = $item ?? prvConfirmTemplate();
+
+    return test()->actingAs($filer)->postJson('/api/checklist-submissions', [
+        'checklist_template_id' => $item->group->checklist_template_id,
         'date' => '2026-10-09',
-        'outgoing_user_id' => $outgoing->id,
-        'incoming_user_id' => $incoming->id,
+        'outgoing_user_id' => $outgoingId,
+        'incoming_user_id' => $incomingId,
         'responses' => [['checklist_item_id' => $item->id, 'value' => true]],
-    ])->assertCreated()->json('id');
+    ]);
+}
+
+function prvPendingHandover(User $outgoing, User $incoming): ChecklistSubmission
+{
+    $id = prvFile($outgoing, $outgoing->id, $incoming->id)->assertCreated()->json('id');
 
     $submission = ChecklistSubmission::findOrFail($id);
     expect($submission->status)->toBe('pending_confirmation');
@@ -105,6 +118,52 @@ it('lists pending confirmations only to the incoming user', function () {
     }
 });
 
+it('files a handover only as yourself unless you are an admin', function () {
+    $a = prvUser();
+    $b = prvUser();
+    $c = prvUser();
+
+    // The reviewer's forgery: A files "from" colleague B naming themselves as incoming, then confirms alone.
+    prvFile($a, $b->id, $a->id)->assertStatus(422)->assertJsonValidationErrors('outgoing_user_id');
+    prvFile($a, $b->id, $c->id)->assertStatus(422)->assertJsonValidationErrors('outgoing_user_id');
+    // Naming yourself as both ends (also with ids sent as strings).
+    prvFile($a, $a->id, $a->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    prvFile($a, (string) $a->id, $a->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    prvFile($a, $a->id, (string) $a->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    // Ids sent as strings don't slip past any of the checks.
+    prvFile($a, (string) $b->id, (string) $a->id)->assertStatus(422)->assertJsonValidationErrors('outgoing_user_id');
+    // Form-encoded (every value a string) too.
+    $item = prvConfirmTemplate();
+    test()->actingAs($a)->post('/api/checklist-submissions', [
+        'checklist_template_id' => (string) $item->group->checklist_template_id, 'date' => '2026-10-09',
+        'outgoing_user_id' => (string) $a->id, 'incoming_user_id' => (string) $a->id,
+        'responses' => [['checklist_item_id' => (string) $item->id, 'value' => '1']],
+    ], ['Accept' => 'application/json'])->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    expect(ChecklistSubmission::count())->toBe(0);
+
+    prvFile($a, $a->id, $b->id)->assertCreated()->assertJsonPath('status', 'pending_confirmation');
+    prvFile($a, (string) $a->id, (string) $b->id)->assertCreated();
+    prvFile($a, $a->id, null)->assertCreated()->assertJsonPath('status', 'completed');
+});
+
+it('lets an admin file on behalf of someone, but not to themselves', function () {
+    $admin = prvUser('admin');
+    $b = prvUser();
+    $c = prvUser();
+
+    prvFile($admin, $b->id, $admin->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    prvFile($admin, $b->id, $b->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    prvFile($admin, (string) $b->id, $b->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    prvFile($admin, (string) $b->id, (string) $admin->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    prvFile($admin, $b->id, (string) $admin->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    prvFile($admin, $admin->id, $admin->id)->assertStatus(422)->assertJsonValidationErrors('incoming_user_id');
+    expect(ChecklistSubmission::count())->toBe(0);
+
+    prvFile($admin, $b->id, $c->id)->assertCreated()
+        ->assertJsonPath('outgoing_user_id', $b->id)->assertJsonPath('incoming_user_id', $c->id);
+    prvFile($admin, $admin->id, $c->id)->assertCreated();
+});
+
 // ── H2: procedure move and change-owner are admin-only ────────────────────────
 
 it('keeps procedure move and change-owner to admins', function () {
@@ -141,6 +200,13 @@ it('enforces the admin and admin:schedule route groups by role', function (strin
     $user = prvUser($role);
     test()->actingAs($user)->getJson('/api/users')->assertStatus($adminRoute);
     test()->actingAs($user)->getJson('/api/shift-groups')->assertStatus($scheduleRoute);
+
+    // One write route per group. Allowed callers get past the middleware (and fail validation on the
+    // empty body), so only the 403 matters here.
+    $write = test()->actingAs($user)->postJson('/api/procedures', []);
+    $adminRoute === 403 ? $write->assertForbidden() : $write->assertStatus(422);
+    $write = test()->actingAs($user)->postJson('/api/schedule/assign', []);
+    $scheduleRoute === 403 ? $write->assertForbidden() : $write->assertStatus(422);
 })->with([
     'employee' => ['employee', 403, 403],
     'schedule maintainer' => ['schedule_maintainer', 403, 200],

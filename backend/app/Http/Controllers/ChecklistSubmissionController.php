@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ChecklistSubmissionController extends Controller
 {
@@ -70,8 +71,8 @@ class ChecklistSubmissionController extends Controller
             'checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')->whereNull('archived_at')],
             'shift_id' => ['nullable', 'exists:shifts,id'],
             'date' => ['required', 'date'],
-            'outgoing_user_id' => ['required', User::activeExistsRule()],
-            'incoming_user_id' => ['nullable', User::activeExistsRule()],
+            'outgoing_user_id' => ['required', 'integer', User::activeExistsRule()],
+            'incoming_user_id' => ['nullable', 'integer', 'different:outgoing_user_id', User::activeExistsRule()],
             'general_comments' => ['nullable', 'string'],
             'responses' => ['required', 'array'],
             'responses.*.checklist_item_id' => ['required', 'exists:checklist_items,id'],
@@ -81,7 +82,10 @@ class ChecklistSubmissionController extends Controller
             'checklist_template_id.exists' => 'This checklist template has been archived and can no longer be filled.',
             'outgoing_user_id.exists' => 'The outgoing user has been deactivated. Pick someone else.',
             'incoming_user_id.exists' => 'The incoming user has been deactivated. Pick someone else.',
+            'incoming_user_id.different' => 'The incoming employee must be someone other than the outgoing one.',
         ]);
+        // `different` compares strictly ("5" vs 5 passes it), so the checks below compare integers.
+        $this->ensureTwoPeople($request);
 
         $submission = DB::transaction(function () use ($request) {
             $hasConfirmationItems = ChecklistTemplate::find($request->checklist_template_id)
@@ -140,6 +144,38 @@ class ChecklistSubmissionController extends Controller
 
         $submission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'responses']);
         return response()->json($submission, 201);
+    }
+
+    /**
+     * Keeps a handover's two-person check honest: the outgoing user is the caller (only an admin may
+     * file on someone's behalf), and the incoming user is someone else, never the filing admin.
+     * Ids are compared as integers, so "5" and 5 are the same person.
+     */
+    private function ensureTwoPeople(Request $request): void
+    {
+        $caller = $request->user();
+        $callerId = (int) $caller->id;
+        $outgoing = (int) $request->outgoing_user_id;
+        $incoming = $request->filled('incoming_user_id') ? (int) $request->incoming_user_id : null;
+
+        if ($outgoing !== $callerId && !$caller->isAdmin()) {
+            throw ValidationException::withMessages([
+                'outgoing_user_id' => 'You can only file a handover as its outgoing employee yourself.',
+            ]);
+        }
+        if ($incoming === null) {
+            return;
+        }
+        if ($incoming === $outgoing) {
+            throw ValidationException::withMessages([
+                'incoming_user_id' => 'The incoming employee must be someone other than the outgoing one.',
+            ]);
+        }
+        if ($incoming === $callerId) {
+            throw ValidationException::withMessages([
+                'incoming_user_id' => 'You cannot name yourself as incoming on a handover you file for someone else.',
+            ]);
+        }
     }
 
     /**

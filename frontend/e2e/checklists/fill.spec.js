@@ -68,6 +68,7 @@ test.describe('Fill shift checklist', () => {
 
   test('opening one pending confirmation and then another shows the second', async ({
     adminPage,
+    employeePage,
   }) => {
     const context = adminPage.context();
     const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
@@ -80,13 +81,15 @@ test.describe('Fill shift checklist', () => {
       name: 'Confirm Race B',
       requiresConfirmation: true,
     });
-    const submissionA = await createChecklistSubmission(context, {
+    // Filed by the outgoing employee themselves (only an admin may file on someone's behalf, and
+    // never naming themselves as incoming).
+    const submissionA = await createChecklistSubmission(employeePage.context(), {
       template: a,
       date: '2097-05-05',
       outgoingUserId: regularId,
       incomingUserId: adminId,
     });
-    await createChecklistSubmission(context, {
+    await createChecklistSubmission(employeePage.context(), {
       template: b,
       date: '2097-05-05',
       outgoingUserId: regularId,
@@ -123,15 +126,16 @@ test.describe('Fill shift checklist', () => {
     const regularId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
     const name = `Incoming Only ${Date.now()}`;
     const template = await createChecklistTemplate(context, { name, requiresConfirmation: true });
-    await createChecklistSubmission(context, {
+    await createChecklistSubmission(employeePage.context(), {
       template,
       date: '2097-05-06',
       outgoingUserId: regularId,
       incomingUserId: adminId,
     });
 
-    // The outgoing employee doesn't get their own handover to confirm...
+    // The outgoing employee files as themselves only, and doesn't get their own handover to confirm...
     await employeePage.goto('/checklist/fill');
+    await expect(employeePage.getByLabel('Outgoing Employee')).toBeDisabled();
     await employeePage.getByRole('button', { name: 'View Pending Confirmations' }).click();
     await expect(
       employeePage.getByRole('heading', { level: 1, name: 'Confirm Handover' }),

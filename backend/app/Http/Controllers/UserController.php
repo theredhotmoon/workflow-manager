@@ -87,11 +87,13 @@ class UserController extends Controller
             'is_admin' => ['prohibited'],
         ], self::ROLE_MESSAGES);
 
-        $roleChanges = isset($validated['role']) && $validated['role'] !== $user->role;
-
-        $refusal = DB::transaction(function () use ($request, $user, $validated, $roleChanges) {
+        $refusal = DB::transaction(function () use ($request, $user, $validated) {
+            // Lock the active admins, then re-read the user: a concurrent role change is seen.
+            $locked = $this->lockedAdmins();
+            $user->refresh();
+            $roleChanges = isset($validated['role']) && $validated['role'] !== $user->role;
             if ($roleChanges) {
-                if ($user->isAdmin() && $this->wouldLeaveNoActiveAdmin($user)) {
+                if ($user->isAdmin() && $this->noOtherActiveAdmin($locked, $user)) {
                     return self::LAST_ADMIN_MESSAGE;
                 }
                 if ($user->id === $request->user()->id) {
@@ -130,7 +132,9 @@ class UserController extends Controller
         }
 
         $result = DB::transaction(function () use ($request, $user, $janitor) {
-            if ($user->isAdmin() && $this->wouldLeaveNoActiveAdmin($user)) {
+            $locked = $this->lockedAdmins();
+            $user->refresh();
+            if ($user->isAdmin() && $this->noOtherActiveAdmin($locked, $user)) {
                 return null;
             }
 
@@ -199,13 +203,17 @@ class UserController extends Controller
     }
 
     /**
-     * Whether demoting or deactivating $admin leaves no other active admin. Locks the active admins'
-     * rows (inside the caller's transaction) so two admins can't demote each other at once.
+     * Ids of the active admins, with their rows locked for the caller's transaction, so two admins
+     * can't demote or deactivate each other at once. Locked in id order to avoid deadlocks.
      */
-    private function wouldLeaveNoActiveAdmin(User $admin): bool
+    private function lockedAdmins()
     {
-        $activeAdminIds = User::active()->admins()->lockForUpdate()->pluck('id');
+        return User::active()->admins()->orderBy('id')->lockForUpdate()->pluck('id');
+    }
 
+    /** Whether $activeAdminIds holds no active admin other than $admin. */
+    private function noOtherActiveAdmin($activeAdminIds, User $admin): bool
+    {
         return $activeAdminIds->reject(fn ($id) => $id === $admin->id)->isEmpty();
     }
 

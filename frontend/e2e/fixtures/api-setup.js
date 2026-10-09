@@ -235,6 +235,9 @@ export async function createChecklistTemplate(
   return await res.json();
 }
 
+// Files as whoever is logged in on `context`. A non-admin may only file as the outgoing user; an
+// admin may file for someone else, but the incoming user must differ from the outgoing user and
+// from the filing admin (the API answers 422 otherwise).
 export async function createChecklistSubmission(
   context,
   { template, date, outgoingUserId, incomingUserId = null },

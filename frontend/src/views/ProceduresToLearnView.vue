@@ -41,47 +41,49 @@
       <!-- Procedure Detail Modal -->
       <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showModal" class="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4 pb-4 overflow-y-auto">
-          <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeModal"></div>
-          <div class="relative w-full max-w-5xl bg-slate-900/98 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 my-4">
-            <!-- Modal Header -->
-            <div class="sticky top-0 z-10 bg-slate-900/98 backdrop-blur-xl border-b border-white/10 rounded-t-2xl px-6 py-4 flex items-center justify-between">
-              <div class="flex items-center gap-3 min-w-0">
-                <span v-if="modalProcedure" class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full shrink-0">
-                  {{ modalProcedure.identifier }}
-                </span>
-                <h2 class="text-lg font-bold text-white truncate">{{ modalProcedure?.title || 'Loading...' }}</h2>
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
-                <router-link v-if="modalProcedure" :to="`/procedures/${modalProcedure.id}`"
-                  class="px-3 py-1.5 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 hover:text-white transition-all">
-                  Open full page →
-                </router-link>
-                <button @click="closeModal" aria-label="Close procedure" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
+        <BaseModal v-if="showModal"
+          overlay-class="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4 pb-4 overflow-y-auto"
+          backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          panel-class="relative w-full max-w-5xl bg-slate-900/98 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 my-4"
+          @close="closeModal"
+          v-slot="{ titleId }">
+          <!-- Modal Header -->
+          <div class="sticky top-0 z-10 bg-slate-900/98 backdrop-blur-xl border-b border-white/10 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+              <span v-if="modalProcedure" class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full shrink-0">
+                {{ modalProcedure.identifier }}
+              </span>
+              <h2 :id="titleId" class="text-lg font-bold text-white truncate">{{ modalProcedure?.title || 'Loading...' }}</h2>
             </div>
-
-            <!-- Modal Body -->
-            <div class="px-6 py-6">
-              <div v-if="modalLoading" class="text-center py-16">
-                <svg class="animate-spin w-8 h-8 text-indigo-400 mx-auto" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
-              </div>
-              <ProcedureContent v-else-if="modalProcedure"
-                :procedure="modalProcedure"
-                :user-id="currentUserId"
-                :is-admin="false"
-                :editable="false"
-                :users="[]"
-                :viewing-version="modalProcedure.version"
-                :max-version="modalProcedure.version"  />
+            <div class="flex items-center gap-2 shrink-0">
+              <router-link v-if="modalProcedure" :to="`/procedures/${modalProcedure.id}`"
+                class="px-3 py-1.5 text-xs text-slate-400 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 hover:text-white transition-all">
+                Open full page →
+              </router-link>
+              <button @click="closeModal" aria-label="Close procedure" class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
           </div>
-        </div>
+
+          <!-- Modal Body -->
+          <div class="px-6 py-6">
+            <div v-if="modalLoading" class="text-center py-16">
+              <svg class="animate-spin w-8 h-8 text-indigo-400 mx-auto" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+            </div>
+            <ProcedureContent v-else-if="modalProcedure"
+              :procedure="modalProcedure"
+              :user-id="currentUserId"
+              :is-admin="false"
+              :editable="false"
+              :users="[]"
+              :viewing-version="modalProcedure.version"
+              :max-version="modalProcedure.version"  />
+          </div>
+        </BaseModal>
       </Transition>
     </main>
   </AppLayout>
@@ -91,6 +93,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import BaseModal from '../components/BaseModal.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { currentUser } from '../router/index.js';

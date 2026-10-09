@@ -4,6 +4,31 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — ♿ Dialogs you can use with a keyboard, announced toasts, a header that fits a phone
+
+> **Deploy notes**
+> - No migrations, no backend change. Rebuild the frontend.
+>
+> **Behaviour changes**
+> - Every dialog now closes on **Escape** (only the top one when dialogs are stacked), keeps **Tab** inside itself, takes focus when it opens and gives it back to the button that opened it. Escape does what the dialog's Cancel does (the conflict prompts on Schedule cancel the assignment or generation).
+> - The four conflict prompts and the delete-month prompt on Schedule, and Deactivate User / Delete Group on Users, are now `alertdialog`s.
+> - The notifications menu closes on Escape and on a click elsewhere; the account menu also closes on Escape.
+> - On a phone the header no longer runs off the screen: the page links scroll sideways in their own strip, the bell and account menu stay visible, and the "Shift Changer" text is hidden below the `sm` breakpoint.
+
+- **Most dialogs had no dialog semantics, no focus trap and no Escape, and toasts were not announced.** A keyboard user could tab behind "Request Day Off" and could not close it; a screen-reader user never heard "Failed to assign user". New `BaseModal` shell (built on `useFocusTrap`'s shared modal stack): `role="dialog"`/`alertdialog`, `aria-modal`, `aria-labelledby` its heading (`aria-describedby` where there is a description), focus in on open, back to the opener on close, Tab/Shift+Tab wrap, Escape closes the top layer only. Each dialog keeps its look and its backdrop-click behaviour. 31 dialogs migrated: Schedule (10, plus Set shift types), Users (7), Procedure detail (2), On-Call (2), Office, My Availability, My Shifts, Procedure Tags, Delegations manage, Checklist fill, Checklist history (2), Procedures to learn. Toasts now render into two always-present live regions: errors in `role="alert"`/`aria-live="assertive"`, everything else in `role="status"`/`aria-live="polite"`; focus is not moved. (M22)
+
+### Frontend
+| What | Details |
+|------|---------|
+| New | `components/BaseModal.vue`: props `overlay-class`, `backdrop-class`, `panel-class`, `role`, `label`, `described`, `close-on-backdrop`, `close-on-escape`, `initial-focus`; emits `close`; slot props `titleId`, `descriptionId`. Shown by mounting it (`v-if`), so an enclosing `<Transition>` still animates it |
+| Changed | `useFocusTrap.js`: the trap is now `createFocusTrap()` (activate/deactivate), driven by both `useFocusTrap` and `BaseModal`. It skips hidden controls, pulls focus back in when it sits outside the dialog, falls back to focusing the dialog itself, and does not restore focus to an opener that is no longer on the page |
+| Changed | `AppToast.vue`: two live regions, always in the DOM |
+| Changed | `AppLayout.vue`: sidebar toggle `aria-label`/`aria-expanded`/`aria-controls`; bell and account button `aria-controls`; notifications menu closes on click-away and Escape (focus back to the bell); logo link named for the phone layout; links get `aria-current="page"`; the notifications panel is never wider than the viewport |
+| Changed | Icon-only close buttons in the Users dialogs and the checklist procedure preview have `aria-label`s |
+| Tests | Unit: `BaseModal.test.js` (real browser via a throwaway Vite server: focus on open, Tab / Shift+Tab wrap, hidden controls skipped, Escape closes only the top of two dialogs, focus back to each opener, `initial-focus`, backdrop / no-close options). E2E: `accessibility/modals-and-toasts.spec.js` (Generate Month and Add User from the keyboard, Tab trapped both ways, Escape, focus return; error toast in the assertive region; notifications menu Escape / click-away). `users/deactivate.spec.js` looks for an `alertdialog`; `my-shifts/load-errors.spec.js` scopes its alert/status checks to `main`, since the toast regions are always present |
+
+---
+
 ## 2026-10-09 — 🧪 Tests for destructive endpoints, lint and build in CI, npm vulnerabilities cleared
 
 > **Deploy notes**

@@ -22,7 +22,7 @@ test.describe('Users: deactivate instead of delete', () => {
     await adminPage.goto('/users');
     const row = adminPage.getByRole('row', { name: new RegExp(name) });
     await row.getByRole('button', { name: 'Deactivate' }).click();
-    const dialog = adminPage.getByRole('dialog', { name: 'Deactivate User' });
+    const dialog = adminPage.getByRole('alertdialog', { name: 'Deactivate User' });
     await expect(dialog).toContainText(name);
     await expect(dialog).toContainText('They have no shifts or on-call duties from tomorrow on.');
     await dialog.getByRole('button', { name: 'Deactivate', exact: true }).click();

@@ -207,22 +207,24 @@
         leave-active-class="transition-all duration-200 ease-in"
         leave-from-class="opacity-100"
         leave-to-class="opacity-0">
-        <div v-if="showModal" class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="showModal = false">
-          <div class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg mx-4">
-            <div class="p-6 pb-3 border-b border-white/10">
-              <h3 class="text-lg font-bold text-white">{{ editingId ? 'Edit Delegation' : 'New Delegation' }}</h3>
-            </div>
-            <div class="p-6">
-              <DelegationForm
-                :initial="modalInitial"
-                :saving="saving"
-                :server-errors="modalFieldErrors"
-                :submit-label="editingId ? 'Update' : 'Create'"
-                @submit="saveModal"
-                @cancel="showModal = false" />
-            </div>
+        <BaseModal v-if="showModal"
+          overlay-class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          panel-class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg mx-4"
+          @close="showModal = false"
+          v-slot="{ titleId }">
+          <div class="p-6 pb-3 border-b border-white/10">
+            <h3 :id="titleId" class="text-lg font-bold text-white">{{ editingId ? 'Edit Delegation' : 'New Delegation' }}</h3>
           </div>
-        </div>
+          <div class="p-6">
+            <DelegationForm
+              :initial="modalInitial"
+              :saving="saving"
+              :server-errors="modalFieldErrors"
+              :submit-label="editingId ? 'Update' : 'Create'"
+              @submit="saveModal"
+              @cancel="showModal = false" />
+          </div>
+        </BaseModal>
       </Transition>
     </main>
     <AppToast />
@@ -236,6 +238,7 @@ import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import DelegationForm from '../components/DelegationForm.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';

@@ -55,33 +55,35 @@
       <!-- Create/Edit Modal -->
       <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showModal = false"></div>
-          <div class="relative w-full max-w-sm bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-6">
-            <h3 class="text-white font-bold text-lg mb-4">{{ editingId ? 'Edit Tag' : 'New Tag' }}</h3>
-            <form @submit.prevent="saveTag" class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Name</label>
-                <input v-model="form.name" type="text" required placeholder="e.g. Security"
-                  :aria-invalid="nameError ? 'true' : undefined"
-                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
-                <p v-if="nameError" data-testid="tag-name-error" class="mt-1 text-xs text-red-400">{{ nameError }}</p>
+        <BaseModal v-if="showModal"
+          overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+          backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          panel-class="relative w-full max-w-sm bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-6"
+          @close="showModal = false"
+          v-slot="{ titleId }">
+          <h3 :id="titleId" class="text-white font-bold text-lg mb-4">{{ editingId ? 'Edit Tag' : 'New Tag' }}</h3>
+          <form @submit.prevent="saveTag" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-300 mb-1.5">Name</label>
+              <input v-model="form.name" type="text" required placeholder="e.g. Security"
+                :aria-invalid="nameError ? 'true' : undefined"
+                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+              <p v-if="nameError" data-testid="tag-name-error" class="mt-1 text-xs text-red-400">{{ nameError }}</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-300 mb-1.5">Color</label>
+              <div class="flex items-center gap-3">
+                <input v-model="form.color" type="color"
+                  class="w-10 h-10 rounded-lg border border-white/10 bg-transparent cursor-pointer" />
+                <span class="text-slate-400 text-sm font-mono">{{ form.color }}</span>
               </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Color</label>
-                <div class="flex items-center gap-3">
-                  <input v-model="form.color" type="color"
-                    class="w-10 h-10 rounded-lg border border-white/10 bg-transparent cursor-pointer" />
-                  <span class="text-slate-400 text-sm font-mono">{{ form.color }}</span>
-                </div>
-              </div>
-              <div class="flex justify-end gap-3">
-                <button type="button" @click="showModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
-                <button type="submit" :disabled="saving" class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ editingId ? 'Update' : 'Create' }}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+            </div>
+            <div class="flex justify-end gap-3">
+              <button type="button" @click="showModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
+              <button type="submit" :disabled="saving" class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ editingId ? 'Update' : 'Create' }}</button>
+            </div>
+          </form>
+        </BaseModal>
       </Transition>
     </main>
     <AppToast />
@@ -94,6 +96,7 @@ import { describeApiError, fieldError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';
 

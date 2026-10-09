@@ -13,6 +13,13 @@ use Illuminate\Http\Request;
 class ChecklistAlertController extends Controller
 {
     /**
+     * How far back (in business days before today) missed checklists are still reported.
+     * A checklist missed earlier than this no longer raises an alert. The window also
+     * covers the overnight logic, which only needs yesterday's shift.
+     */
+    public const ALERT_LOOKBACK_DAYS = 7;
+
+    /**
      * Get checklist alerts for the currently logged-in user.
      *
      * Returns per-checklist alerts with deadline info.
@@ -21,15 +28,18 @@ class ChecklistAlertController extends Controller
      * - overdue_alerts: mandatory checklists of shifts that have ended on an earlier date, never filled
      *
      * "Today" and "now" are the business timezone's: shift dates and times are local wall-clock.
+     * Only shifts dated from ALERT_LOOKBACK_DAYS before today through today are scanned.
      */
     public function __invoke(Request $request)
     {
         $user = $request->user();
         $now = BusinessDate::now();
         $today = $now->toDateString();
+        $windowStart = $now->copy()->subDays(self::ALERT_LOOKBACK_DAYS)->toDateString();
 
-        // Find all shifts where this user is assigned
+        // Shifts in the alert window where this user is assigned
         $assignedShiftIds = ShiftAssignment::where('user_id', $user->id)
+            ->whereIn('shift_id', Shift::select('id')->whereBetween('date', [$windowStart, $today]))
             ->pluck('shift_id');
 
         if ($assignedShiftIds->isEmpty()) {
@@ -58,9 +68,10 @@ class ChecklistAlertController extends Controller
         $submissionsByShift = ChecklistSubmission::whereIn('shift_id', $assignedShiftIds)
             ->get(['shift_id', 'checklist_template_id']);
 
-        $submittedKeys = $submissionsByShift
-            ->map(fn($s) => $s->shift_id . '-' . $s->checklist_template_id)
-            ->toArray();
+        $submittedKeys = [];
+        foreach ($submissionsByShift as $s) {
+            $submittedKeys[$s->shift_id . '-' . $s->checklist_template_id] = true;
+        }
 
         // Also find submissions by date+template (for when shift_id was null)
         $submissionsByDate = ChecklistSubmission::whereNull('shift_id')
@@ -68,11 +79,12 @@ class ChecklistAlertController extends Controller
                 $q->where('outgoing_user_id', $user->id)
                     ->orWhere('incoming_user_id', $user->id);
             })
+            ->whereBetween('date', [$windowStart, $today])
             ->get(['checklist_template_id', 'date']);
 
         $submittedByDate = [];
         foreach ($submissionsByDate as $s) {
-            $submittedByDate[] = Carbon::parse($s->date)->format('Y-m-d') . '-' . $s->checklist_template_id;
+            $submittedByDate[Carbon::parse($s->date)->format('Y-m-d') . '-' . $s->checklist_template_id] = true;
         }
 
         $currentAlerts = [];
@@ -85,13 +97,13 @@ class ChecklistAlertController extends Controller
 
             // Skip if already submitted (by shift_id match)
             $key = $shift->id . '-' . $sc->checklist_template_id;
-            if (in_array($key, $submittedKeys))
+            if (isset($submittedKeys[$key]))
                 continue;
 
             // Skip if already submitted (by date+template fallback)
             $dateStr = $shift->date->format('Y-m-d');
             $dateKey = $dateStr . '-' . $sc->checklist_template_id;
-            if (in_array($dateKey, $submittedByDate))
+            if (isset($submittedByDate[$dateKey]))
                 continue;
             $deadline = $sc->getDeadlineDatetime($shift);
 

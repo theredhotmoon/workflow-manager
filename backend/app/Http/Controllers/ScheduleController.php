@@ -220,10 +220,23 @@ class ScheduleController extends Controller
             $currentCount = $currentShifts->count();
 
             if ($desiredCount > $currentCount) {
-                // Add more shift slots with default times
+                // Add more shift slots with default times: the target preset's entries the day's
+                // remaining slots don't already have, in preset order (after an empty-first removal
+                // the free entry is not necessarily the last one). Falls back to the preset position.
                 $defaults = $this->defaultShiftTimes($desiredCount);
+                $free = $defaults;
+                foreach ($currentShifts as $existing) {
+                    $key = substr((string) $existing->start_time, 0, 5) . '-' . substr((string) $existing->end_time, 0, 5);
+                    foreach ($free as $j => $times) {
+                        if ($times['start_time'] . '-' . $times['end_time'] === $key) {
+                            unset($free[$j]);
+                            break;
+                        }
+                    }
+                }
+                $free = array_values($free);
                 for ($i = $currentCount + 1; $i <= $desiredCount; $i++) {
-                    $times = $defaults[$i - 1] ?? [];
+                    $times = $free[$i - $currentCount - 1] ?? $defaults[$i - 1] ?? [];
                     Shift::create([
                         'date' => $date,
                         'shift_number' => $i,
@@ -441,6 +454,12 @@ class ScheduleController extends Controller
             : [];
 
         $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor) {
+            // Re-checked under a row lock: a concurrent day-count reduction may have deleted the
+            // slot since it was looked up (that removal holds the lock until it commits). Without
+            // this the insert fails on the foreign key with a 500.
+            if (!Shift::whereKey($shift->id)->lockForUpdate()->first(['id'])) {
+                throw new HttpResponseException(response()->json(['message' => 'This shift no longer exists.'], 404));
+            }
             $created = ShiftAssignment::create([
                 'shift_id' => $shift->id,
                 'user_id' => $userId,
@@ -758,8 +777,8 @@ class ScheduleController extends Controller
         return response()->json([
             'code' => 'staffed_shifts_removal',
             'message' => $n === 1
-                ? 'Removing this slot would delete a staffed shift. Confirm to remove it with its assignments.'
-                : "Removing these slots would delete {$n} staffed shifts. Confirm to remove them with their assignments.",
+                ? 'Removing this slot would delete a staffed shift. Confirm to remove it with its assignments. The remaining slots are renumbered 1..n.'
+                : "Removing these slots would delete {$n} staffed shifts. Confirm to remove them with their assignments. The remaining slots are renumbered 1..n.",
             'shifts' => $shifts,
         ], 409);
     }

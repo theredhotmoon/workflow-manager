@@ -50,9 +50,34 @@ it('removes the empty slot, not the staffed one after it, without asking', funct
     expect(collect($res->json('shifts'))->pluck('id')->all())->toBe([$this->slots[1]->id, $night->id]);
     expect(collect($res->json('shifts'))->pluck('shift_number')->all())->toBe([1, 2]);
 
-    // Growing again adds a fresh slot 3 (no clash with the renumbered one).
+    // Growing again adds a fresh slot 3 (no clash with the renumbered one), with the preset times
+    // the remaining slots don't use: the afternoon that was removed, not a second night.
     dscReduce($this, 3)->assertOk();
-    expect(Shift::where('date', '2029-02-12')->orderBy('shift_number')->pluck('shift_number')->all())->toBe([1, 2, 3]);
+    $day = Shift::where('date', '2029-02-12')->orderBy('shift_number')->get();
+    expect($day->pluck('shift_number')->all())->toBe([1, 2, 3]);
+    expect($day->map(fn ($s) => substr($s->start_time, 0, 5) . '-' . substr($s->end_time, 0, 5))->all())
+        ->toBe(['06:00-14:00', '22:00-06:00', '14:00-22:00']);
+});
+
+it('gives new slots the free entries of the target preset, in preset order', function () {
+    Shift::where('date', '2029-02-12')->delete();
+    foreach ([[1, '06:00', '18:00'], [2, '18:00', '06:00']] as [$n, $start, $end]) {
+        Shift::create(['date' => '2029-02-12', 'shift_number' => $n, 'shift_group_id' => $this->group->id,
+            'start_time' => $start, 'end_time' => $end]);
+    }
+    dscReduce($this, 4)->assertOk();
+    $added = Shift::where('date', '2029-02-12')->where('shift_number', '>', 2)->orderBy('shift_number')->get();
+    // The 4-shift split (06-12, 12-18, 18-00, 00-06) shares nothing with 06-18/18-06, so the two
+    // new slots take its first two entries (not positions 3 and 4, 18-00 and 00-06).
+    expect($added->map(fn ($s) => substr($s->start_time, 0, 5) . '-' . substr($s->end_time, 0, 5))->all())
+        ->toBe(['06:00-12:00', '12:00-18:00']);
+
+    // A used entry is skipped: with 06-18 on the day, the 2-shift preset leaves 18-06.
+    Shift::where('date', '2029-02-12')->delete();
+    Shift::create(['date' => '2029-02-12', 'shift_number' => 1, 'shift_group_id' => $this->group->id,
+        'start_time' => '06:00', 'end_time' => '18:00']);
+    dscReduce($this, 2)->assertOk();
+    expect(substr(Shift::where('date', '2029-02-12')->where('shift_number', 2)->value('start_time'), 0, 5))->toBe('18:00');
 });
 
 it('refuses to remove staffed slots without confirmation, listing them, and deletes nothing', function () {
@@ -116,4 +141,27 @@ it('asks again when the staffed slots changed since the manager confirmed', func
     dscReduce($this, 1, ['confirm_remove_staffed' => true, 'expected_remove_ids' => [$this->slots[3]->id, $this->slots[2]->id]])
         ->assertOk();
     expect(Shift::where('date', '2029-02-12')->pluck('id')->all())->toBe([$this->slots[1]->id]);
+});
+
+it('answers 404 when the shift is deleted while an assign is being placed', function () {
+    // Deterministic stand-in for a concurrent slot removal: the shift goes away after the request's
+    // validation and lookup, just before the assignment is written.
+    $shift = $this->slots[2];
+    app()->bind(\App\Services\StreakReplay::class, fn () => new class($shift->id) extends \App\Services\StreakReplay {
+        public function __construct(private int $doomedShiftId) {}
+
+        public function forGroup(\App\Models\ShiftGroup $group, array $userIds, ?\Carbon\Carbon $until = null): \App\Services\StreakTimeline
+        {
+            Shift::whereKey($this->doomedShiftId)->delete();
+
+            return parent::forGroup($group, $userIds, $until);
+        }
+    });
+
+    $this->actingAs($this->maintainer)->postJson('/api/schedule/assign', [
+        'shift_id' => $shift->id,
+        'user_id' => $this->employee->id,
+    ])->assertNotFound()->assertJson(['message' => 'This shift no longer exists.']);
+
+    expect(ShiftAssignment::count())->toBe(0);
 });

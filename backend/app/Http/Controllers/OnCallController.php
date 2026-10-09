@@ -7,6 +7,8 @@ use App\Models\OnCallCallback;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use App\Support\Month;
 
 class OnCallController extends Controller
@@ -43,7 +45,26 @@ class OnCallController extends Controller
             'ends_at' => ['required', 'date', 'after:starts_at'],
         ]);
 
-        $assignment = OnCallAssignment::create($validated);
+        $assignment = DB::transaction(function () use ($validated) {
+            // The user's row is locked so two overlapping requests can't both pass the check.
+            $user = User::lockForUpdate()->findOrFail($validated['user_id']);
+            $startsAt = Carbon::parse($validated['starts_at']);
+            $endsAt = Carbon::parse($validated['ends_at']);
+
+            // One person is on call once at a time (in any group). Touching periods are fine.
+            $clash = OnCallAssignment::where('user_id', $user->id)
+                ->where('starts_at', '<', $endsAt)
+                ->where('ends_at', '>', $startsAt)
+                ->orderBy('starts_at')
+                ->first();
+            if ($clash) {
+                throw ValidationException::withMessages([
+                    'starts_at' => "{$user->name} is already on call from {$this->formatInstant($clash->starts_at)} to {$this->formatInstant($clash->ends_at)}.",
+                ]);
+            }
+
+            return OnCallAssignment::create($validated);
+        });
         $assignment->load('user:id,name');
 
         return response()->json($assignment, 201);
@@ -70,9 +91,31 @@ class OnCallController extends Controller
             ], 422);
         }
 
-        $callback = $onCallAssignment->callbacks()->create($validated);
+        $callback = DB::transaction(function () use ($validated, $onCallAssignment, $startsAt) {
+            // Callbacks are worked time and are summed per user: they must not overlap each other,
+            // whichever of the user's on-call periods they were logged on.
+            User::lockForUpdate()->find($onCallAssignment->user_id);
+            $endsAt = Carbon::parse($validated['ends_at']);
+            $clash = OnCallCallback::whereHas('onCallAssignment', fn ($q) => $q->where('user_id', $onCallAssignment->user_id))
+                ->where('starts_at', '<', $endsAt)
+                ->where('ends_at', '>', $startsAt)
+                ->orderBy('starts_at')
+                ->first();
+            if ($clash) {
+                throw ValidationException::withMessages([
+                    'starts_at' => "This overlaps a callback already logged from {$this->formatInstant($clash->starts_at)} to {$this->formatInstant($clash->ends_at)}.",
+                ]);
+            }
+
+            return $onCallAssignment->callbacks()->create($validated);
+        });
 
         return response()->json($callback, 201);
+    }
+
+    private function formatInstant(Carbon $at): string
+    {
+        return $at->format('Y-m-d H:i');
     }
 
     public function destroyCallback(OnCallCallback $onCallCallback)

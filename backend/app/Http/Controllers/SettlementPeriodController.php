@@ -62,16 +62,18 @@ class SettlementPeriodController extends Controller
             ->with('onCallAssignment.user:id,name')
             ->get();
 
-        foreach ($callbacks as $callback) {
-            $match = $calculator->weekFor($period, $callback->starts_at->copy()->startOfDay());
-            // Whole minutes (Carbon 3 returns a float), then hours with the fraction kept: 1:30 is 1.5.
-            $durationMinutes = (int) $callback->starts_at->diffInMinutes($callback->ends_at, true);
-            $durationHours = $durationMinutes / 60;
-
-            $userId = $callback->onCallAssignment->user_id;
-            $employeeNames[$userId] = $callback->onCallAssignment->user->name;
-            $employeeWeekHours[$userId][$match['index']] =
-                ($employeeWeekHours[$userId][$match['index']] ?? 0) + $durationHours;
+        // Overlapping callbacks of one user (logged before overlaps were refused, or on two
+        // overlapping on-call periods) are merged first, so each hour counts once. A merged block
+        // counts in the week of its first start, as a single callback does.
+        foreach ($callbacks->groupBy(fn ($c) => $c->onCallAssignment->user_id) as $userId => $userCallbacks) {
+            $employeeNames[$userId] = $userCallbacks->first()->onCallAssignment->user->name;
+            foreach (self::mergeIntervals($userCallbacks) as [$start, $end]) {
+                $match = $calculator->weekFor($period, $start->copy()->startOfDay());
+                // Whole minutes (Carbon 3 returns a float), then hours with the fraction kept: 1:30 is 1.5.
+                $durationHours = ((int) $start->diffInMinutes($end, true)) / 60;
+                $employeeWeekHours[$userId][$match['index']] =
+                    ($employeeWeekHours[$userId][$match['index']] ?? 0) + $durationHours;
+            }
         }
 
         $weeks = array_map(fn($w) => [
@@ -119,5 +121,30 @@ class SettlementPeriodController extends Controller
             'weeks' => $weeks,
             'employees' => array_values($employees),
         ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    /**
+     * Union of [starts_at, ends_at) intervals: overlapping ones are merged, touching ones
+     * (one ends when the next starts) stay apart, which sums the same.
+     *
+     * @param  iterable<\App\Models\OnCallCallback>  $items
+     * @return list<array{0: \Carbon\Carbon, 1: \Carbon\Carbon}>
+     */
+    private static function mergeIntervals(iterable $items): array
+    {
+        $sorted = collect($items)->sortBy(fn ($i) => $i->starts_at->getTimestamp())->values();
+        $merged = [];
+        foreach ($sorted as $item) {
+            $last = count($merged) - 1;
+            if ($last >= 0 && $item->starts_at->lt($merged[$last][1])) {
+                if ($item->ends_at->gt($merged[$last][1])) {
+                    $merged[$last][1] = $item->ends_at;
+                }
+                continue;
+            }
+            $merged[] = [$item->starts_at, $item->ends_at];
+        }
+
+        return $merged;
     }
 }

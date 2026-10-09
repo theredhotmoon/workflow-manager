@@ -6,6 +6,7 @@ use App\Models\Shift;
 use App\Models\ShiftChecklist;
 use App\Models\ShiftAssignment;
 use App\Models\ChecklistSubmission;
+use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -15,14 +16,17 @@ class ChecklistAlertController extends Controller
      * Get checklist alerts for the currently logged-in user.
      *
      * Returns per-checklist alerts with deadline info.
-     * - current_shift_alerts: checklists due today where user is assigned and not yet filled
-     * - overdue_alerts: past checklists that were mandatory but never filled
+     * - current_shift_alerts: checklists of today's shifts, and of an overnight shift from an earlier
+     *   date that is still on, where the user is assigned and nothing was filled yet
+     * - overdue_alerts: mandatory checklists of shifts that have ended on an earlier date, never filled
+     *
+     * "Today" and "now" are the business timezone's: shift dates and times are local wall-clock.
      */
     public function __invoke(Request $request)
     {
         $user = $request->user();
-        $today = Carbon::today()->toDateString();
-        $now = Carbon::now();
+        $now = BusinessDate::now();
+        $today = $now->toDateString();
 
         // Find all shifts where this user is assigned
         $assignedShiftIds = ShiftAssignment::where('user_id', $user->id)
@@ -89,11 +93,7 @@ class ChecklistAlertController extends Controller
             $dateKey = $dateStr . '-' . $sc->checklist_template_id;
             if (in_array($dateKey, $submittedByDate))
                 continue;
-            $deadline = $sc->getDeadlineDatetime(
-                $dateStr,
-                $shift->start_time ? substr($shift->start_time, 0, 5) : null,
-                $shift->end_time ? substr($shift->end_time, 0, 5) : null
-            );
+            $deadline = $sc->getDeadlineDatetime($shift);
 
             $alert = [
                 'shift_id' => $shift->id,
@@ -110,9 +110,10 @@ class ChecklistAlertController extends Controller
                 'minutes_remaining' => $deadline ? (int) $now->diffInMinutes($deadline, false) : null,
             ];
 
-            if ($dateStr === $today) {
+            // An overnight shift from yesterday is still current until it ends the next morning.
+            if ($dateStr === $today || ($dateStr < $today && $now->lt(BusinessDate::shiftEnd($shift)))) {
                 $currentAlerts[] = $alert;
-            } elseif ($shift->date->lt(Carbon::today()) && $sc->is_required) {
+            } elseif ($dateStr < $today && $sc->is_required) {
                 $overdueAlerts[] = $alert;
             }
         }

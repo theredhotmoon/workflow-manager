@@ -7,6 +7,7 @@ use App\Models\ChecklistResponse;
 use App\Models\ChecklistTemplate;
 use App\Models\ShiftChecklist;
 use App\Models\User;
+use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -104,13 +105,8 @@ class ChecklistSubmissionController extends Controller
                     ->where('checklist_template_id', $request->checklist_template_id)
                     ->first();
                 if ($sc) {
-                    $shift = $sc->shift;
-                    $deadline = $sc->getDeadlineDatetime(
-                        $shift->date->format('Y-m-d'),
-                        $shift->start_time ? substr($shift->start_time, 0, 5) : null,
-                        $shift->end_time ? substr($shift->end_time, 0, 5) : null
-                    );
-                    $submittedOnTime = $deadline ? now()->lte($deadline) : true;
+                    $deadline = $sc->getDeadlineDatetime($sc->shift);
+                    $submittedOnTime = $deadline ? BusinessDate::now()->lte($deadline) : true;
                 }
             }
 

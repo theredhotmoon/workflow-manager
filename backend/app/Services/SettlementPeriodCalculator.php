@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Shift;
 use App\Models\ShiftGroup;
+use App\Support\BusinessDate;
 use Carbon\Carbon;
 use InvalidArgumentException;
 
@@ -24,7 +25,8 @@ class SettlementPeriodCalculator
     public function periodByOffset(ShiftGroup $group, int $offset): array
     {
         [$mode, $anchor, $customLength, $weeklyCap] = $this->resolveConfig($group);
-        $today = Carbon::today();
+        // Today's business-timezone date, at 00:00 like the anchor and the dates it is compared with.
+        $today = Carbon::parse(BusinessDate::todayString());
         $currentPeriodNumber = $this->periodNumberForDate($mode, $anchor, $customLength, $today);
 
         return $this->buildPeriod($mode, $anchor, $customLength, $weeklyCap, $currentPeriodNumber + $offset);

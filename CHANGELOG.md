@@ -4,6 +4,25 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🕕 Shift times in Warsaw time: deadlines, current shift, overnight shifts
+
+- **Shift times were read as UTC.** A shift's date and start/end times are Warsaw wall-clock, but the server compared them with the UTC clock, so everything was off by one hour in winter and two in summer: a 06:00 shift with a 30-minute handover deadline showed *140 min left* at 06:10 instead of 20, a handover filed up to two hours late was recorded as on time, at 07:00 the dashboard still showed the night shift as current, and between local midnight and 01:00/02:00 "today" was still yesterday (today's checklists missing from the dashboard, day-off requests still accepted for yesterday's shifts, the settlement page's current period a day behind on its first day). Shift starts, ends and deadlines are now built in the business timezone (`BUSINESS_TIMEZONE`, default `Europe/Warsaw`), which also keeps them right across the DST changes. Storage and the app clock stay UTC.
+- **Overnight shifts turned "overdue" at midnight.** A 22:00–06:00 shift's checklist jumped from the dashboard's current list to *Overdue* at midnight. It now stays current until the shift ends at 06:00 the next day (a shift whose end time is at or before its start time ends the next day), then becomes overdue if it was required.
+
+> **Deploy note:** deadlines and on-time flags computed before this release used UTC. Handovers already filed keep the `submitted_on_time` they were stored with (nothing is recomputed), so some filed up to an hour (winter) or two (summer) late may still show as on time.
+
+### Backend
+| What | Details |
+|------|---------|
+| Added | `BusinessDate::now()`, `shiftStart(Shift)`, `shiftEnd(Shift)` (business timezone; overnight shifts end the next day; no start time → 00:00, no end time → end of the date) |
+| Changed | `ShiftChecklist::getDeadlineDatetime()` takes the `Shift` and returns its deadline in the business timezone. `deadline_at` in `GET /api/my-checklist-alerts` and `GET /api/my-shifts` is ISO-8601 with the Warsaw offset (e.g. `2026-07-15T06:30:00+02:00`; it used to be the wrong instant with `+00:00`) |
+| Fixed | `GET /api/my-checklist-alerts` (minutes left, today, overnight shifts still on), `POST /api/checklist-submissions` (`submitted_on_time`), `GET /api/current-shift` (by instants; a shift whose end equals its start also counts as overnight), `POST /api/shift-change-requests` (past-shift check) and the settlement calculator's current period use the business timezone |
+
+### Tests
+- Pest `BusinessTimezoneTest`: minutes left and late/on-time handovers at Warsaw hours, `/my-shifts` offset, current shift at 07:00 and at local midnight, "today" between local and UTC midnight, past-shift day-off request, overnight shift current until 06:00 then overdue, DST spring-forward and fall-back days (2029-03-25, 2029-10-28), settlement period by the Warsaw date.
+
+---
+
 ## 2026-10-09 — 🗓️ Schedule screen: remote shifts, safe drag-moves, correct closure dates, maintainer access
 
 - **Remote shifts showed as Office after a reload.** The month view didn't send a shift's work mode, so a remote shift came back as 🏢, the toggle needed two clicks, and **Switch to Remote** in the "office closed" dialog of Generate Month switched nothing. Editing a day's shift count also dropped the day-off request chip, because that answer had a different shape. Every schedule answer now has the same shape, with the work mode and the request fields.

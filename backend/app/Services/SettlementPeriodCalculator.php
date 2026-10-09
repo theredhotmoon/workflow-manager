@@ -54,10 +54,13 @@ class SettlementPeriodCalculator
             $endTime->addDay();
         }
 
+        // Whole minutes (Carbon 3 returns a float), then hours with the fraction kept: 7:30 is 7.5.
+        $durationMinutes = (int) $startTime->diffInMinutes($endTime, true);
+
         return [
             'start' => $startTime,
             'end' => $endTime,
-            'duration_hours' => (int) $startTime->diffInMinutes($endTime, true) / 60,
+            'duration_hours' => $durationMinutes / 60,
         ];
     }
 

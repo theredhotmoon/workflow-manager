@@ -186,12 +186,20 @@ composer test
 ```
 
 This needs PHP 8.4 on the host. Without it, run the suite in the backend image (PHP 8.4, the same as
-production) with `backend/` mounted, on the compose network so it reaches the `db` service:
+production) with `backend/` mounted, on the compose network so it reaches the `db` service. Run it
+from the repo root:
 
 ```bash
 docker compose build backend
-docker run --rm --network workflow-manager_app_network   -v "$PWD/backend:/var/www/html" -w /var/www/html   -e DB_HOST=db -e DB_PORT=5432 -e DB_USERNAME=postgres -e DB_PASSWORD="<DB_PASSWORD from .env>"   --entrypoint php workflow-manager_backend vendor/bin/pest
+docker run --rm --network workflow-manager_app_network \
+  -v "$PWD/backend:/var/www/html" -w /var/www/html \
+  -e DB_HOST=db -e DB_PORT=5432 -e DB_USERNAME=postgres -e DB_PASSWORD="<DB_PASSWORD from .env>" \
+  --entrypoint php workflow-manager_backend vendor/bin/pest
 ```
+
+On Windows in Git Bash, put `MSYS_NO_PATHCONV=1` in front of `docker run`
+(`MSYS_NO_PATHCONV=1 docker run ...`); otherwise Git Bash rewrites `/var/www/html` into a Windows
+path and the container can't find the mount.
 
 ### Frontend tests (Playwright)
 

@@ -1,6 +1,14 @@
 import { createUser } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
 
+// The API calls /my-shifts makes when it opens (the view's data and the layout's alarms).
+const INITIAL_LOAD = [
+  '/api/my-shifts',
+  '/api/my-delegations',
+  '/api/alarms/latest',
+  '/api/alarms/unread-count',
+];
+
 // Works on throwaway users only: other specs log in as the seeded admin and employee.
 test.describe('Users: deactivate instead of delete', () => {
   test('deactivating hides the user, "Show deactivated" brings them back, reactivate restores', async ({
@@ -50,7 +58,14 @@ test.describe('Users: deactivate instead of delete', () => {
     try {
       await loginAs(userContext, email, 'password123');
       const page = await userContext.newPage();
+      // Deactivate only once the page has finished loading: a load request still in flight would
+      // get the 401 itself and sign them out before the "next action" below (the Next month button
+      // renders before the page's data arrives).
+      const loaded = Promise.all(
+        INITIAL_LOAD.map((path) => page.waitForResponse((r) => new URL(r.url()).pathname === path)),
+      );
       await page.goto('/my-shifts');
+      await loaded;
       await expect(page.getByRole('button', { name: 'Next month' })).toBeVisible();
 
       const res = await admin.request.post(`/api/users/${user.id}/deactivate`, {

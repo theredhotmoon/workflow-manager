@@ -155,7 +155,10 @@ npm run test:all   # unit, then e2e
 Notes:
 
 - The suite starts its own dev server. A plain `npm run dev` already listening on `:5173` would be
-  reused by Playwright and serve the wrong page (no `/api` proxy), so stop it first.
+  reused by Playwright and serve the wrong page (no `/api` proxy), so stop it first — or run the
+  suite on another port: `E2E_PORT=5183 npm run test:e2e`. That also lets it run next to another
+  project's dev server on `:5173`. (The dev backend accepts session cookies from any `localhost`
+  port; after changing `docker-compose.dev.yml`, recreate the backend container.)
 - New specs must import `test` and `expect` from `e2e/fixtures/auth.js` (not `@playwright/test`).
   That file provides the `adminPage` / `employeePage` fixtures.
 - The API rate limit (`API_RATE_LIMIT`, default 60 requests/minute per user) is raised to 1000 by

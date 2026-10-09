@@ -60,6 +60,12 @@ return [
     */
 
     'middleware' => [
+        // Stores the password hash in each SPA session and ends any session whose stored hash no
+        // longer matches (401): a password change, by the user or an admin, logs out every other
+        // session of that user. Works with any session driver (the stack uses "file"), unlike
+        // deleting rows from a database sessions table. The session making the change gets the
+        // new hash stored at the end of that request, so it stays logged in.
+        'authenticate_session' => Laravel\Sanctum\Http\Middleware\AuthenticateSession::class,
         'verify_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
         'encrypt_cookies' => App\Http\Middleware\EncryptCookies::class,
     ],

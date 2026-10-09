@@ -12,6 +12,7 @@ use App\Support\BusinessDate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -195,9 +196,12 @@ class UserController extends Controller
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
-        $user->update([
+        // The new hash ends the user's existing SPA sessions (Sanctum's AuthenticateSession, see
+        // config/sanctum.php); a new remember token also voids any "remember me" cookie.
+        $user->forceFill([
             'password' => Hash::make($validated['password']),
-        ]);
+            'remember_token' => Str::random(60),
+        ])->save();
 
         return response()->json(['message' => 'Password changed successfully.']);
     }

@@ -14,7 +14,9 @@
 services:
   backend:
     ports:
-      - "${BACKEND_PORT:-8090}:8080"
+      # Loopback only: this backend runs with APP_DEBUG=true (stack traces, env details), so it must
+      # not be reachable from the network. Vite's proxy and the e2e suite connect from this machine.
+      - "127.0.0.1:${BACKEND_PORT:-8090}:8080"
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
@@ -30,3 +32,5 @@ services:
       # Dev compose only — production keeps an explicit list.
       SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost},localhost:5173,localhost:*
       SESSION_DOMAIN: ${SESSION_DOMAIN:-localhost}
+      # Dev runs over plain http://localhost, where a Secure cookie would never be sent back.
+      SESSION_SECURE_COOKIE: "false"

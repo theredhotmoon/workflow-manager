@@ -73,6 +73,37 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Login Rate Limit
+    |--------------------------------------------------------------------------
+    |
+    | Failed logins allowed per minute for one email from one client IP; the
+    | next attempt for that pair gets a 429 until the minute is up. Only
+    | failures count (a successful login resets the counter), so the e2e suite's
+    | many correct logins never reach it. The per-IP "api" limit above still
+    | applies to /api/login as well.
+    |
+    */
+
+    'login_rate_limit' => (int) env('LOGIN_RATE_LIMIT', 5),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Trusted Proxies
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated IPs/CIDRs whose X-Forwarded-For / X-Forwarded-Proto the
+    | app believes (App\Http\Middleware\TrustProxies). Requests reach the
+    | backend through the frontend Nginx container on the private compose
+    | network, so by default the private and loopback ranges are trusted, and
+    | the client IP (rate limits, logs) is the real client's, not Nginx's.
+    | Never "*": the backend would then believe a forged header from anyone.
+    |
+    */
+
+    'trusted_proxies' => env('TRUSTED_PROXIES') ?: '127.0.0.1/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7',
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

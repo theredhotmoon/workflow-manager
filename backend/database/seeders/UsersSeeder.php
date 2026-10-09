@@ -8,8 +8,12 @@ use App\Models\User;
 
 class UsersSeeder extends Seeder
 {
+    use SeedsDevelopmentData;
+
     public function run()
     {
+        $this->refuseOutsideDevelopment();
+
         $users = [
             ['name' => 'John 22', 'email' => 'nme@asd.com', 'role' => 'employee'],
             ['name' => 'Regular Employee', 'email' => 'regular@shiftchanger.com', 'role' => 'employee'],
@@ -21,7 +25,7 @@ class UsersSeeder extends Seeder
         foreach ($users as $u) {
             User::firstOrCreate(
                 ['email' => $u['email']],
-                array_merge($u, ['password' => Hash::make('password123')])
+                array_merge($u, ['password' => Hash::make(DatabaseSeeder::DEMO_USER_PASSWORD)])
             );
         }
 

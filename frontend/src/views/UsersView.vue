@@ -731,6 +731,7 @@ import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { todayStr } from '../dates.js';
 import { canManageSchedule, isAdmin, ROLE_OPTIONS, roleLabel } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -924,7 +925,7 @@ function formatDT(dt) {
 }
 
 function isCurrentNewbie(userId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayStr();
   return allNewbiePeriods.value.some((np) => {
     const start = np.start_date?.substring(0, 10);
     const end = np.end_date?.substring(0, 10);

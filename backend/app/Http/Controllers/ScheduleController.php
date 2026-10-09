@@ -15,9 +15,12 @@ use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use App\Support\Month;
 
 class ScheduleController extends Controller
@@ -39,9 +42,7 @@ class ScheduleController extends Controller
 
         if ($isAllGroups) {
             // Fetch shifts from ALL groups with group info
-            $shifts = Shift::with(['assignments.user:id,name,email', 'assignments.changeRequests' => function ($q) {
-                $q->where('status', 'pending');
-            }, 'shiftChecklists.template:id,name', 'shiftGroup:id,name,color'])
+            $shifts = Shift::with(array_merge($this->shiftPayloadRelations(), ['shiftGroup:id,name,color']))
                 ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
                 ->orderBy('date')
                 ->orderBy('shift_group_id')
@@ -50,9 +51,7 @@ class ScheduleController extends Controller
         } else {
             $groupId = $request->shift_group_id ?? ShiftGroup::where('is_default', true)->value('id');
 
-            $shifts = Shift::with(['assignments.user:id,name,email', 'assignments.changeRequests' => function ($q) {
-                $q->where('status', 'pending');
-            }, 'shiftChecklists.template:id,name'])
+            $shifts = Shift::with($this->shiftPayloadRelations())
                 ->where('shift_group_id', $groupId)
                 ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
                 ->orderBy('date')
@@ -69,38 +68,7 @@ class ScheduleController extends Controller
             if (!isset($schedule[$dateKey])) {
                 $schedule[$dateKey] = [];
             }
-            $shiftData = [
-                'id' => $shift->id,
-                'shift_number' => $shift->shift_number,
-                'shift_type' => $shift->shift_type,
-                'start_time' => $shift->start_time ? substr($shift->start_time, 0, 5) : null,
-                'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
-                'color' => $shift->color,
-                'color_label' => $shift->color_label,
-                'shift_checklists' => $shift->shiftChecklists->map(fn($sc) => [
-                    'id' => $sc->id,
-                    'checklist_template_id' => $sc->checklist_template_id,
-                    'checklist_template_name' => $sc->template?->name,
-                    'is_required' => $sc->is_required,
-                    'deadline_minutes' => $sc->deadline_minutes,
-                    'deadline_reference' => $sc->deadline_reference,
-                ]),
-                'assignments' => $shift->assignments->map(function ($a) use ($resting) {
-                    $pendingRequest = $a->changeRequests->first();
-                    return [
-                        'id' => $a->id,
-                        'user_id' => $a->user_id,
-                        'user_name' => $a->user->name,
-                        'rest_policy' => $a->rest_policy,
-                        'in_rest' => isset($resting[$a->id]) && $a->rest_policy === null,
-                        'resting_until' => $resting[$a->id] ?? null,
-                        'has_change_request' => $pendingRequest !== null,
-                        'change_request_reason' => $pendingRequest?->reason,
-                        'change_request_id' => $pendingRequest?->id,
-                        'change_request_date' => $pendingRequest?->created_at?->toIso8601String(),
-                    ];
-                }),
-            ];
+            $shiftData = $this->shiftPayload($shift, $resting);
 
             // Add group context for all-groups mode
             if ($isAllGroups) {
@@ -265,39 +233,14 @@ class ScheduleController extends Controller
             });
         }
 
-        // Return updated shifts for that day
-        $dayShifts = Shift::with(['assignments.user:id,name', 'shiftChecklists.template:id,name'])
+        // Return updated shifts for that day, in the same shape as index()
+        $dayShifts = Shift::with($this->shiftPayloadRelations())
             ->where('date', $date)
             ->where('shift_group_id', $groupId)
             ->orderBy('shift_number')
             ->get();
         $resting = $this->restingAssignmentMap($dayShifts, Carbon::parse($date)->addDay());
-        $updatedShifts = $dayShifts
-            ->map(fn($s) => [
-                'id' => $s->id,
-                'shift_number' => $s->shift_number,
-                'shift_type' => $s->shift_type,
-                'start_time' => $s->start_time ? substr($s->start_time, 0, 5) : null,
-                'end_time' => $s->end_time ? substr($s->end_time, 0, 5) : null,
-                'color' => $s->color,
-                'color_label' => $s->color_label,
-                'shift_checklists' => $s->shiftChecklists->map(fn($sc) => [
-                    'id' => $sc->id,
-                    'checklist_template_id' => $sc->checklist_template_id,
-                    'checklist_template_name' => $sc->template?->name,
-                    'is_required' => $sc->is_required,
-                    'deadline_minutes' => $sc->deadline_minutes,
-                    'deadline_reference' => $sc->deadline_reference,
-                ]),
-                'assignments' => $s->assignments->map(fn($a) => [
-                    'id' => $a->id,
-                    'user_id' => $a->user_id,
-                    'user_name' => $a->user->name,
-                    'rest_policy' => $a->rest_policy,
-                    'in_rest' => isset($resting[$a->id]) && $a->rest_policy === null,
-                    'resting_until' => $resting[$a->id] ?? null,
-                ]),
-            ]);
+        $updatedShifts = $dayShifts->map(fn($s) => $this->shiftPayload($s, $resting));
 
         return response()->json([
             'date' => $date,
@@ -306,7 +249,9 @@ class ScheduleController extends Controller
     }
 
     /**
-     * Assign a user to a shift slot.
+     * Assign a user to a shift slot. With move_from_assignment_id (a chip dragged from another shift)
+     * the old assignment is removed and the new one created in one transaction: if the assign is
+     * refused (409 rest-day question, 422), nothing changes and the employee stays where they were.
      */
     public function assign(Request $request, StreakReplay $streakReplay, RestPolicyJanitor $janitor)
     {
@@ -317,8 +262,55 @@ class ScheduleController extends Controller
             'later_rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
             'expected_affected_ids' => ['nullable', 'array'],
             'expected_affected_ids.*' => ['integer'],
+            // Only the assigned user's own assignment can be the source of their move (re-checked below).
+            'move_from_assignment_id' => ['nullable', 'integer', Rule::exists('shift_assignments', 'id')
+                ->where('user_id', (int) $request->input('user_id'))],
         ]);
 
+        if (!$request->filled('move_from_assignment_id')) {
+            return $this->placeAssignment($request, $streakReplay, $janitor);
+        }
+
+        $sourceId = (int) $request->input('move_from_assignment_id');
+
+        return DB::transaction(function () use ($request, $streakReplay, $janitor, $sourceId) {
+            // Locked so two concurrent moves of the same chip can't both succeed.
+            $source = ShiftAssignment::lockForUpdate()->find($sourceId);
+            if (!$source) {
+                throw ValidationException::withMessages(['move_from_assignment_id' => 'The assignment to move no longer exists.']);
+            }
+            // Re-checked on the locked row (the exists rule above ran before the lock).
+            if ((int) $source->user_id !== (int) $request->input('user_id')) {
+                throw ValidationException::withMessages(['move_from_assignment_id' => 'The assignment to move belongs to another employee.']);
+            }
+            // Group access is not per group: whoever may manage the schedule manages every group.
+            // Checked here too so the move path doesn't rely on the route middleware alone.
+            // Defence in depth: the route's admin:schedule middleware already answers 403 first.
+            if (!$request->user()?->canManageSchedule()) {
+                abort(403, 'You may not move assignments in this group.');
+            }
+            if ((int) $source->shift_id === (int) $request->input('shift_id')) {
+                throw ValidationException::withMessages(['move_from_assignment_id' => 'The assignment is already on this shift.']);
+            }
+
+            $this->removeAssignment($source, $janitor);
+            $response = $this->placeAssignment($request, $streakReplay, $janitor);
+            if ($response->getStatusCode() >= 400) {
+                // Rolls the removal back; the handler renders the 409/422 unchanged.
+                throw new HttpResponseException($response);
+            }
+
+            return $response->setData(array_merge($response->getData(true), [
+                'moved_from_assignment_id' => $sourceId,
+            ]));
+        });
+    }
+
+    /**
+     * The assign itself, against the current DB state (for a move: with the source already gone).
+     */
+    private function placeAssignment(Request $request, StreakReplay $streakReplay, RestPolicyJanitor $janitor): JsonResponse
+    {
         // Check if user is already assigned to this shift
         $existing = ShiftAssignment::where('shift_id', $request->shift_id)
             ->where('user_id', $request->user_id)
@@ -433,6 +425,61 @@ class ScheduleController extends Controller
     }
 
     /**
+     * Relations shiftPayload() reads; eager-load them on every query whose shifts it serialises.
+     */
+    private function shiftPayloadRelations(): array
+    {
+        return [
+            'assignments.user:id,name',
+            'assignments.changeRequests' => fn ($q) => $q->where('status', 'pending'),
+            'shiftChecklists.template:id,name',
+        ];
+    }
+
+    /**
+     * One shift as the Schedule screen reads it. Every endpoint that returns schedule shifts uses
+     * this, so a re-rendered day keeps the same keys (work mode, day-off request chip, ...).
+     *
+     * @param  array<int, string>  $resting  restingAssignmentMap() for these shifts
+     */
+    private function shiftPayload(Shift $shift, array $resting): array
+    {
+        return [
+            'id' => $shift->id,
+            'shift_number' => $shift->shift_number,
+            'shift_type' => $shift->shift_type,
+            'start_time' => $shift->start_time ? substr($shift->start_time, 0, 5) : null,
+            'end_time' => $shift->end_time ? substr($shift->end_time, 0, 5) : null,
+            'work_mode' => $shift->work_mode ?? 'office',
+            'color' => $shift->color,
+            'color_label' => $shift->color_label,
+            'shift_checklists' => $shift->shiftChecklists->map(fn($sc) => [
+                'id' => $sc->id,
+                'checklist_template_id' => $sc->checklist_template_id,
+                'checklist_template_name' => $sc->template?->name,
+                'is_required' => $sc->is_required,
+                'deadline_minutes' => $sc->deadline_minutes,
+                'deadline_reference' => $sc->deadline_reference,
+            ]),
+            'assignments' => $shift->assignments->map(function ($a) use ($resting) {
+                $pendingRequest = $a->changeRequests->first();
+                return [
+                    'id' => $a->id,
+                    'user_id' => $a->user_id,
+                    'user_name' => $a->user->name,
+                    'rest_policy' => $a->rest_policy,
+                    'in_rest' => isset($resting[$a->id]) && $a->rest_policy === null,
+                    'resting_until' => $resting[$a->id] ?? null,
+                    'has_change_request' => $pendingRequest !== null,
+                    'change_request_reason' => $pendingRequest?->reason,
+                    'change_request_id' => $pendingRequest?->id,
+                    'change_request_date' => $pendingRequest?->created_at?->toIso8601String(),
+                ];
+            }),
+        ];
+    }
+
+    /**
      * assignment_id => resting_until for every assignment in $shifts that sits inside a streak rest window.
      * Coverage of a day depends only on earlier assignments, so replaying up to $until is enough.
      *
@@ -464,6 +511,18 @@ class ScheduleController extends Controller
      */
     public function unassign(ShiftAssignment $assignment, RestPolicyJanitor $janitor)
     {
+        $this->removeAssignment($assignment, $janitor);
+
+        return response()->json([
+            'message' => 'Assignment removed successfully.',
+        ]);
+    }
+
+    /**
+     * Deletes an assignment with its side effects (unassign, and the source of a move).
+     */
+    private function removeAssignment(ShiftAssignment $assignment, RestPolicyJanitor $janitor): void
+    {
         $group = $assignment->shift?->shiftGroup;
         DB::transaction(function () use ($assignment, $group, $janitor) {
             // Auto-acknowledge any pending change requests for this assignment
@@ -477,10 +536,6 @@ class ScheduleController extends Controller
                 $janitor->clearUncovered($group, [(int) $assignment->user_id]);
             }
         });
-
-        return response()->json([
-            'message' => 'Assignment removed successfully.',
-        ]);
     }
 
     /**

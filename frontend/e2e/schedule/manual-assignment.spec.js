@@ -1,45 +1,12 @@
 // frontend/e2e/schedule/manual-assignment.spec.js
 import { createShiftGroupWithStreakRule, generateMonthShifts } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { dragToShiftDropzone } from '../fixtures/drag.js';
 
 const MONTH = '2027-05';
 const DAY = '2027-05-10';
 const GROUP_NAME = 'Drag Team Manual';
 const EMPLOYEE = 'Regular Employee';
-
-async function dragToShiftDropzone(page, sourceLocator, targetLocator) {
-  // Shift-group tabs above the grid wrap as groups accumulate during a run, pushing late days below
-  // the fold. The employee roster is sticky, so scrolling the target in keeps both ends on screen.
-  await targetLocator.scrollIntoViewIfNeeded();
-  const source = await sourceLocator.boundingBox();
-  const target = await targetLocator.boundingBox();
-  if (!source || !target) throw new Error('drag source/target not visible');
-  // A mouse drag can't scroll the page, so both ends must already be on screen — otherwise the drop
-  // silently never happens. Fail loudly instead.
-  const viewport = page.viewportSize();
-  for (const [name, box] of [
-    ['source', source],
-    ['target', target],
-  ]) {
-    if (box.y < 0 || box.y + box.height > viewport.height) {
-      throw new Error(
-        `drag ${name} is outside the ${viewport.width}x${viewport.height} viewport (y=${Math.round(box.y)}); use a taller viewport`,
-      );
-    }
-  }
-
-  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
-  await page.mouse.down();
-  // Sortable.js needs several intermediate mousemove events to register a real drag.
-  const steps = 8;
-  for (let i = 1; i <= steps; i++) {
-    const x = source.x + ((target.x - source.x) * i) / steps;
-    const y = source.y + ((target.y - source.y) * i) / steps;
-    await page.mouse.move(x, y, { steps: 3 });
-  }
-  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 3 });
-  await page.mouse.up();
-}
 
 test.describe('Manual shift assignment (drag and drop)', () => {
   test('assigns an employee by dragging from the roster, persists it, then unassigns via the remove button', async ({

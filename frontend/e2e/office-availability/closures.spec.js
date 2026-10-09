@@ -1,8 +1,9 @@
-import { createOfficeClosure } from '../fixtures/api-setup.js';
-import { expect, test } from '../fixtures/auth.js';
+import { createOfficeClosure, listOfficeClosures } from '../fixtures/api-setup.js';
+import { expect, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
 
-// Months 2098-10/2098-11 are reserved for this file (office closures are global, not per group).
+// Months 2098-10/2098-11 and 2095-05 are reserved for this file (office closures are global, not per
+// group).
 test.describe('Office Availability', () => {
   test('a slow load of the previous month does not show its closures under the next month', async ({
     adminPage,
@@ -58,5 +59,38 @@ test.describe('Office Availability', () => {
     await october.releaseAndSettle();
 
     await expect(november).toBeVisible();
+  });
+
+  test('clicking a day creates the closure on that day, also east of UTC', async ({ browser }) => {
+    // Warsaw: local midnight is the previous day in UTC, which is where toISOString() dates slipped.
+    const context = await browser.newContext({
+      extraHTTPHeaders: STATEFUL_ORIGIN,
+      timezoneId: 'Europe/Warsaw',
+    });
+    await loginAs(context, 'admin@shiftchanger.com', '1234');
+    const page = await context.newPage();
+    await page.clock.setFixedTime(new Date('2095-05-10T10:00:00Z'));
+    await page.goto('/office-availability');
+    await expect(page.getByText('May 2095', { exact: true })).toBeVisible();
+
+    const day15 = page
+      .locator('div.cursor-pointer:not(.opacity-40)')
+      .filter({ has: page.getByText('15', { exact: true }) });
+    await day15.click();
+    await expect(page.getByText('2095-05-15', { exact: true })).toBeVisible();
+    await page.getByPlaceholder('e.g. Christmas Holiday').fill('Warsaw Click Closure');
+    const saved = page.waitForResponse(
+      (res) => res.url().includes('/api/office-closures') && res.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Save' }).click();
+    expect((await saved).ok()).toBe(true);
+
+    const closures = await listOfficeClosures(context, '2095-05');
+    expect(closures.map((c) => [c.date.substring(0, 10), c.title])).toEqual([
+      ['2095-05-15', 'Warsaw Click Closure'],
+    ]);
+    // Rendered on the 15th, not a day late.
+    await expect(day15.getByText('Warsaw Click Closure')).toBeVisible();
+    await context.close();
   });
 });

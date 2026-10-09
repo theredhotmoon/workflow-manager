@@ -223,6 +223,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Schedule (read-only for all authenticated users)
     Route::get('/schedule', [ScheduleController::class, 'index']);
 
+    // Shift colour definitions (display data: every schedule viewer sees the colours; writes are admin-only)
+    Route::get('/shift-colors', [ShiftColorController::class, 'index']);
+
     // User groups (read-only — needed by schedule maintainers for player filtering)
     Route::get('/user-groups', [UserGroupController::class, 'index']);
 
@@ -256,14 +259,13 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::put('/shift-groups/{shiftGroup}/streak-rules', [ShiftGroupController::class, 'syncStreakRules']);
 
         // Shift color definitions
-        Route::get('/shift-colors', [ShiftColorController::class, 'index']);
         Route::post('/shift-colors', [ShiftColorController::class, 'store']);
         Route::put('/shift-colors/{shiftColor}', [ShiftColorController::class, 'update']);
         Route::delete('/shift-colors/{shiftColor}', [ShiftColorController::class, 'destroy']);
         Route::post('/shift-colors/reorder', [ShiftColorController::class, 'reorder']);
 
         // Checklist template management
-        Route::apiResource('checklist-templates', ChecklistTemplateController::class);
+        Route::apiResource('checklist-templates', ChecklistTemplateController::class)->except(['index']);
 
         // Delegations
         Route::get('/delegations', [DelegationController::class, 'index']);
@@ -276,7 +278,6 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('/delegations/{delegation}/reject-user', [DelegationController::class, 'rejectUser']);
         Route::post('/delegations/{delegation}/remove-user', [DelegationController::class, 'removeUser']);
         Route::get('/delegations/{delegation}/logs', [DelegationController::class, 'logs']);
-        Route::get('/delegations/month', [DelegationController::class, 'forMonth']);
 
         // Delegation Archive
         Route::get('/delegation-archive', [DelegationArchiveController::class, 'index']);
@@ -286,16 +287,13 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('/delegation-archive/destinations', [DelegationArchiveController::class, 'destinations']);
 
         // Office closures
-        Route::get('/office-closures', [OfficeClosureController::class, 'index']);
         Route::post('/office-closures', [OfficeClosureController::class, 'store']);
         Route::put('/office-closures/{officeClosure}', [OfficeClosureController::class, 'update']);
         Route::delete('/office-closures/{officeClosure}', [OfficeClosureController::class, 'destroy']);
-        Route::get('/office-closures/conflicts', [OfficeClosureController::class, 'checkConflicts']);
 
         // Newbie periods
         Route::get('/newbie-periods/all', [NewbiePeriodController::class, 'all']);
         Route::get('/newbie-periods/user/{userId}', [NewbiePeriodController::class, 'forUser']);
-        Route::get('/newbie-periods/month', [NewbiePeriodController::class, 'forMonth']);
         Route::post('/newbie-periods', [NewbiePeriodController::class, 'store']);
         Route::put('/newbie-periods/{newbiePeriod}', [NewbiePeriodController::class, 'update']);
         Route::delete('/newbie-periods/{newbiePeriod}', [NewbiePeriodController::class, 'destroy']);
@@ -330,6 +328,13 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Schedule management (admin or schedule_maintainer)
     Route::middleware('admin:schedule')->group(function () {
         Route::get('/shift-groups', [ShiftGroupController::class, 'index']);
+        // Reads the Schedule screen needs (overlays, conflict checks, auto-fill, checklist picker);
+        // the matching writes stay in the admin group.
+        Route::get('/delegations/month', [DelegationController::class, 'forMonth']);
+        Route::get('/newbie-periods/month', [NewbiePeriodController::class, 'forMonth']);
+        Route::get('/office-closures', [OfficeClosureController::class, 'index']);
+        Route::get('/office-closures/conflicts', [OfficeClosureController::class, 'checkConflicts']);
+        Route::get('/checklist-templates', [ChecklistTemplateController::class, 'index']);
         Route::post('/schedule/generate', [ScheduleController::class, 'generate']);
         Route::put('/schedule/day-shifts', [ScheduleController::class, 'updateDayShifts']);
         Route::post('/schedule/assign', [ScheduleController::class, 'assign']);

@@ -209,6 +209,7 @@ import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast';
+import { localDateStr } from '../dates.js';
 
 const loading = ref(true);
 const shifts = ref({});
@@ -235,7 +236,7 @@ const delegationDates = computed(() => {
     let cur = new Date(start + 'T12:00:00');
     const last = new Date(end + 'T12:00:00');
     while (cur <= last) {
-      const ds = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+      const ds = localDateStr(cur);
       // Only include dates in current month
       if (ds.startsWith(monthKey.value)) dates.add(ds);
       cur.setDate(cur.getDate() + 1);
@@ -284,10 +285,7 @@ function nextMonth() {
   } else currentMonth.value++;
 }
 
-const todayStr = computed(() => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-});
+const todayStr = computed(() => localDateStr(new Date()));
 
 function isToday(dateStr) {
   return dateStr === todayStr.value;

@@ -144,6 +144,17 @@ export async function createNewbiePeriod(context, { userId, startDate, endDate }
   return await res.json();
 }
 
+export async function listOfficeClosures(context, monthKey) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'get', '/api/office-closures', {
+    params: { month: monthKey },
+    headers,
+  });
+  if (!res.ok())
+    throw new Error(`list office closures failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
 export async function createOfficeClosure(context, { startDate, endDate = startDate, title }) {
   const headers = await getXsrfHeader(context);
   const res = await send(context, 'post', '/api/office-closures', {

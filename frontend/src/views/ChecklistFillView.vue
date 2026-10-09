@@ -528,6 +528,7 @@ import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { todayStr } from '../dates.js';
 import { isAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -578,7 +579,7 @@ const progressPercent = computed(() => {
 const setup = reactive({
   templateId: '',
   shiftId: null,
-  date: new Date().toISOString().split('T')[0],
+  date: todayStr(),
   outgoingUserId: '',
   incomingUserId: '',
 });

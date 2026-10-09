@@ -8,8 +8,12 @@ use Illuminate\Support\Facades\Hash;
 
 class ScheduleMaintainerSeeder extends Seeder
 {
+    use SeedsDevelopmentData;
+
     public function run(): void
     {
+        $this->refuseOutsideDevelopment();
+
         User::firstOrCreate(
             ['email' => 'schedule@company.com'],
             [

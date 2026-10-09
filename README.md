@@ -4,13 +4,24 @@ A Laravel 9 + Vue 3 shift managementand workflow management application.
 
 ---
 
-## Default Credentials
+## Default credentials (local development only)
 
-| Role  | Email                  | Password |
-|-------|------------------------|----------|
-| Admin | admin@shiftchanger.com | `1234`   |
+These accounts are created **only when `APP_ENV` is `local` or `testing`** (the hybrid dev stack,
+`docker-compose.dev.yml`, the test suites and the e2e baseline seed). Their passwords are public, so
+the seeders refuse to create them anywhere else.
 
-> **Note:** Change the admin password immediately in any production environment.
+| Role                | Email                    | Password      |
+|---------------------|--------------------------|---------------|
+| Admin               | admin@shiftchanger.com   | `1234`        |
+| Employee (demo)     | regular@shiftchanger.com | `password123` |
+| Schedule maintainer | schedule@company.com     | `schedule123` |
+
+In production the first admin's password comes from `SEED_ADMIN_PASSWORD` (see
+[Run migrations & seeders](#5-run-migrations--seeders)).
+
+> **Existing deployments:** if your server was seeded before this change, `admin@shiftchanger.com`
+> may still have the password `1234`. Log in and change it now (**Change password**), or reset it
+> from another admin account.
 
 ---
 
@@ -31,10 +42,11 @@ cp .env.example .env
 ### 2. Generate an application key
 
 ```bash
-docker compose run --rm backend php artisan key:generate --show
+echo "base64:$(openssl rand -base64 32)"
 ```
 
 Copy the printed `base64:...` string and paste it as `APP_KEY` in your `.env`.
+`docker compose` refuses to start without `APP_KEY` and `DB_PASSWORD`; there are no built-in defaults.
 
 ### 3. Fill in the remaining `.env` values
 
@@ -48,6 +60,23 @@ Copy the printed `base64:...` string and paste it as `APP_KEY` in your `.env`.
 | `DB_PASSWORD`               | Postgres password                                |
 | `SANCTUM_STATEFUL_DOMAINS`  | Domain/IP of the frontend (e.g. `localhost`)     |
 | `API_RATE_LIMIT`            | Max API requests per minute, per user (default `60`) |
+| `LOGIN_RATE_LIMIT`          | Failed logins allowed per minute for one email from one IP before `429` (default `5`) |
+| `TRUSTED_PROXIES`           | Proxies whose `X-Forwarded-For` is believed (default: private ranges, i.e. the compose network) |
+| `SESSION_SECURE_COOKIE`     | `true` to send the session cookie over HTTPS only. Set it in production (see below) |
+
+### HTTPS in production
+
+The stack itself speaks plain HTTP on `FRONTEND_PORT`. On a real server, put a TLS-terminating
+reverse proxy (Caddy, Traefik, nginx + certbot, a cloud load balancer) in front of it, serve the app
+only over `https://`, and set in `.env`:
+
+```dotenv
+APP_URL=https://your-domain
+SESSION_SECURE_COOKIE=true
+```
+
+so the browser never sends the session cookie over plain HTTP. Leave it `false` only for local
+development over `http://localhost`.
 
 ### 4. Build and start the stack
 
@@ -57,9 +86,20 @@ docker compose up -d --build
 
 ### 5. Run migrations & seeders
 
+The stack runs with `APP_ENV=production`, so the seeder creates the first admin
+(`admin@shiftchanger.com`) only with a password you choose, passed as `SEED_ADMIN_PASSWORD`
+(at least 12 characters). Without it, it stops with an error and creates nothing; no demo users
+are created in production.
+
 ```bash
-docker compose exec backend php artisan migrate --seed
+docker compose exec backend php artisan migrate --force
+docker compose exec -e SEED_ADMIN_PASSWORD='choose-a-long-password' backend php artisan db:seed --force
 ```
+
+Re-running the seeder never changes an existing admin's password. To keep the password out of your
+shell history, read it into the environment first
+(`read -rs SEED_ADMIN_PASSWORD && export SEED_ADMIN_PASSWORD` in bash) and pass `-e SEED_ADMIN_PASSWORD`
+without a value.
 
 ### Accessing the app
 

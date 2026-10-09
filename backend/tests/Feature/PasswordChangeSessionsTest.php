@@ -15,6 +15,12 @@ function inSpaSession($test, User $user, string $storedHash)
         ->withHeader('Referer', 'http://localhost');
 }
 
+/** What a session stores for a password hash: an HMAC of it (Laravel 12.45+), as Sanctum does. */
+function sessionPasswordHash(string $passwordHash): string
+{
+    return app('auth')->guard('web')->hashPasswordForCookie($passwordHash);
+}
+
 it('ends the other sessions when users change their own password, and keeps this one', function () {
     $user = User::factory()->create();
     $oldHash = $user->password;
@@ -31,7 +37,7 @@ it('ends the other sessions when users change their own password, and keeps this
     $newHash = $user->fresh()->password;
     expect($newHash)->not->toBe($oldHash);
     // The session that made the change now holds the new hash, so it stays logged in.
-    expect(session('password_hash_web'))->toBe($newHash);
+    expect(session('password_hash_web'))->toBe(sessionPasswordHash($newHash));
     inSpaSession($this, $user, $newHash)->getJson('/api/user')->assertOk();
 
     // The other session still holds the old hash: 401.
@@ -81,7 +87,7 @@ it('ends a session that only logged in (never called the API) when the password 
         ->assertOk();
     // fresh(): the login may rehash the password (Laravel 11+ rehash_on_login, when the bcrypt cost
     // differs, e.g. the factory's hash against the suite's BCRYPT_ROUNDS=4).
-    expect(session('password_hash_web'))->toBe($user->fresh()->password);
+    expect(session('password_hash_web'))->toBe(sessionPasswordHash($user->fresh()->password));
 
     // Changed in another session / by an admin.
     $user->forceFill(['password' => bcrypt('changed-elsewhere')])->save();

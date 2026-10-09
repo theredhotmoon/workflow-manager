@@ -49,9 +49,14 @@ class AuthController extends Controller
                 // Record the hash this session logged in with, as Sanctum's AuthenticateSession
                 // does after later requests (config/sanctum.php). Without it a session that only
                 // logged in has nothing to compare, so it would survive a password change made
-                // before its first API call (and then store the new hash).
+                // before its first API call (and then store the new hash). Stored in the same form
+                // as Sanctum: an HMAC of the hash (Laravel 12.45+), not the bcrypt hash itself.
                 foreach ((array) config('sanctum.guard', ['web']) as $guard) {
-                    $request->session()->put('password_hash_'.$guard, Auth::user()->getAuthPassword());
+                    $sessionGuard = Auth::guard($guard);
+                    $passwordHash = Auth::user()->getAuthPassword();
+                    $request->session()->put('password_hash_'.$guard, method_exists($sessionGuard, 'hashPasswordForCookie')
+                        ? $sessionGuard->hashPasswordForCookie($passwordHash)
+                        : $passwordHash);
                 }
             }
 

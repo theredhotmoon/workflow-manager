@@ -45,14 +45,11 @@ class AuthController extends Controller
             }
 
             if ($request->hasSession()) {
+                // Auth::attempt() -> SessionGuard::login() has already stored password_hash_web (an
+                // HMAC of the password hash) in the session, which Sanctum's AuthenticateSession
+                // compares on every later request (config/sanctum.php). So a session that only
+                // logged in still ends when the password changes elsewhere. regenerate() keeps it.
                 $request->session()->regenerate();
-                // Record the hash this session logged in with, as Sanctum's AuthenticateSession
-                // does after later requests (config/sanctum.php). Without it a session that only
-                // logged in has nothing to compare, so it would survive a password change made
-                // before its first API call (and then store the new hash).
-                foreach ((array) config('sanctum.guard', ['web']) as $guard) {
-                    $request->session()->put('password_hash_'.$guard, Auth::user()->getAuthPassword());
-                }
             }
 
             return response()->json([

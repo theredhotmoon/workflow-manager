@@ -41,3 +41,36 @@ it('includes callback hours in the settlement periods report', function () {
 
     Carbon::setTestNow();
 });
+
+it('keeps the half hour of a callback that does not last whole hours', function () {
+    Carbon::setTestNow(Carbon::parse('2026-09-15'));
+
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $group = ShiftGroup::create([
+        'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
+        'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01',
+    ]);
+    $employee = User::factory()->create(['role' => 'employee']);
+
+    $assignment = OnCallAssignment::create([
+        'shift_group_id' => $group->id,
+        'user_id' => $employee->id,
+        'starts_at' => '2026-09-01 20:00:00',
+        'ends_at' => '2026-09-02 08:00:00',
+    ]);
+    OnCallCallback::create([
+        'on_call_assignment_id' => $assignment->id,
+        'starts_at' => '2026-09-01 22:00:00',
+        'ends_at' => '2026-09-01 23:30:00',
+    ]);
+
+    $response = $this->actingAs($maintainer)->getJson('/api/settlement-periods?' . http_build_query([
+        'shift_group_id' => $group->id,
+        'offset' => 0,
+    ]));
+
+    $response->assertOk();
+    expect($response->json('employees.0.weekly_hours.0'))->toBe(1.5);
+
+    Carbon::setTestNow();
+});

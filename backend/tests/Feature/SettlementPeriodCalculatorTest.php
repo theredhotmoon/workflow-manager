@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Shift;
 use App\Models\ShiftGroup;
 use App\Services\SettlementPeriodCalculator;
 use Carbon\Carbon;
@@ -100,7 +101,7 @@ it('prorates the trailing partial week of a period not divisible by 7', function
         expect($week['cap_hours'])->toBe(40.0);
     }
     $lastWeek = $period['weeks'][12];
-    expect($lastWeek['start']->diffInDays($lastWeek['end']) + 1)->toBe(5);
+    expect((int) $lastWeek['start']->diffInDays($lastWeek['end'], true) + 1)->toBe(5);
     expect($lastWeek['cap_hours'])->toBe(round(40.0 * 5 / 7, 2));
 });
 
@@ -128,3 +129,14 @@ it('falls back to monthly/48h defaults when a group has no settlement config at 
     expect($period['weeks'][0]['cap_hours'])->toBeGreaterThan(0.0);
     expect($period['weeks'][0]['cap_hours'])->toBeLessThanOrEqual(48.0);
 });
+
+it('keeps the half hour of a shift that does not last whole hours', function (string $start, string $end, float $hours) {
+    $shift = new Shift(['date' => '2026-09-01', 'start_time' => $start, 'end_time' => $end]);
+
+    // toEqual: an exact division (480 / 60) is the int 8, as before the upgrade.
+    expect((new SettlementPeriodCalculator())->shiftTiming($shift)['duration_hours'])->toEqual($hours);
+})->with([
+    'day shift 06:00-13:30' => ['06:00', '13:30', 7.5],
+    'overnight 22:00-05:30' => ['22:00', '05:30', 7.5],
+    'whole hours 06:00-14:00' => ['06:00', '14:00', 8.0],
+]);

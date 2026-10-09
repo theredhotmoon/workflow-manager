@@ -12,11 +12,11 @@
             <directory suffix="Test.php">./tests/Feature</directory>
         </testsuite>
     </testsuites>
-    <coverage processUncoveredFiles="true">
+    <source>
         <include>
-            <directory suffix=".php">./app</directory>
+            <directory>./app</directory>
         </include>
-    </coverage>
+    </source>
     <php>
         <!-- The CLI default (128M, e.g. php:8.0 images) no longer fits the whole suite in one process. -->
         <ini name="memory_limit" value="512M"/>

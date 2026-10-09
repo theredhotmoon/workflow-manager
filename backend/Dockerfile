@@ -16,7 +16,7 @@ RUN composer dump-autoload --optimize --classmap-authoritative
 
 
 # ─── Stage 2: Runtime image ───────────────────────────────────────────────────
-FROM php:8.2-fpm-alpine
+FROM php:8.4-fpm-alpine
 
 LABEL maintainer="Shift Changer"
 
@@ -52,7 +52,11 @@ COPY docker/php.ini          /usr/local/etc/php/conf.d/zzz-custom.ini
 COPY docker/entrypoint.sh    /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh \
-    && mkdir -p /var/www/html/storage/framework/{cache,sessions,views} \
+    # One path each: this /bin/sh has no brace expansion. cache/data must exist, or Laravel 13's
+    # cache:clear (file store) exits 1 on a fresh container (the e2e global setup runs it).
+    && mkdir -p /var/www/html/storage/framework/cache/data \
+        /var/www/html/storage/framework/sessions \
+        /var/www/html/storage/framework/views \
     && mkdir -p /var/www/html/storage/logs \
     && mkdir -p /var/www/html/bootstrap/cache \
     # nginx needs to write its pid and log

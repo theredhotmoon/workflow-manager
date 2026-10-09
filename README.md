@@ -1,6 +1,6 @@
 # Workflow Manager
 
-A Laravel 9 + Vue 3 shift managementand workflow management application.
+A Laravel 13 (PHP 8.4) + Vue 3 shift management and workflow management application.
 
 ---
 
@@ -185,6 +185,22 @@ cd backend
 composer test
 ```
 
+This needs PHP 8.4 on the host. Without it, run the suite in the backend image (PHP 8.4, the same as
+production) with `backend/` mounted, on the compose network so it reaches the `db` service. Run it
+from the repo root:
+
+```bash
+docker compose build backend
+docker run --rm --network workflow-manager_app_network \
+  -v "$PWD/backend:/var/www/html" -w /var/www/html \
+  -e DB_HOST=db -e DB_PORT=5432 -e DB_USERNAME=postgres -e DB_PASSWORD="<DB_PASSWORD from .env>" \
+  --entrypoint php workflow-manager_backend vendor/bin/pest
+```
+
+On Windows in Git Bash, put `MSYS_NO_PATHCONV=1` in front of `docker run`
+(`MSYS_NO_PATHCONV=1 docker run ...`); otherwise Git Bash rewrites `/var/www/html` into a Windows
+path and the container can't find the mount.
+
 ### Frontend tests (Playwright)
 
 The frontend uses Playwright for everything: Node-mode unit tests for composables, and end-to-end
@@ -281,7 +297,7 @@ In local dev mode the Laravel backend and the Vite dev server run as separate pr
 
 ### Prerequisites
 
-- **PHP** ≥ 8.0 with extensions: `pdo_pgsql`, `zip`, `opcache`
+- **PHP** ≥ 8.4 with extensions: `pdo_pgsql`, `zip`, `opcache`
 - **Composer** ≥ 2
 - **Node.js** ≥ 20 and **npm**
 - **PostgreSQL** ≥ 14 running locally
@@ -351,7 +367,7 @@ Vite will start and Laravel will automatically inject the HMR script. Open **`ht
 workflow-manager/
 ├── docker-compose.yml        # Orchestrates db, backend, frontend
 ├── .env.example              # Root env template for Docker
-├── backend/                  # Laravel 9 API
+├── backend/                  # Laravel 13 API (PHP 8.4)
 │   ├── Dockerfile
 │   ├── .env.example          # Laravel env template for local dev
 │   └── ...

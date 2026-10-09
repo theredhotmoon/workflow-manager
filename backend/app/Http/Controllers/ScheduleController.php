@@ -220,23 +220,26 @@ class ScheduleController extends Controller
             $currentCount = $currentShifts->count();
 
             if ($desiredCount > $currentCount) {
-                // Add more shift slots with default times: the target preset's entries the day's
-                // remaining slots don't already have, in preset order (after an empty-first removal
-                // the free entry is not necessarily the last one). Falls back to the preset position.
+                // Add more shift slots with default times: each new slot takes its positional entry
+                // of the target preset, unless the day already has those times (after an
+                // empty-first removal, e.g. a second night); then the first preset entry the day
+                // doesn't have (the removed afternoon). Failing both, the positional entry.
                 $defaults = $this->defaultShiftTimes($desiredCount);
-                $free = $defaults;
-                foreach ($currentShifts as $existing) {
-                    $key = substr((string) $existing->start_time, 0, 5) . '-' . substr((string) $existing->end_time, 0, 5);
-                    foreach ($free as $j => $times) {
-                        if ($times['start_time'] . '-' . $times['end_time'] === $key) {
-                            unset($free[$j]);
-                            break;
+                $key = fn (?string $start, ?string $end) => substr((string) $start, 0, 5) . '-' . substr((string) $end, 0, 5);
+                $used = $currentShifts->map(fn (Shift $s) => $key($s->start_time, $s->end_time))->flip()->all();
+                for ($i = $currentCount + 1; $i <= $desiredCount; $i++) {
+                    $times = $defaults[$i - 1] ?? [];
+                    if ($times !== [] && isset($used[$key($times['start_time'], $times['end_time'])])) {
+                        foreach ($defaults as $candidate) {
+                            if (!isset($used[$key($candidate['start_time'], $candidate['end_time'])])) {
+                                $times = $candidate;
+                                break;
+                            }
                         }
                     }
-                }
-                $free = array_values($free);
-                for ($i = $currentCount + 1; $i <= $desiredCount; $i++) {
-                    $times = $free[$i - $currentCount - 1] ?? $defaults[$i - 1] ?? [];
+                    if ($times !== []) {
+                        $used[$key($times['start_time'], $times['end_time'])] = true;
+                    }
                     Shift::create([
                         'date' => $date,
                         'shift_number' => $i,

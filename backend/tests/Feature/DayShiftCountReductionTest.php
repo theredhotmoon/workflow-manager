@@ -59,25 +59,44 @@ it('removes the empty slot, not the staffed one after it, without asking', funct
         ->toBe(['06:00-14:00', '22:00-06:00', '14:00-22:00']);
 });
 
-it('gives new slots the free entries of the target preset, in preset order', function () {
+function dscDay($test, array $slots): void
+{
     Shift::where('date', '2029-02-12')->delete();
-    foreach ([[1, '06:00', '18:00'], [2, '18:00', '06:00']] as [$n, $start, $end]) {
-        Shift::create(['date' => '2029-02-12', 'shift_number' => $n, 'shift_group_id' => $this->group->id,
+    foreach ($slots as $n => [$start, $end]) {
+        Shift::create(['date' => '2029-02-12', 'shift_number' => $n + 1, 'shift_group_id' => $test->group->id,
             'start_time' => $start, 'end_time' => $end]);
     }
-    dscReduce($this, 4)->assertOk();
-    $added = Shift::where('date', '2029-02-12')->where('shift_number', '>', 2)->orderBy('shift_number')->get();
-    // The 4-shift split (06-12, 12-18, 18-00, 00-06) shares nothing with 06-18/18-06, so the two
-    // new slots take its first two entries (not positions 3 and 4, 18-00 and 00-06).
-    expect($added->map(fn ($s) => substr($s->start_time, 0, 5) . '-' . substr($s->end_time, 0, 5))->all())
-        ->toBe(['06:00-12:00', '12:00-18:00']);
+}
 
-    // A used entry is skipped: with 06-18 on the day, the 2-shift preset leaves 18-06.
-    Shift::where('date', '2029-02-12')->delete();
-    Shift::create(['date' => '2029-02-12', 'shift_number' => 1, 'shift_group_id' => $this->group->id,
-        'start_time' => '06:00', 'end_time' => '18:00']);
+function dscTimes(): array
+{
+    return Shift::where('date', '2029-02-12')->orderBy('shift_number')->get()
+        ->map(fn ($s) => substr($s->start_time, 0, 5) . '-' . substr($s->end_time, 0, 5))->all();
+}
+
+it('gives a new slot its positional preset times when the day does not have them yet', function () {
+    // 1 -> 2 on a 24-hour day: slot 2 is the 2-shift preset's night (18-06), not its first entry.
+    dscDay($this, [['00:00', '00:00']]);
     dscReduce($this, 2)->assertOk();
-    expect(substr(Shift::where('date', '2029-02-12')->where('shift_number', 2)->value('start_time'), 0, 5))->toBe('18:00');
+    expect(dscTimes())->toBe(['00:00-00:00', '18:00-06:00']);
+
+    // Plain 2 -> 3 on a 2-shift day: slot 3 is the 3-shift preset's night (22-06).
+    dscDay($this, [['06:00', '18:00'], ['18:00', '06:00']]);
+    dscReduce($this, 3)->assertOk();
+    expect(dscTimes())->toBe(['06:00-18:00', '18:00-06:00', '22:00-06:00']);
+
+    // 2 -> 4: positions 3 and 4 of the 4-shift split (18-00, 00-06).
+    dscDay($this, [['06:00', '18:00'], ['18:00', '06:00']]);
+    dscReduce($this, 4)->assertOk();
+    expect(dscTimes())->toBe(['06:00-18:00', '18:00-06:00', '18:00-00:00', '00:00-06:00']);
+});
+
+it('takes the first unused preset entry when the positional one is already on the day', function () {
+    // After an empty-first removal (06-14, 22-06 left), slot 3's positional 22-06 is taken:
+    // the removed afternoon comes back instead of a second night.
+    dscDay($this, [['06:00', '14:00'], ['22:00', '06:00']]);
+    dscReduce($this, 3)->assertOk();
+    expect(dscTimes())->toBe(['06:00-14:00', '22:00-06:00', '14:00-22:00']);
 });
 
 it('refuses to remove staffed slots without confirmation, listing them, and deletes nothing', function () {

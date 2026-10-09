@@ -2,7 +2,10 @@
 
 namespace App\Http;
 
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
+use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Routing\Router;
 
 class Kernel extends HttpKernel
 {
@@ -66,4 +69,17 @@ class Kernel extends HttpKernel
         'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
         'active' => \App\Http\Middleware\EnsureUserIsActive::class,
     ];
+
+    /**
+     * The account and role checks run before route-model binding (it otherwise runs first, as part
+     * of the api group): a caller without the role gets 403 whether or not the record exists, so
+     * admin routes can't be used to probe which ids exist, and no model is loaded for them.
+     */
+    public function __construct(Application $app, Router $router)
+    {
+        parent::__construct($app, $router);
+
+        $this->addToMiddlewarePriorityBefore(SubstituteBindings::class, \App\Http\Middleware\EnsureUserIsActive::class);
+        $this->addToMiddlewarePriorityBefore(SubstituteBindings::class, \App\Http\Middleware\EnsureUserIsAdmin::class);
+    }
 }

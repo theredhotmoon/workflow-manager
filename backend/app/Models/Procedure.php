@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\ProcedureHtmlSanitizer;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
 class Procedure extends Model
@@ -98,5 +100,17 @@ class Procedure extends Model
     public function ownerChanges()
     {
         return $this->hasMany(ProcedureOwnerChange::class);
+    }
+
+    /** Rendered with v-html: sanitised on every write (see ProcedureHtmlSanitizer). */
+    protected function content(): Attribute
+    {
+        return Attribute::make(set: fn (?string $value) => app(ProcedureHtmlSanitizer::class)->clean($value));
+    }
+
+    /** Rendered with v-html: sanitised on every write (see ProcedureHtmlSanitizer). */
+    protected function draftContent(): Attribute
+    {
+        return Attribute::make(set: fn (?string $value) => app(ProcedureHtmlSanitizer::class)->clean($value));
     }
 }

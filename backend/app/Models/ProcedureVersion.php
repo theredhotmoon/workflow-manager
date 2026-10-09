@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\ProcedureHtmlSanitizer;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 
 class ProcedureVersion extends Model
@@ -32,5 +34,11 @@ class ProcedureVersion extends Model
     public function publisher()
     {
         return $this->belongsTo(User::class, 'published_by');
+    }
+
+    /** Rendered with v-html: sanitised on every write (see ProcedureHtmlSanitizer). */
+    protected function content(): Attribute
+    {
+        return Attribute::make(set: fn (?string $value) => app(ProcedureHtmlSanitizer::class)->clean($value));
     }
 }

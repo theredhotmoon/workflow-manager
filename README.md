@@ -98,6 +98,20 @@ and, in the same file, forward the proxy's scheme so Laravel knows the request w
 `proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;` instead of `$scheme`. Do neither
 without a proxy in front: a client could then forge both headers.
 
+### Content Security Policy and procedure HTML
+
+The frontend Nginx sends a `Content-Security-Policy` with every page: only the app's own scripts
+run (`script-src 'self'`, no inline script), styles may be inline (Vue, the editor), images may come
+from `data:` or any `https:` host (procedures embed them), and the API is same-origin. If you put
+the SPA behind another host, or load scripts, fonts or API calls from elsewhere, extend the header in
+`frontend/docker/security-headers.conf` (included by `nginx.conf` everywhere, static assets too). It applies only to the Docker frontend: the Vite dev server (hybrid
+mode, e2e) sends no CSP.
+
+Procedure content is HTML from the editor, rendered as HTML. The backend sanitises it on every save
+(`App\Services\ProcedureHtmlSanitizer`, HTMLPurifier with an allowlist of what the editor produces:
+no scripts, event handlers, styles or `javascript:` links), and the SPA runs it through DOMPurify
+again before showing it. Content stored before this was cleaned by a migration.
+
 ### 4. Build and start the stack
 
 ```bash

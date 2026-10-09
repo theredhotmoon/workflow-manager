@@ -8,6 +8,7 @@ use App\Models\ProcedureOwnerChange;
 use App\Models\ProcedureUserRead;
 use App\Models\ProcedureVersion;
 use App\Models\User;
+use App\Services\ProcedureHtmlSanitizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -212,6 +213,10 @@ class ProcedureController extends Controller
             $procedure->refresh();
 
             $fields = collect($validated)->only(self::VERSIONED_FIELDS)->all();
+            // Compare content as it would be stored (sanitised), so equivalent HTML isn't a change.
+            if (array_key_exists('content', $fields)) {
+                $fields['content'] = app(ProcedureHtmlSanitizer::class)->clean($fields['content']);
+            }
             $changed = collect($fields)->contains(fn ($value, $field) => $value !== $procedure->{$field});
 
             if ($changed && $procedure->has_draft) {

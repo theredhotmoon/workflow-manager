@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use App\Support\Month;
 
 class DelegationController extends Controller
@@ -53,7 +54,8 @@ class DelegationController extends Controller
             'destination' => ['required', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
             'start_datetime' => ['required', 'date'],
-            'end_datetime' => ['required', 'date', 'after:start_datetime'],
+            // Whole days, last day included: a one-day delegation starts and ends on the same date.
+            'end_datetime' => ['required', 'date', 'after_or_equal:start_datetime'],
             'registration_open' => ['sometimes', 'boolean'],
             'user_ids' => ['sometimes', 'array'],
             'user_ids.*' => ['integer', User::activeExistsRule()],
@@ -101,6 +103,15 @@ class DelegationController extends Controller
             if (isset($validated[$key])) {
                 $validated[$key] = self::dateOnly($validated[$key]);
             }
+        }
+
+        // Either date may change alone, so compare the dates the delegation will end up with.
+        $start = $validated['start_datetime'] ?? $delegation->start_datetime?->format('Y-m-d');
+        $end = $validated['end_datetime'] ?? $delegation->end_datetime?->format('Y-m-d');
+        if ($start !== null && $end !== null && $end < $start) {
+            throw ValidationException::withMessages([
+                'end_datetime' => 'The end date must be on or after the start date.',
+            ]);
         }
 
         $changes = [];

@@ -862,6 +862,11 @@ async function submitChecklist() {
     showToast('Checklist submitted successfully!');
     backToSetup();
   } catch (err) {
+    // The incoming user was deactivated while the form was open: drop them so another can be
+    // picked (the picker only lists active users) and the answers stay filled in.
+    if (err.response?.status === 422 && err.response.data?.errors?.incoming_user_id) {
+      setup.incomingUserId = '';
+    }
     const msg = err.response?.data?.message || 'Failed to submit checklist.';
     showToast(msg, 'error');
   } finally {

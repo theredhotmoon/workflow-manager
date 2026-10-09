@@ -60,9 +60,9 @@
                 class="px-3 py-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-lg transition-all">
                 Edit
               </button>
-              <button @click="deleteTemplate(tpl)"
+              <button @click="archiveTemplate(tpl)"
                 class="px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-all">
-                Delete
+                Archive
               </button>
             </div>
           </div>
@@ -381,9 +381,13 @@ async function editTemplate(tpl) {
       name: data.name,
       description: data.description || '',
       is_active: data.is_active,
+      // Existing rows keep their id so saving updates them in place (past handovers keep their
+      // answers); rows added in the builder have none.
       groups: data.groups.map((g) => ({
+        id: g.id,
         name: g.name,
         items: g.items.map((i) => ({
+          id: i.id,
           label: i.label,
           type: i.type,
           requires_confirmation: i.requires_confirmation,
@@ -484,8 +488,10 @@ async function saveTemplate() {
       description: form.value.description,
       is_active: form.value.is_active,
       groups: form.value.groups.map((g) => ({
+        ...(g.id ? { id: g.id } : {}),
         name: g.name,
         items: g.items.map((i) => ({
+          ...(i.id ? { id: i.id } : {}),
           label: i.label,
           type: i.type,
           requires_confirmation: i.requires_confirmation,
@@ -512,21 +518,21 @@ async function saveTemplate() {
   }
 }
 
-// Delete
-async function deleteTemplate(tpl) {
+// Archive (the API keeps every handover made with the template)
+async function archiveTemplate(tpl) {
   const ok = await confirm({
-    title: 'Delete Template',
-    message: `Delete template "${tpl.name}"? This cannot be undone.`,
-    confirmLabel: 'Delete',
+    title: 'Archive Template',
+    message: `Archive template "${tpl.name}"? It will no longer be offered for new handovers or on future shifts. Handovers already submitted with it are kept and stay in the history.`,
+    confirmLabel: 'Archive',
     danger: true,
   });
   if (!ok) return;
   try {
     await api.delete(`/api/checklist-templates/${tpl.id}`);
-    showToast('Template deleted.');
+    showToast('Template archived.');
     await fetchTemplates();
   } catch {
-    showToast('Failed to delete template.', 'error');
+    showToast('Failed to archive template.', 'error');
   }
 }
 

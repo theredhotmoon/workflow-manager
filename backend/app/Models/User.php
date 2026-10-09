@@ -5,8 +5,11 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
@@ -29,9 +32,32 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'is_admin' => 'boolean',
+        'deactivated_at' => 'datetime',
     ];
 
     protected $appends = [];
+
+    /** Users who can log in and be picked for new work; deactivated ones only appear in history. */
+    public function scopeActive($query)
+    {
+        return $query->whereNull('deactivated_at');
+    }
+
+    public function isDeactivated(): bool
+    {
+        return $this->deactivated_at !== null;
+    }
+
+    /** Validation rule: the id of a user who isn't deactivated. */
+    public static function activeExistsRule(): Exists
+    {
+        return Rule::exists('users', 'id')->whereNull('deactivated_at');
+    }
+
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(ShiftAssignment::class);
+    }
 
     public function isAdmin(): bool
     {

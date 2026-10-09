@@ -37,7 +37,7 @@ use App\Http\Controllers\OnCallController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
@@ -50,9 +50,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Active templates (for filling forms)
     Route::get('/checklist-templates/active', [ChecklistTemplateController::class, 'active']);
 
-    // Employee list (for any authenticated user)
-    Route::get('/employees', function () {
-        return response()->json(\App\Models\User::orderBy('name')->get(['id', 'name', 'email']));
+    // Employee list (for any authenticated user). Pickers get active users only; history filters
+    // pass include_deactivated to find past handovers of deactivated users too.
+    Route::get('/employees', function (Request $request) {
+        return response()->json(\App\Models\User::query()
+            ->when(!$request->boolean('include_deactivated'), fn ($q) => $q->active())
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']));
     });
 
     // Checklist alerts for current user
@@ -232,7 +236,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Admin-only routes
     Route::middleware('admin')->group(function () {
         // User management
-        Route::apiResource('users', UserController::class);
+        // Users are never deleted (DELETE /users/{user} answers 405): they are deactivated instead.
+        Route::apiResource('users', UserController::class)->except(['destroy']);
+        Route::post('/users/{user}/deactivate', [UserController::class, 'deactivate']);
+        Route::post('/users/{user}/reactivate', [UserController::class, 'reactivate']);
         Route::put('/users/{user}/password', [UserController::class, 'changePassword']);
 
         // User groups (write operations)

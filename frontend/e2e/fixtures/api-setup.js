@@ -207,17 +207,26 @@ export async function reportProcedureIssue(context, procedureId, description) {
 
 export async function createChecklistTemplate(
   context,
-  { name, requiresConfirmation = false, procedureIds = [] },
+  { name, requiresConfirmation = false, procedureIds = [], itemLabels = [] },
 ) {
   const headers = await getXsrfHeader(context);
-  const items = procedureIds.length
-    ? procedureIds.map((procedureId, i) => ({
-        label: `${name} item ${i + 1}`,
-        type: 'checkbox',
-        requires_confirmation: requiresConfirmation,
-        procedure_id: procedureId,
-      }))
-    : [{ label: `${name} item`, type: 'checkbox', requires_confirmation: requiresConfirmation }];
+  let items = [
+    { label: `${name} item`, type: 'checkbox', requires_confirmation: requiresConfirmation },
+  ];
+  if (procedureIds.length) {
+    items = procedureIds.map((procedureId, i) => ({
+      label: `${name} item ${i + 1}`,
+      type: 'checkbox',
+      requires_confirmation: requiresConfirmation,
+      procedure_id: procedureId,
+    }));
+  } else if (itemLabels.length) {
+    items = itemLabels.map((label) => ({
+      label,
+      type: 'checkbox',
+      requires_confirmation: requiresConfirmation,
+    }));
+  }
   const res = await send(context, 'post', '/api/checklist-templates', {
     data: { name, is_active: true, groups: [{ name: `${name} group`, items }] },
     headers,
@@ -245,6 +254,17 @@ export async function createChecklistSubmission(
     headers,
   });
   if (!res.ok()) throw new Error(`create submission failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// A throwaway user for specs that change a user's state (never use the seeded logins for that).
+export async function createUser(context, { name, email, password = 'password123' }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'post', '/api/users', {
+    data: { name, email, password, password_confirmation: password },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`create user failed: ${res.status()} ${await res.text()}`);
   return await res.json();
 }
 

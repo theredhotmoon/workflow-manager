@@ -38,7 +38,7 @@ class AlarmService
         ?string $linkUrl = null,
         ?string $linkLabel = null
     ): void {
-        $users = User::where(function ($q) {
+        $users = User::active()->where(function ($q) {
             $q->where('role', 'admin')
               ->orWhere('role', 'schedule_maintainer');
         })->get();

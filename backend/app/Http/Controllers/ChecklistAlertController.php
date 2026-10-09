@@ -36,8 +36,10 @@ class ChecklistAlertController extends Controller
         }
 
         // Get shift checklists for assigned shifts
+        // An archived template can't be filled any more, so it raises no alerts (past shifts keep the row).
         $shiftChecklists = ShiftChecklist::with('template:id,name', 'shift')
             ->whereIn('shift_id', $assignedShiftIds)
+            ->whereHas('template', fn ($q) => $q->notArchived())
             ->get();
 
         if ($shiftChecklists->isEmpty()) {

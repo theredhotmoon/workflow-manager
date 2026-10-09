@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ChecklistGroup;
 use App\Models\ChecklistSubmission;
 use App\Models\ChecklistResponse;
 use App\Models\ChecklistTemplate;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\ShiftChecklist;
 use App\Models\User;
 use App\Support\BusinessDate;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -16,11 +20,13 @@ use Illuminate\Validation\ValidationException;
 class ChecklistSubmissionController extends Controller
 {
     /**
-     * List submissions with filters.
+     * List submissions with filters. Admins see every handover; anyone else only their own (as
+     * outgoing, incoming or filer), and the filters below narrow that, never widen it.
      */
     public function index(Request $request)
     {
         $query = ChecklistSubmission::with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name'])
+            ->visibleTo($request->user())
             ->orderBy('date', 'desc')
             ->orderBy('created_at', 'desc');
 
@@ -75,7 +81,13 @@ class ChecklistSubmissionController extends Controller
             'incoming_user_id' => ['nullable', 'integer', 'different:outgoing_user_id', User::activeExistsRule()],
             'general_comments' => ['nullable', 'string'],
             'responses' => ['required', 'array'],
-            'responses.*.checklist_item_id' => ['required', 'exists:checklist_items,id'],
+            // Only items of the submitted template, each answered once. (`integer` first: a failed
+            // rule skips the exists query, so a non-numeric id never reaches the database.)
+            'responses.*.checklist_item_id' => [
+                'required', 'integer', 'distinct',
+                Rule::exists('checklist_items', 'id')->whereIn('checklist_group_id',
+                    ChecklistGroup::select('id')->where('checklist_template_id', (int) $request->input('checklist_template_id'))),
+            ],
             'responses.*.value' => ['nullable'],
             'responses.*.group_comment' => ['nullable', 'string'],
         ], [
@@ -83,9 +95,12 @@ class ChecklistSubmissionController extends Controller
             'outgoing_user_id.exists' => 'The outgoing user has been deactivated. Pick someone else.',
             'incoming_user_id.exists' => 'The incoming user has been deactivated. Pick someone else.',
             'incoming_user_id.different' => 'The incoming employee must be someone other than the outgoing one.',
+            'responses.*.checklist_item_id.exists' => 'This item does not belong to the chosen checklist template.',
+            'responses.*.checklist_item_id.distinct' => 'Each checklist item can be answered only once.',
         ]);
         // `different` compares strictly ("5" vs 5 passes it), so the checks below compare integers.
         $this->ensureTwoPeople($request);
+        $this->ensureShiftBelongsToHandover($request);
 
         $submission = DB::transaction(function () use ($request) {
             $hasConfirmationItems = ChecklistTemplate::find($request->checklist_template_id)
@@ -118,6 +133,7 @@ class ChecklistSubmissionController extends Controller
                 'status' => $status,
                 'general_comments' => $request->general_comments,
                 'submitted_at' => now(),
+                'submitted_by_user_id' => $request->user()->id,
                 'confirmed_at' => $status === 'completed' ? now() : null,
                 'submitted_on_time' => $submittedOnTime,
             ]);
@@ -137,7 +153,7 @@ class ChecklistSubmissionController extends Controller
             return $submission;
         });
 
-        $submission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'responses']);
+        $submission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'submittedBy:id,name', 'responses']);
         return response()->json($submission, 201);
     }
 
@@ -174,14 +190,47 @@ class ChecklistSubmissionController extends Controller
     }
 
     /**
-     * View a filled submission with all responses.
+     * A handover's shift, when given, is the outgoing user's shift on the handover's date: neither
+     * the employee nor an admin filing for them can pin it on someone else's shift (which would also
+     * clear that shift's checklist alert for its real crew) or on another day's.
      */
-    public function show(ChecklistSubmission $checklistSubmission)
+    private function ensureShiftBelongsToHandover(Request $request): void
     {
+        if (!$request->filled('shift_id')) {
+            return;
+        }
+        $shift = Shift::find($request->shift_id);
+
+        if ($shift->date->toDateString() !== Carbon::parse($request->date)->toDateString()) {
+            throw ValidationException::withMessages([
+                'shift_id' => 'The shift is not on the handover date.',
+            ]);
+        }
+        $assigned = ShiftAssignment::where('shift_id', $shift->id)
+            ->where('user_id', (int) $request->outgoing_user_id)
+            ->exists();
+        if (!$assigned) {
+            throw ValidationException::withMessages([
+                'shift_id' => 'The outgoing employee is not assigned to this shift.',
+            ]);
+        }
+    }
+
+    /**
+     * View a filled submission with all responses: admins any, anyone else only their own (see
+     * ChecklistSubmission::isVisibleTo()).
+     */
+    public function show(Request $request, ChecklistSubmission $checklistSubmission)
+    {
+        if (!$checklistSubmission->isVisibleTo($request->user())) {
+            return response()->json(['message' => 'You can only view handovers you are part of.'], 403);
+        }
+
         $checklistSubmission->load([
             'template',
             'outgoingUser:id,name',
             'incomingUser:id,name',
+            'submittedBy:id,name',
             'responses',
         ]);
 

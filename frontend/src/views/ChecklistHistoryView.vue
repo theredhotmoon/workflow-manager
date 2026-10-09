@@ -310,6 +310,11 @@
                   <span class="text-xs text-slate-600">·</span>
                   <span :class="statusBadgeClass(detailData.status)">{{ statusLabel(detailData.status) }}</span>
                 </div>
+                <!-- Only when someone (an admin) filed it on the outgoing employee's behalf. -->
+                <p v-if="detailData.submitted_by && detailData.submitted_by.id !== detailData.outgoing_user_id"
+                  class="text-xs text-slate-400 mt-1" data-testid="submitted-by">
+                  Submitted by <span class="text-slate-300">{{ detailData.submitted_by.name }}</span>
+                </p>
               </div>
               <button @click="closeDetail" class="text-slate-400 hover:text-white transition-colors p-1">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

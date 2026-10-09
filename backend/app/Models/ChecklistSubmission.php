@@ -15,6 +15,7 @@ class ChecklistSubmission extends Model
         'status',
         'general_comments',
         'submitted_at',
+        'submitted_by_user_id',
         'confirmed_at',
         'confirmed_by_id',
         'submitted_on_time',
@@ -40,6 +41,33 @@ class ChecklistSubmission extends Model
     public function incomingUser()
     {
         return $this->belongsTo(User::class, 'incoming_user_id');
+    }
+
+    /** Who filed the handover: its outgoing user, or an admin filing on their behalf (null on old rows). */
+    public function submittedBy()
+    {
+        return $this->belongsTo(User::class, 'submitted_by_user_id');
+    }
+
+    /**
+     * Handovers $user may read: every one for an admin; otherwise only those naming them as the
+     * outgoing or incoming user, or that they filed.
+     */
+    public function scopeVisibleTo($query, User $user)
+    {
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        return $query->where(fn ($q) => $q->where('outgoing_user_id', $user->id)
+            ->orWhere('incoming_user_id', $user->id)
+            ->orWhere('submitted_by_user_id', $user->id));
+    }
+
+    public function isVisibleTo(User $user): bool
+    {
+        return $user->isAdmin()
+            || in_array($user->id, [$this->outgoing_user_id, $this->incoming_user_id, $this->submitted_by_user_id], true);
     }
 
     /** Who confirmed the handover: always its incoming user. */

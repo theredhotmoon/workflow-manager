@@ -35,6 +35,10 @@
                 {{ s.assignments?.map(a => a.user?.name).filter(Boolean).join(', ') }}
               </option>
             </select>
+            <!-- The server refuses a handover on a shift the outgoing employee isn't assigned to. -->
+            <p v-if="outgoingNotOnShift" class="mt-1.5 text-xs text-amber-400" data-testid="shift-not-assigned">
+              The outgoing employee is not assigned to this shift. Pick their shift, or no shift.
+            </p>
           </div>
 
           <!-- Shift Checklists (shown when a shift with checklists is selected) -->
@@ -694,6 +698,13 @@ function onShiftSelected() {
     setup.outgoingUserId = currentUser.value.id;
   }
 }
+
+// A chosen shift must be the outgoing employee's (the server checks it too).
+const outgoingNotOnShift = computed(() => {
+  const shift = availableShifts.value.find((s) => s.id === setup.shiftId);
+  if (!shift || !setup.outgoingUserId) return false;
+  return !shift.assignments?.some((a) => a.user_id === setup.outgoingUserId);
+});
 
 const selectedShiftChecklists = computed(() => {
   const shift = availableShifts.value.find((s) => s.id === setup.shiftId);

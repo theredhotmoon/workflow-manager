@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { logoutWithRetry } from './logout.js';
+import { logoutFailureMessage, logoutWithRetry } from './logout.js';
 
 function fakeApi(postResults) {
   const calls = [];
@@ -41,4 +41,13 @@ test('a 401 means the session is already gone: that counts as logged out', async
   const api = fakeApi([401]);
   await logoutWithRetry(api);
   expect(api.calls).toEqual(['POST /api/logout']);
+});
+
+test('says why logout failed, also when the reason is a stale token (419)', () => {
+  const fail = (status, data = {}) => ({ response: { status, data } });
+  expect(logoutFailureMessage(fail(419))).toBe(
+    'Your session token expired; reload the page and try again.',
+  );
+  expect(logoutFailureMessage(fail(500))).toBe('Could not log out (500).');
+  expect(logoutFailureMessage({})).toBe('Could not log out (no connection).');
 });

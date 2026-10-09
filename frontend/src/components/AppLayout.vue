@@ -286,11 +286,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
 import { isLoggedOut } from '../fetchCurrentUser.js';
-import { logoutWithRetry } from '../logout.js';
+import { logoutFailureMessage, logoutWithRetry } from '../logout.js';
 import { canManageSchedule as userCanManageSchedule, isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -478,7 +477,7 @@ async function logout() {
     await logoutWithRetry(api);
   } catch (error) {
     // Still signed in on the server: say so rather than show the login page over a live session.
-    logoutError.value = `${describeApiError(error, 'Could not log out').message} You are still signed in.`;
+    logoutError.value = `${logoutFailureMessage(error)} You are still signed in.`;
     loggingOut.value = false;
     return;
   }

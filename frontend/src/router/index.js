@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
 import { isAdmin } from '../roles.js';
+import { safeRedirect } from '../sessionExpiry.js';
 import AlarmsView from '../views/AlarmsView.vue';
 import ChecklistBuilderView from '../views/ChecklistBuilderView.vue';
 import ChecklistFillView from '../views/ChecklistFillView.vue';
@@ -207,7 +208,9 @@ router.beforeEach(async (to, from, next) => {
   } else if (to.meta.guest) {
     try {
       currentUser.value = await fetchCurrentUser();
-      next({ name: 'dashboard' });
+      // Still signed in (e.g. a stale XSRF token gave a 419 while the session is fine): go back
+      // to the page the login was asked from, if it is one of ours.
+      next(safeRedirect(to.query.redirect) ?? { name: 'dashboard' });
     } catch (error) {
       if (isLoggedOut(error)) currentUser.value = null;
       next();

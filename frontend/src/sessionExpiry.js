@@ -18,8 +18,6 @@ function pathOf(url = '') {
  * (describeApiError() marks 401/419 silent, so they don't add a "could not save" on top).
  */
 export function installSessionExpiry(api, { currentUser, router, showToast }) {
-  let redirecting = false;
-
   return api.interceptors.response.use(
     (response) => response,
     (error) => {
@@ -31,21 +29,13 @@ export function installSessionExpiry(api, { currentUser, router, showToast }) {
 
         const route = router.currentRoute.value;
         const onLogin = route?.name === 'login';
-        if (
-          !redirecting &&
-          currentUser.value &&
-          !onLogin &&
-          !SELF_HANDLED.includes(pathOf(error.config?.url))
-        ) {
-          redirecting = true;
+        // The first failure clears currentUser synchronously, before any other response is
+        // handled, so the calls failing with it (the view, the alarm poll...) don't navigate again.
+        if (currentUser.value && !onLogin && !SELF_HANDLED.includes(pathOf(error.config?.url))) {
           currentUser.value = null;
-          const done = () => {
-            redirecting = false;
-            notify();
-          };
           // Toast once on the login page, after the failed view's own error toast (if any).
-          router.push({ name: 'login', query: { redirect: route?.fullPath } }).then(done, done);
-        } else if (!redirecting) {
+          router.push({ name: 'login', query: { redirect: route?.fullPath } }).then(notify, notify);
+        } else {
           notify();
         }
       }

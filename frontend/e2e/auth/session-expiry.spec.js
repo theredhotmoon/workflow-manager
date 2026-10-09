@@ -82,4 +82,35 @@ test.describe('Session expiry and logout', () => {
     await expect(adminPage.getByRole('alert')).toContainText('You are still signed in.');
     await expect(adminPage).toHaveURL(/\/dashboard$/);
   });
+
+  test('a logout refused twice for a stale token (419) says why', async ({ adminPage }) => {
+    await adminPage.route('**/api/logout', (route) =>
+      route.fulfill({
+        status: 419,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'CSRF token mismatch.' }),
+      }),
+    );
+
+    await adminPage.goto('/dashboard');
+    await expect(adminPage.getByRole('heading', { name: /Welcome back/ })).toBeVisible();
+    await openAccountMenu(adminPage);
+    await adminPage.getByRole('button', { name: 'Logout' }).click();
+
+    await expect(adminPage.getByRole('alert')).toHaveText(
+      /^Your session token expired; reload the page and try again\. You are still signed in\.\s*✕$/,
+    );
+    await expect(adminPage).toHaveURL(/\/dashboard$/);
+  });
+
+  test('the login page sends a still signed-in user on to its redirect', async ({ adminPage }) => {
+    // E.g. a stale XSRF token gave a 419 while the session itself is fine.
+    await adminPage.goto('/login?redirect=/alarms');
+    await expect(adminPage).toHaveURL(/\/alarms$/);
+    await expect(adminPage.getByRole('heading', { name: 'Notifications' })).toBeVisible();
+
+    // Never to another origin.
+    await adminPage.goto('/login?redirect=//evil.example/');
+    await expect(adminPage).toHaveURL(/\/dashboard$/);
+  });
 });

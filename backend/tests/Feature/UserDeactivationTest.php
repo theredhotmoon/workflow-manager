@@ -7,10 +7,12 @@ use App\Models\DelegationLog;
 use App\Models\NewbiePeriod;
 use App\Models\OfficeClosure;
 use App\Models\OnCallAssignment;
+use App\Models\OnCallCallback;
 use App\Models\Procedure;
 use App\Models\ProcedureAccessLog;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
+use App\Models\ShiftChangeRequest;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use Illuminate\Database\QueryException;
@@ -317,12 +319,12 @@ it('drops pending change requests of removed future shifts and keeps the ones on
     $h = cdlUserWithHistory($user);
     $requests = [];
     foreach (['today', 'future'] as $key) {
-        $requests[$key] = \App\Models\ShiftChangeRequest::create([
+        $requests[$key] = ShiftChangeRequest::create([
             'shift_assignment_id' => $h['assignments'][$key]->id, 'user_id' => $user->id,
             'shift_id' => $h['assignments'][$key]->shift_id, 'reason' => 'Leaving', 'status' => 'pending',
         ]);
     }
-    $callback = \App\Models\OnCallCallback::create([
+    $callback = OnCallCallback::create([
         'on_call_assignment_id' => $h['onCall']['future']->id,
         'starts_at' => '2026-10-20 22:00:00', 'ends_at' => '2026-10-20 23:00:00',
     ]);

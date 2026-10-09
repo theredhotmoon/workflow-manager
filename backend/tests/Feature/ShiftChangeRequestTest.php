@@ -140,7 +140,7 @@ it('answers 404 when acknowledging an unknown request', function () {
     $this->actingAs($admin)->putJson('/api/shift-change-requests/999999/acknowledge')->assertNotFound();
 });
 
-it('settles the request when the shift is reassigned, leaving the new person with a clean slot', function () {
+it('deletes the change requests with the assignment when the shift is reassigned (cascade)', function () {
     // Current behaviour: cascades; see follow-up. Unassigning acknowledges the pending request and
     // then the shift_assignments FK cascade deletes it, so no record of the request remains.
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);

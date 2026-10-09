@@ -4,6 +4,42 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🧮 Data fixes: archived delegations keep their history dates, 24-hour shifts, staffed slots and overlapping on-call
+
+> **Behaviour changes**
+> - **Removing a day's slot that has people on it now asks first.** Empty slots go first; a staffed one is only removed after the manager confirms the list of affected shifts. The kept slots are renumbered 1..n.
+> - **New on-call periods can't overlap** another period of the same person (in any group), and **callbacks can't overlap** the person's other callbacks. Back-to-back is fine. Overlapping rows already stored are left as they are and counted once in the settlement report.
+> - **Checklist alerts look back 7 days.** A checklist missed more than 7 days ago no longer shows as an overdue alert (it is still in the checklist history).
+> - **Settlement hours of a shift are elapsed time** in the business timezone: a 00:00-00:00 shift on the October fall-back day counts 25 h (a night shift that night 9 h), on the March spring-forward day 23 h.
+> - Archive timestamps already reset by earlier archive/unarchive round trips can't be recovered; from now on they are kept.
+
+- **Archiving or unarchiving a delegation reset every log entry's date to "now"**, and the delegation's own created/updated dates too, so its history showed everything as having happened at the moment of archiving. Logs, the delegation and its members' pivot rows now keep their original timestamps both ways. (M9)
+- **"My checklist alerts" scanned every shift the user ever had** and every submission they ever made, on every page load. It now reads shifts from 7 days before today (business timezone) through today, which also covers yesterday's overnight shift, with a fixed number of queries. (M10)
+- **24-hour shifts (00:00-00:00, the one-shift-per-day preset) end at 00:00 the next day everywhere.** A "30 min before shift end" checklist is due 23:30 on the shift's own day and a midday submission is on time (this deadline was already right since the business-timezone fix; it is now pinned by tests). The "end at or before start ⇒ next day" rule lives in one place, `BusinessDate::endsNextDay()`, used by shift end times, the settlement calculator and the current-shift "overnight" flag. (M11)
+- **Reducing a day's shift count silently deleted staffed shifts**, latest first, with their assignments and day-off requests, although the code promised "unassigned first". Empty slots are now removed first; if staffed ones must go, the API answers 409 with the list (date, slot, times, who is assigned, pending day-off requests) and the Schedule screen shows it in the confirm dialog. Cancel leaves the day unchanged; confirm removes them. Handover submissions of a removed slot are kept (their shift link is cleared, date and template stay). (M12)
+- **Overlapping on-call entries were counted twice in the settlement report.** Overlaps are now refused on entry (422 with the clashing period) and merged per person before callback hours are summed. (M13)
+
+### Backend
+| What | Details |
+|------|---------|
+| Fixed | `DelegationArchiveController`: delegation copied with `forceFill` (keeps `created_at`/`updated_at`), logs bulk-inserted with their raw `created_at`, pivot rows keep their timestamps. `create()` dropped `created_at` (not fillable) and the column default stamped now |
+| Changed | `ChecklistAlertController`: `ALERT_LOOKBACK_DAYS = 7`; shifts and date-matched submissions limited to `[today − 7, today]`; keyed-array lookups instead of `in_array` |
+| Added | `BusinessDate::endsNextDay(?start, ?end)` (the single roll-over rule) and `BusinessDate::localInstant(date, time)` |
+| Changed | `SettlementPeriodCalculator::shiftTiming()`: built in the business timezone with `endsNextDay()` (was a UTC wall-clock parse with its own `lte` roll-over); `CurrentShiftController` `is_overnight` uses `endsNextDay()` |
+| Changed | `PUT /api/schedule/day-shifts`: one locked transaction for add and remove; empty slots removed first, kept slots renumbered; staffed removal needs `confirm_remove_staffed: true` (optional `expected_remove_ids`, a changed list asks again), else 409 `{code: "staffed_shifts_removal", message, shifts: [{id, date, shift_number, start_time, end_time, assigned_users, pending_change_requests}]}` |
+| Changed | `POST /api/on-call-assignments`: 422 (`starts_at`) when the user already has an on-call period with `starts_at < end AND ends_at > start`; `POST /api/on-call-assignments/{id}/callbacks`: same for the user's callbacks. Both lock the user row |
+| Changed | `SettlementPeriodController`: callbacks merged per user (union of intervals) before summing; a merged block counts in the week of its first start |
+| Tests | New: `DelegationArchiveTimestampsTest`, `ChecklistAlertWindowTest` (incl. a query-count guard), `ShiftRollOverTest` (incl. the 25 h DST day), `DayShiftCountReductionTest`, `OnCallOverlapTest`. `StreakFollowupsTest`'s slot-removal case now staffs both slots and confirms |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Changed | `ScheduleView.vue`: the slot "−" button handles the 409 by listing the staffed shifts in the confirm dialog and resending with `confirm_remove_staffed`; errors toast the server's message. The −/+ buttons have `aria-label`s |
+| Changed | `ConfirmModal.vue`: the message keeps line breaks (`whitespace-pre-line`) |
+| Tests | New e2e `schedule/day-shift-count.spec.js` (cancel keeps the staffed slot, confirm removes it); fixture `setDayShiftCount` |
+
+---
+
 ## 2026-10-09 — ⬆️ Laravel 13 on PHP 8.4 (off end-of-life Laravel 9)
 
 > **Action needed (existing deployments)**

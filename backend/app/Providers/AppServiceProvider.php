@@ -13,7 +13,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        //
+        // One purifier per process: building its HTML definition is the expensive part.
+        $this->app->singleton(\App\Services\ProcedureHtmlSanitizer::class);
     }
 
     /**

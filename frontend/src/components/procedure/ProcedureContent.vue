@@ -67,7 +67,7 @@
     </div>
 
     <div v-show="activeTab === 'content'">
-      <div v-if="procedure.content" class="prose-content bg-white/5 border border-white/10 rounded-xl p-6" v-html="procedure.content"></div>
+      <div v-if="procedure.content" class="prose-content bg-white/5 border border-white/10 rounded-xl p-6" v-html="safeContent"></div>
       <p v-else class="text-slate-500 text-sm text-center py-8">No content yet.</p>
     </div>
 
@@ -121,13 +121,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useToast } from '../../composables/useToast.js';
+import { sanitizeProcedureHtml } from '../../procedureHtml.js';
+import ProcedureAccessLogTab from './ProcedureAccessLogTab.vue';
 import ProcedureFaqTab from './ProcedureFaqTab.vue';
-import ProcedureTemplatesTab from './ProcedureTemplatesTab.vue';
 import ProcedureFeedbackTab from './ProcedureFeedbackTab.vue';
 import ProcedureOwnersTab from './ProcedureOwnersTab.vue';
-import ProcedureAccessLogTab from './ProcedureAccessLogTab.vue';
+import ProcedureTemplatesTab from './ProcedureTemplatesTab.vue';
 
 const props = defineProps({
   procedure: { type: Object, required: true },
@@ -154,6 +155,9 @@ const { showToast } = useToast();
 
 const activeTab = ref('content');
 const accessLogLoaded = ref(false);
+
+// Stored content is sanitised by the server too; this covers rows saved before that.
+const safeContent = computed(() => sanitizeProcedureHtml(props.procedure.content));
 
 const tabs = computed(() => [
   { key: 'content', label: 'Content', count: null },

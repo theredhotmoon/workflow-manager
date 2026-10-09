@@ -7,7 +7,7 @@ All notable changes to the Shift Changer application are documented here.
 ## 2026-10-09 — 🧮 Data fixes: archived delegations keep their history dates, 24-hour shifts, staffed slots and overlapping on-call
 
 > **Behaviour changes**
-> - **Removing a day's slot that has people on it now asks first.** Empty slots go first; a staffed one is only removed after the manager confirms the list of affected shifts. The kept slots are renumbered 1..n.
+> - **Removing a day's slot that has people on it now asks first.** Empty slots go first; a staffed one is only removed after the manager confirms the list of affected shifts (if the list changes before the confirm lands, the dialog asks again, up to 3 times). The kept slots are renumbered 1..n in their order, e.g. after removing an empty shift 2 the night shift 3 becomes shift 2, so a month-wide slot type set later for "slot 2" applies to it. Growing the day again gives new slots the preset times the day doesn't have yet (the removed afternoon comes back, not a second night).
 > - **New on-call periods can't overlap** another period of the same person (in any group), and **callbacks can't overlap** the person's other callbacks. Back-to-back is fine. Overlapping rows already stored are left as they are and counted once in the settlement report.
 > - **Checklist alerts look back 7 days.** A checklist missed more than 7 days ago no longer shows as an overdue alert (it is still in the checklist history).
 > - **Settlement hours of a shift are elapsed time** in the business timezone: a 00:00-00:00 shift on the October fall-back day counts 25 h (a night shift that night 9 h), on the March spring-forward day 23 h.
@@ -27,6 +27,8 @@ All notable changes to the Shift Changer application are documented here.
 | Added | `BusinessDate::endsNextDay(?start, ?end)` (the single roll-over rule) and `BusinessDate::localInstant(date, time)` |
 | Changed | `SettlementPeriodCalculator::shiftTiming()`: built in the business timezone with `endsNextDay()` (was a UTC wall-clock parse with its own `lte` roll-over); `CurrentShiftController` `is_overnight` uses `endsNextDay()` |
 | Changed | `PUT /api/schedule/day-shifts`: one locked transaction for add and remove; empty slots removed first, kept slots renumbered; staffed removal needs `confirm_remove_staffed: true` (optional `expected_remove_ids`, a changed list asks again), else 409 `{code: "staffed_shifts_removal", message, shifts: [{id, date, shift_number, start_time, end_time, assigned_users, pending_change_requests}]}` |
+| Changed | `PUT /api/schedule/day-shifts` growing: new slots take the target preset's entries not already used by the day's slots, in preset order (was: the preset entry at the new slot's position) |
+| Fixed | `POST /api/schedule/assign`: the shift is re-checked under a row lock inside the write transaction; a slot deleted meanwhile answers 404 "This shift no longer exists." instead of a foreign-key 500 |
 | Changed | `POST /api/on-call-assignments`: 422 (`starts_at`) when the user already has an on-call period with `starts_at < end AND ends_at > start`; `POST /api/on-call-assignments/{id}/callbacks`: same for the user's callbacks. Both lock the user row |
 | Changed | `SettlementPeriodController`: callbacks merged per user (union of intervals) before summing; a merged block counts in the week of its first start |
 | Tests | New: `DelegationArchiveTimestampsTest`, `ChecklistAlertWindowTest` (incl. a query-count guard), `ShiftRollOverTest` (incl. the 25 h DST day), `DayShiftCountReductionTest`, `OnCallOverlapTest`. `StreakFollowupsTest`'s slot-removal case now staffs both slots and confirms |
@@ -34,9 +36,10 @@ All notable changes to the Shift Changer application are documented here.
 ### Frontend
 | What | Details |
 |------|---------|
-| Changed | `ScheduleView.vue`: the slot "−" button handles the 409 by listing the staffed shifts in the confirm dialog and resending with `confirm_remove_staffed`; errors toast the server's message. The −/+ buttons have `aria-label`s |
+| Changed | `ScheduleView.vue`: the slot "−" button handles the 409 by listing the staffed shifts in the confirm dialog (with a note that the remaining slots are renumbered) and resending with `confirm_remove_staffed`; a further 409 shows the new list again, up to 3 dialogs, then a toast. Errors toast the server's message. The −/+ buttons have `aria-label`s |
+| Added | `src/dayShiftCount.js` (the confirm loop and dialog text) with unit tests `dayShiftCount.test.js` |
 | Changed | `ConfirmModal.vue`: the message keeps line breaks (`whitespace-pre-line`) |
-| Tests | New e2e `schedule/day-shift-count.spec.js` (cancel keeps the staffed slot, confirm removes it); fixture `setDayShiftCount` |
+| Tests | New e2e `schedule/day-shift-count.spec.js` (cancel keeps the staffed slot, a stale confirm asks again, confirm removes it); fixture `setDayShiftCount` |
 
 ---
 

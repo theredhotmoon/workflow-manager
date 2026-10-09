@@ -78,6 +78,22 @@ SESSION_SECURE_COOKIE=true
 so the browser never sends the session cookie over plain HTTP. Leave it `false` only for local
 development over `http://localhost`.
 
+The frontend Nginx (`frontend/docker/nginx.conf`) sets `X-Forwarded-For` to the address the
+client connected from, so nobody can forge their IP past the login and API rate limits. Behind a
+TLS proxy that address is the proxy's, and every user would share one rate-limit bucket. Tell
+Nginx to believe that proxy (only that proxy) by uncommenting the block in `nginx.conf` and
+rebuilding the frontend image:
+
+```nginx
+set_real_ip_from  10.0.0.5;          # your TLS proxy's IP or CIDR, one line per proxy
+real_ip_header    X-Forwarded-For;
+real_ip_recursive on;
+```
+
+and, in the same file, forward the proxy's scheme so Laravel knows the request was HTTPS:
+`proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;` instead of `$scheme`. Do neither
+without a proxy in front: a client could then forge both headers.
+
 ### 4. Build and start the stack
 
 ```bash
@@ -96,7 +112,8 @@ docker compose exec backend php artisan migrate --force
 docker compose exec -e SEED_ADMIN_PASSWORD='choose-a-long-password' backend php artisan db:seed --force
 ```
 
-Re-running the seeder never changes an existing admin's password. To keep the password out of your
+Re-running the seeder never changes an existing admin's password and then needs no
+`SEED_ADMIN_PASSWORD` (it warns if that admin still has the old default `1234`). To keep the password out of your
 shell history, read it into the environment first
 (`read -rs SEED_ADMIN_PASSWORD && export SEED_ADMIN_PASSWORD` in bash) and pass `-e SEED_ADMIN_PASSWORD`
 without a value.

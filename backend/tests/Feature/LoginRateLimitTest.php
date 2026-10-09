@@ -71,8 +71,25 @@ it('follows the configured LOGIN_RATE_LIMIT', function () {
     failLogin($this, $user->email)->assertStatus(429);
 });
 
-it('defaults the login rate limit to 5 failures per minute', function () {
-    expect(config('app.login_rate_limit'))->toBe(5);
+it('defaults the login rate limit to 5 failures per minute when LOGIN_RATE_LIMIT is unset', function () {
+    // Read config/app.php with the variable removed, so a developer's backend/.env can't decide it.
+    $saved = [$_ENV['LOGIN_RATE_LIMIT'] ?? null, $_SERVER['LOGIN_RATE_LIMIT'] ?? null, getenv('LOGIN_RATE_LIMIT')];
+    unset($_ENV['LOGIN_RATE_LIMIT'], $_SERVER['LOGIN_RATE_LIMIT']);
+    putenv('LOGIN_RATE_LIMIT');
+
+    try {
+        expect((require config_path('app.php'))['login_rate_limit'])->toBe(5);
+    } finally {
+        if ($saved[0] !== null) {
+            $_ENV['LOGIN_RATE_LIMIT'] = $saved[0];
+        }
+        if ($saved[1] !== null) {
+            $_SERVER['LOGIN_RATE_LIMIT'] = $saved[1];
+        }
+        if ($saved[2] !== false) {
+            putenv("LOGIN_RATE_LIMIT={$saved[2]}");
+        }
+    }
 });
 
 it('keys the limit on the real client IP forwarded by the frontend proxy', function () {
@@ -87,6 +104,32 @@ it('keys the limit on the real client IP forwarded by the frontend proxy', funct
     failLogin($this, $user->email, $proxy + ['HTTP_X_FORWARDED_FOR' => '203.0.113.10'])->assertStatus(429);
     failLogin($this, $user->email, $proxy + ['HTTP_X_FORWARDED_FOR' => '198.51.100.20'])->assertStatus(422);
 });
+
+it('does not let a private-range client rotate the limiter key with a forged X-Forwarded-For', function () {
+    $user = User::factory()->create();
+    // What the frontend Nginx forwards (proxy_set_header X-Forwarded-For $remote_addr): the address
+    // it saw the client connect from, whatever X-Forwarded-For the client sent. Here that address is
+    // private (LAN client, Docker Desktop / docker-proxy gateway), i.e. inside the trusted ranges.
+    $nginx = fn (string $clientSeenFrom) => ['REMOTE_ADDR' => '172.18.0.4', 'HTTP_X_FORWARDED_FOR' => $clientSeenFrom];
+
+    foreach (range(1, 5) as $attempt) {
+        // The client sends "X-Forwarded-For: 198.51.100.$attempt"; Nginx drops it.
+        failLogin($this, $user->email, $nginx('172.18.0.1'))->assertStatus(422);
+    }
+
+    failLogin($this, $user->email, $nginx('172.18.0.1'))->assertStatus(429);
+});
+
+it('has the frontend Nginx overwrite X-Forwarded-For instead of appending the client value', function () {
+    $conf = file_get_contents(base_path('../frontend/docker/nginx.conf'));
+    if ($conf === false) {
+        $this->markTestSkipped('frontend/docker/nginx.conf is not next to backend/ in this checkout');
+    }
+
+    $active = preg_replace('/^\s*#.*$/m', '', $conf);
+    expect($active)->toMatch('/proxy_set_header\s+X-Forwarded-For\s+\$remote_addr\s*;/');
+    expect($active)->not->toContain('$proxy_add_x_forwarded_for');
+})->skip(fn () => !is_file(base_path('../frontend/docker/nginx.conf')), 'frontend/ not mounted');
 
 it('ignores X-Forwarded-For from a client that is not a trusted proxy', function () {
     $user = User::factory()->create();

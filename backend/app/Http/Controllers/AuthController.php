@@ -30,6 +30,10 @@ class AuthController extends Controller
             ], 429)->header('Retry-After', (string) $seconds);
         }
 
+        // Counted before the (slow, bcrypt) check, so a burst of parallel attempts can't all slip
+        // in under the limit; a success clears it again below.
+        RateLimiter::hit($throttleKey, 60);
+
         if (Auth::attempt($credentials)) {
             RateLimiter::clear($throttleKey);
 
@@ -42,6 +46,13 @@ class AuthController extends Controller
 
             if ($request->hasSession()) {
                 $request->session()->regenerate();
+                // Record the hash this session logged in with, as Sanctum's AuthenticateSession
+                // does after later requests (config/sanctum.php). Without it a session that only
+                // logged in has nothing to compare, so it would survive a password change made
+                // before its first API call (and then store the new hash).
+                foreach ((array) config('sanctum.guard', ['web']) as $guard) {
+                    $request->session()->put('password_hash_'.$guard, Auth::user()->getAuthPassword());
+                }
             }
 
             return response()->json([
@@ -50,7 +61,6 @@ class AuthController extends Controller
             ]);
         }
 
-        RateLimiter::hit($throttleKey, 60);
         // Never the password: only who was tried, from where.
         Log::warning('Failed login', ['email' => $credentials['email'], 'ip' => $request->ip()]);
 

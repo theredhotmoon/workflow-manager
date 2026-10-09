@@ -70,3 +70,20 @@ it('rotates the remember token on a password change', function () {
 
     expect($user->fresh()->remember_token)->not->toBe('old-remember-token');
 });
+
+it('ends a session that only logged in (never called the API) when the password changes elsewhere', function () {
+    $user = User::factory()->create();
+
+    // A real login through the SPA path, nothing after it: a stolen-credential script that just
+    // keeps the cookie. The login itself must record the password hash it authenticated with.
+    $this->withHeader('Referer', 'http://localhost')
+        ->postJson('/api/login', ['email' => $user->email, 'password' => 'password'])
+        ->assertOk();
+    expect(session('password_hash_web'))->toBe($user->password);
+
+    // Changed in another session / by an admin.
+    $user->forceFill(['password' => bcrypt('changed-elsewhere')])->save();
+    app('auth')->forgetGuards();
+
+    $this->withHeader('Referer', 'http://localhost')->getJson('/api/user')->assertStatus(401);
+});

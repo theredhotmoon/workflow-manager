@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use App\Models\User;
 use RuntimeException;
 
@@ -26,22 +27,47 @@ class DatabaseSeeder extends Seeder
      *
      * Outside local/testing the password must come from SEED_ADMIN_PASSWORD (at least 12
      * characters); without it the seeder throws before writing anything. Idempotent: an existing
-     * admin@shiftchanger.com is left as it is (its password is never reset by a re-seed).
+     * admin@shiftchanger.com is left as it is (its password is never reset by a re-seed), and then
+     * no SEED_ADMIN_PASSWORD is needed.
      *
      * @return void
      */
     public function run()
     {
-        $password = $this->adminPassword();
+        $existing = User::where('email', self::ADMIN_EMAIL)->first();
+        if ($existing !== null) {
+            $this->warnIfStillPublishedPassword($existing);
 
-        User::firstOrCreate(
-            ['email' => self::ADMIN_EMAIL],
-            [
-                'name'     => 'Admin User',
-                'password' => Hash::make($password),
-                'role'     => 'admin',
-            ]
+            return;
+        }
+
+        User::create([
+            'email'    => self::ADMIN_EMAIL,
+            'name'     => 'Admin User',
+            'password' => Hash::make($this->adminPassword()),
+            'role'     => 'admin',
+        ]);
+    }
+
+    /**
+     * A deployment seeded before SEED_ADMIN_PASSWORD existed got the admin with 1234. A re-seed
+     * doesn't change it (that would lock out whoever uses it), but says so loudly.
+     */
+    private function warnIfStillPublishedPassword(User $admin): void
+    {
+        if ($this->isDevelopmentEnvironment() || !Hash::check(self::DEVELOPMENT_ADMIN_PASSWORD, $admin->password)) {
+            return;
+        }
+
+        $message = sprintf(
+            '%s still has the published default password "%s". Change it now (log in, Change password).',
+            self::ADMIN_EMAIL,
+            self::DEVELOPMENT_ADMIN_PASSWORD
         );
+        Log::warning($message);
+        if ($this->command !== null) {
+            $this->command->warn($message);
+        }
     }
 
     /** @throws RuntimeException outside local/testing when SEED_ADMIN_PASSWORD is missing or short */

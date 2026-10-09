@@ -6,6 +6,7 @@ use Database\Seeders\E2eBaselineSeeder;
 use Database\Seeders\ScheduleMaintainerSeeder;
 use Database\Seeders\UsersSeeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 /** Sets (or, with null, removes) SEED_ADMIN_PASSWORD everywhere env() looks. */
 function setSeedAdminPassword(?string $value): void
@@ -122,6 +123,41 @@ it('does not reset an existing admin password when re-seeded', function () {
     $admin = User::where('email', 'admin@shiftchanger.com')->first();
     expect(User::where('email', 'admin@shiftchanger.com')->count())->toBe(1);
     expect(Hash::check('a-long-production-secret', $admin->password))->toBeTrue();
+});
+
+it('re-seeds production without SEED_ADMIN_PASSWORD when the admin already exists', function () {
+    $this->app['env'] = 'production';
+    setSeedAdminPassword('a-long-production-secret');
+    (new DatabaseSeeder())->run();
+    setSeedAdminPassword(null);
+
+    (new DatabaseSeeder())->run();
+
+    expect(Hash::check('a-long-production-secret', User::where('email', 'admin@shiftchanger.com')->value('password')))
+        ->toBeTrue();
+});
+
+it('warns on a production re-seed when the existing admin still has the password 1234', function () {
+    User::factory()->create(['email' => 'admin@shiftchanger.com', 'role' => 'admin', 'password' => Hash::make('1234')]);
+    $this->app['env'] = 'production';
+    Log::spy();
+
+    (new DatabaseSeeder())->run();
+
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn ($message) => str_contains($message, 'still has the published default password'))
+        ->once();
+    expect(Hash::check('1234', User::where('email', 'admin@shiftchanger.com')->value('password')))->toBeTrue();
+});
+
+it('does not warn about 1234 in local and testing', function () {
+    User::factory()->create(['email' => 'admin@shiftchanger.com', 'role' => 'admin', 'password' => Hash::make('1234')]);
+    $this->app['env'] = 'local';
+    Log::spy();
+
+    (new DatabaseSeeder())->run();
+
+    Log::shouldNotHaveReceived('warning');
 });
 
 it('keeps the dev defaults in local and testing: admin with 1234 and the demo users', function (string $env) {

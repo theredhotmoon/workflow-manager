@@ -43,6 +43,9 @@ services:
 
       # Max API requests per minute, per user (HTTP 429 beyond that)
       API_RATE_LIMIT: ${API_RATE_LIMIT:-60}
+      # The organisation's timezone: what "today" means for business rules
+      BUSINESS_TIMEZONE: ${BUSINESS_TIMEZONE:-Europe/Warsaw}
+
       # Failed logins per minute for one email from one client IP (HTTP 429 beyond that)
       LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5}
       # Proxies whose X-Forwarded-For is believed; empty = the private ranges (this compose network)

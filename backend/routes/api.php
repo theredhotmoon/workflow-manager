@@ -175,7 +175,12 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
             return response()->json(['message' => 'Current password is incorrect.'], 422);
         }
 
-        $user->update(['password' => \Illuminate\Support\Facades\Hash::make($request->password)]);
+        // Ends this user's other sessions: Sanctum's AuthenticateSession (config/sanctum.php) sees
+        // their stored password hash go stale and answers 401; this session gets the new hash.
+        $user->forceFill([
+            'password' => \Illuminate\Support\Facades\Hash::make($request->password),
+            'remember_token' => \Illuminate\Support\Str::random(60),
+        ])->save();
 
         return response()->json(['message' => 'Password changed successfully.']);
     });

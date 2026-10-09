@@ -1319,6 +1319,7 @@ import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 import { localDateStr, todayStr } from '../dates.js';
+import { putDayShiftCount } from '../dayShiftCount.js';
 import { isAdmin, canManageSchedule as userCanManageSchedule } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -2357,50 +2358,20 @@ async function toggleWorkMode(shift) {
 
 async function changeDayShiftCount(dateStr, newCount) {
   if (newCount < 1 || newCount > 10) return;
-  const payload = { date: dateStr, count: newCount, shift_group_id: activeGroupId.value };
   try {
-    let response;
-    try {
-      response = await api.put('/api/schedule/day-shifts', payload);
-    } catch (err) {
-      // Removing staffed slots needs the manager's go-ahead; the count only changes on confirm.
-      if (err.response?.status !== 409 || err.response.data?.code !== 'staffed_shifts_removal')
-        throw err;
-      const staffed = err.response.data.shifts || [];
-      const ok = await confirm({
-        title:
-          staffed.length === 1
-            ? 'Remove a staffed shift?'
-            : `Remove ${staffed.length} staffed shifts?`,
-        message: staffedRemovalMessage(staffed),
-        confirmLabel: 'Remove',
-      });
-      if (!ok) return;
-      response = await api.put('/api/schedule/day-shifts', {
-        ...payload,
-        confirm_remove_staffed: true,
-        expected_remove_ids: staffed.map((s) => s.id),
-      });
-    }
-    // Update local state
-    schedule.value = { ...schedule.value, [dateStr]: response.data.shifts };
+    // Removing staffed slots asks first (and again if the list changed); the count only changes
+    // once saved, so a cancel leaves the day as it was.
+    const result = await putDayShiftCount({
+      put: (body) => api.put('/api/schedule/day-shifts', body),
+      confirm,
+      payload: { date: dateStr, count: newCount, shift_group_id: activeGroupId.value },
+    });
+    if (result.status === 'gave_up') showToast(result.message, 'error');
+    if (result.status !== 'saved') return;
+    schedule.value = { ...schedule.value, [dateStr]: result.response.data.shifts };
   } catch (err) {
     showToast(err.response?.data?.message || 'Failed to update shift count.', 'error');
   }
-}
-
-function staffedRemovalMessage(staffed) {
-  const lines = staffed.map((s) => {
-    const times = s.start_time && s.end_time ? ` ${s.start_time}-${s.end_time}` : '';
-    const requests = s.pending_change_requests
-      ? `, ${s.pending_change_requests} pending day-off request${s.pending_change_requests === 1 ? '' : 's'}`
-      : '';
-    return `• ${s.date} shift ${s.shift_number}${times}: ${(s.assigned_users || []).join(', ')}${requests}`;
-  });
-  return [
-    ...lines,
-    'Their assignments and day-off requests will be deleted. Handover submissions are kept.',
-  ].join('\n');
 }
 
 function cloneEmployee(original) {

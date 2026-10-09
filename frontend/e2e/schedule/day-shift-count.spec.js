@@ -62,16 +62,52 @@ test.describe("Reducing a day's shift count", () => {
     await expect(zones).toHaveCount(2);
     await expect(cell).toContainText('Regular Employee');
 
-    // Confirm: the staffed slot 2 goes, slot 1 stays.
+    // Confirm, but the list went stale meanwhile: the first confirmed PUT answers 409 again (as when
+    // someone staffs another slot in between; simulated here with the same list), so the dialog
+    // asks again instead of ending in a toast.
+    let staleAnswered = false;
+    await adminPage.route('**/api/schedule/day-shifts', async (route) => {
+      if (!staleAnswered && route.request().postDataJSON()?.confirm_remove_staffed === true) {
+        staleAnswered = true;
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 'staffed_shifts_removal',
+            message: 'Removing this slot would delete a staffed shift.',
+            shifts: [
+              {
+                id: slot2.id,
+                date: DAY,
+                shift_number: 2,
+                start_time: null,
+                end_time: null,
+                assigned_users: ['Regular Employee', 'Someone Else'],
+                pending_change_requests: 0,
+              },
+            ],
+          }),
+        });
+        return;
+      }
+      await route.continue();
+    });
     await minus.click();
+    await expect(dialog).toContainText('Regular Employee');
+    await dialog.getByRole('button', { name: 'Remove' }).click();
+    await expect(dialog).toContainText('Someone Else');
+
+    // Confirm the second round: the staffed slot 2 goes, slot 1 stays.
     const removed = adminPage.waitForResponse(
       (res) =>
         res.url().includes('/api/schedule/day-shifts') &&
         res.request().method() === 'PUT' &&
+        res.status() !== 409 &&
         res.request().postDataJSON()?.confirm_remove_staffed === true,
     );
     await dialog.getByRole('button', { name: 'Remove' }).click();
     expect((await removed).ok()).toBe(true);
+    expect(staleAnswered).toBe(true);
     await expect(zones).toHaveCount(1);
     await expect(cell).not.toContainText('Regular Employee');
   });

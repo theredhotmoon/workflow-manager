@@ -1,0 +1,31 @@
+name: Docker Build
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-build.yml'
+
+jobs:
+  build:
+    # Builds the production images from their Dockerfiles (as docker-compose.yml does); nothing is
+    # pushed. Catches a Dockerfile, dependency-install or build:docker break before deploy does.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.image }} image
+        run: docker build --file ${{ matrix.image }}/Dockerfile --tag workflow-manager-${{ matrix.image }}:ci ${{ matrix.image }}

@@ -53,7 +53,7 @@ class CurrentShiftController extends Controller
                 'shift_group_name' => $activeShift->shiftGroup?->name,
                 'start_time' => substr($activeShift->start_time, 0, 5),
                 'end_time' => substr($activeShift->end_time, 0, 5),
-                'is_overnight' => substr($activeShift->end_time, 0, 5) <= substr($activeShift->start_time, 0, 5),
+                'is_overnight' => BusinessDate::endsNextDay($activeShift->start_time, $activeShift->end_time),
                 'crew' => $activeShift->assignments->map(fn($a) => [
                     'id' => $a->user->id,
                     'name' => $a->user->name,

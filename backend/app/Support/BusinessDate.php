@@ -60,9 +60,28 @@ final class BusinessDate
             return self::at($nextDate);
         }
 
-        $overnight = $shift->start_time && substr($shift->end_time, 0, 5) <= substr($shift->start_time, 0, 5);
+        return self::at(self::endsNextDay($shift->start_time, $shift->end_time) ? $nextDate : $date, $shift->end_time);
+    }
 
-        return self::at($overnight ? $nextDate : $date, $shift->end_time);
+    /**
+     * The one roll-over rule: a shift whose end time is at or before its start time ends on the
+     * next calendar day. That covers night shifts (22:00-06:00) and 24-hour shifts (00:00-00:00,
+     * which end at 00:00 the next day, not at the start of their own day). Without both times
+     * there is nothing to roll over.
+     */
+    public static function endsNextDay(?string $startTime, ?string $endTime): bool
+    {
+        return $startTime !== null && $startTime !== ''
+            && $endTime !== null && $endTime !== ''
+            && substr($endTime, 0, 5) <= substr($startTime, 0, 5);
+    }
+
+    /**
+     * A local date and wall-clock time as an instant in the business timezone (see at()).
+     */
+    public static function localInstant(string $date, ?string $time = null): Carbon
+    {
+        return self::at($date, $time);
     }
 
     /**

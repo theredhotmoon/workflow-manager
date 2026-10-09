@@ -1,10 +1,13 @@
 <?php
 
 use App\Models\Delegation;
+use App\Models\OnCallAssignment;
+use App\Models\OnCallCallback;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\User;
+use App\Services\RestPolicyJanitor;
 
 // Auto-fill sees every busy interval of an employee (all groups, the neighbouring months, the
 // picks of the same run) for the 11 h daily rest, the weekly caps and the 35 h weekly rest;
@@ -212,6 +215,62 @@ it('counts other groups and the previous month in the 35 h weekly rest', functio
     expect(afrAssigned($g1, $a))->toBe(['2026-10-01 06:00']);
 });
 
+it('checks the 35 h window that the previous month\'s last, shortened week spills into', function () {
+    // Monthly periods: October's last week is Oct 29-31, its 35 h window Oct 29 00:00 .. Nov 5 00:00.
+    // With Oct 29-31 booked, Nov 1 and 2 still leave 58 h, Nov 3 would leave 34 h, Nov 4 leaves 40 h.
+    $group = afrGroup();
+    $a = afrEmployee();
+    foreach (['2026-10-29', '2026-10-30', '2026-10-31'] as $date) {
+        afrAssign(afrShift($group, $date, '06:00', '14:00'), $a);
+    }
+    foreach (['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04'] as $date) {
+        afrShift($group, $date, '06:00', '14:00');
+    }
+
+    afrFill($this, '/api/schedule/auto-assign/polish-law', $group, [$a], '2026-11')->assertOk();
+
+    expect(afrAssigned($group, $a))->toBe([
+        '2026-10-29 06:00', '2026-10-30 06:00', '2026-10-31 06:00',
+        '2026-11-01 06:00', '2026-11-02 06:00', '2026-11-04 06:00',
+    ]);
+});
+
+it('checks the 35 h window of a shortened week when a custom period ends mid-month', function () {
+    // 10-day periods from Oct 1: the week Oct 8-10 ends its period, its window is Oct 8 .. Oct 15.
+    $group = afrGroup('Main', ['settlement_mode' => 'custom', 'settlement_custom_length_days' => 10, 'settlement_anchor_date' => '2026-10-01']);
+    $a = afrEmployee();
+    foreach (['2026-10-08', '2026-10-09', '2026-10-10'] as $date) {
+        afrAssign(afrShift($group, $date, '06:00', '14:00'), $a);
+    }
+    foreach (['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14'] as $date) {
+        afrShift($group, $date, '06:00', '14:00');
+    }
+
+    afrFill($this, '/api/schedule/auto-assign/polish-law', $group, [$a])->assertOk();
+
+    expect(afrAssigned($group, $a))->toBe([
+        '2026-10-08 06:00', '2026-10-09 06:00', '2026-10-10 06:00',
+        '2026-10-11 06:00', '2026-10-12 06:00', '2026-10-14 06:00',
+    ]);
+});
+
+it('counts an on-call callback from another group as busy time', function () {
+    $g1 = afrGroup();
+    $g2 = afrGroup('Second');
+    $a = afrEmployee();
+    $onCall = OnCallAssignment::create([
+        'shift_group_id' => $g2->id, 'user_id' => $a->id,
+        'starts_at' => '2026-10-04 20:00:00', 'ends_at' => '2026-10-05 08:00:00',
+    ]);
+    // Ends 04:00 Warsaw; the 08:00 shift would leave 4 h of rest.
+    OnCallCallback::create(['on_call_assignment_id' => $onCall->id, 'starts_at' => '2026-10-05 02:00:00', 'ends_at' => '2026-10-05 04:00:00']);
+    afrShift($g1, '2026-10-05', '08:00', '16:00');
+
+    afrFill($this, '/api/schedule/auto-assign/polish-law', $g1, [$a])->assertOk();
+
+    expect(afrAssigned($g1, $a))->toBe([]);
+});
+
 // ─── Approved delegations make an employee unavailable ───────────────────────
 
 function afrDelegation(User $user, string $status, ?string $customStart = null, ?string $customEnd = null): Delegation
@@ -276,3 +335,44 @@ it('rolls back every assignment when the run fails part-way', function (string $
     expect($created)->toBe(2);
     expect(ShiftAssignment::count())->toBe(0);
 })->with('afrModes');
+
+it('rolls back every assignment when the rest-policy clean-up fails', function (string $endpoint) {
+    $group = afrGroup();
+    $a = afrEmployee();
+    afrShift($group, '2026-10-05', '06:00', '14:00');
+    afrShift($group, '2026-10-07', '06:00', '14:00');
+
+    $this->mock(RestPolicyJanitor::class, function ($mock) {
+        $mock->shouldReceive('clearUncovered')->once()->andThrow(new RuntimeException('janitor failed'));
+    });
+
+    afrFill($this, $endpoint, $group, [$a])->assertStatus(500);
+
+    expect(ShiftAssignment::count())->toBe(0);
+})->with('afrModes');
+
+it('stores delegation dates sent with a time and offset as the dates written, and blocks those days', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $group = afrGroup();
+    $a = afrEmployee();
+    afrShift($group, '2026-10-05', '06:00', '14:00');
+    afrShift($group, '2026-10-08', '06:00', '14:00');
+
+    $id = $this->actingAs($admin)->postJson('/api/delegations', [
+        'name' => 'Expo', 'destination' => 'Berlin',
+        'start_datetime' => '2026-10-05T00:30:00+05:00',
+        'end_datetime' => '2026-10-07T23:30:00-05:00',
+        'user_ids' => [$a->id],
+    ])->assertCreated()->json('id');
+
+    $delegation = Delegation::find($id);
+    expect($delegation->start_datetime->format('Y-m-d H:i:s'))->toBe('2026-10-05 00:00:00');
+    expect($delegation->end_datetime->format('Y-m-d H:i:s'))->toBe('2026-10-07 00:00:00');
+
+    $this->actingAs($admin)->putJson("/api/delegations/{$id}", ['end_datetime' => '2026-10-07T23:30:00-05:00'])->assertOk();
+    expect(Delegation::find($id)->end_datetime->format('Y-m-d H:i:s'))->toBe('2026-10-07 00:00:00');
+
+    afrFill($this, '/api/schedule/auto-assign/random', $group, [$a])->assertOk();
+
+    expect(afrAssigned($group, $a))->toBe(['2026-10-08 06:00']);
+});

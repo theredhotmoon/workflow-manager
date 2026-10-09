@@ -122,9 +122,10 @@ class ShiftAutoAssignController extends Controller
             $assignmentTracker[$key] = $shift->assignments->pluck('user_id')->toArray();
         }
 
-        // A failure part-way leaves no partial month behind.
-        DB::beginTransaction();
-        try {
+        // One transaction: a failure part-way leaves no partial month behind.
+        DB::transaction(function () use (
+            $request, $shifts, $employees, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
+        ) {
             foreach ($shifts as $shift) {
                 $dateStr = $shift->date->format('Y-m-d');
                 $dayOfWeek = $shift->date->dayOfWeekIso; // 1=Mon, 7=Sun
@@ -182,11 +183,7 @@ class ShiftAutoAssignController extends Controller
             if ($group) {
                 $janitor->clearUncovered($group, $runUserIds);
             }
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        });
 
         $message = "Auto-assigned {$totalAssigned} slots.";
         if (count($warnings) > 0) {
@@ -277,9 +274,10 @@ class ShiftAutoAssignController extends Controller
         $rotationDays = $request->rotation_days;
         $dateChunks = array_chunk($dates, $rotationDays);
 
-        // A failure part-way leaves no partial month behind.
-        DB::beginTransaction();
-        try {
+        // One transaction: a failure part-way leaves no partial month behind.
+        DB::transaction(function () use (
+            $request, $shifts, $shiftsByDate, $dateChunks, $employees, $employeeIds, $poolIndex, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
+        ) {
             foreach ($dateChunks as $dateBlock) {
                 // Determine how many unique users this block needs:
                 // max users needed for any single shift × shifts per day
@@ -422,11 +420,7 @@ class ShiftAutoAssignController extends Controller
             if ($group) {
                 $janitor->clearUncovered($group, $runUserIds);
             }
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        });
 
         $message = "Auto-assigned {$totalAssigned} slots using {$rotationDays}-day rotation.";
         if (count($warnings) > 0) {
@@ -479,6 +473,8 @@ class ShiftAutoAssignController extends Controller
             ->join('delegations', 'delegations.id', '=', 'delegation_user.delegation_id')
             ->whereIn('delegation_user.user_id', $userIds)
             ->where('delegation_user.status', 'approved')
+            ->whereRaw('COALESCE(delegation_user.custom_start, CAST(delegations.start_datetime AS DATE)) <= ?', [$end->toDateString()])
+            ->whereRaw('COALESCE(delegation_user.custom_end, CAST(delegations.end_datetime AS DATE)) >= ?', [$start->toDateString()])
             ->get(['delegation_user.user_id', 'delegation_user.custom_start', 'delegation_user.custom_end',
                 'delegations.start_datetime', 'delegations.end_datetime']);
         $monthFrom = $start->toDateString();
@@ -631,20 +627,25 @@ class ShiftAutoAssignController extends Controller
         $monthFrom = $start->toDateString();
         $monthTo = $end->toDateString();
 
-        // Settlement-anchored weeks for every date from the week (and the day before it) that touches
-        // the month's first day to seven days after the start of the week holding its last day, so
-        // the caps and the 35 h rest see the neighbouring months too. Each date gets a
-        // period-qualified week key (weeks of different periods never collide), the week's hour cap
-        // and the date its week starts on.
+        // Settlement-anchored weeks for every date whose 35 h window can reach into the month, and
+        // the dates those windows cover: from the day before the week holding the day before the
+        // month's first week (and the week holding the 6th day before the month: a shortened week's
+        // window still runs seven days, into the next period) to eight days after the month. So the
+        // caps and the 35 h rest see the neighbouring months too. Each date gets a period-qualified
+        // week key (weeks of different periods never collide), the week's hour cap and the date its
+        // week starts on.
         $weekKeyByDate = [];
         $weekCapByDate = [];
         $weekStartByDate = [];
         try {
-            $lastDay = $end->copy()->startOfDay();
-            $firstWeekStart = $calculator->weekFor($calculator->periodContaining($group, $start), $start)['week']['start'];
-            $lastWeekStart = $calculator->weekFor($calculator->periodContaining($group, $lastDay), $lastDay)['week']['start'];
-            $from = min($firstWeekStart->copy()->subDay()->toDateString(), $start->copy()->subDays(2)->toDateString());
-            $to = max($lastWeekStart->copy()->addDays(7)->toDateString(), $end->copy()->addDays(2)->toDateString());
+            $weekStartOf = fn (Carbon $day) => $calculator->weekFor($calculator->periodContaining($group, $day), $day)['week']['start'];
+            $firstWeekStart = $weekStartOf($start);
+            $from = min(
+                $weekStartOf($firstWeekStart->copy()->subDay())->toDateString(),
+                $weekStartOf($start->copy()->subDays(6))->toDateString(),
+            );
+            $from = Carbon::parse($from)->subDay()->toDateString();
+            $to = $end->copy()->addDays(8)->toDateString();
 
             for ($day = Carbon::parse($from); $day->toDateString() <= $to; $day->addDay()) {
                 $dateStr = $day->toDateString();
@@ -684,6 +685,24 @@ class ShiftAutoAssignController extends Controller
         foreach (array_unique($weekStartByDate) as $weekStart) {
             $windowStart = Carbon::parse($weekStart, BusinessDate::timezone());
             $restWindows[$weekStart] = [$windowStart->getTimestamp(), $windowStart->copy()->addDays(7)->getTimestamp()];
+        }
+
+        // The 35 h windows each shift overlaps: those of every week starting from six days before its
+        // date through its end date (a shortened week's window reaches into the next week, period or
+        // month).
+        $windowsByShift = [];
+        foreach ($shifts as $shift) {
+            [$shiftStartTs, $shiftEndTs] = $shiftTimes[$shift->id]['span'];
+            $endDateStr = Carbon::createFromTimestamp($shiftEndTs - 1, BusinessDate::timezone())->toDateString();
+            $windows = [];
+            for ($day = $shift->date->copy()->subDays(6); $day->toDateString() <= $endDateStr; $day->addDay()) {
+                $weekStart = $weekStartByDate[$day->toDateString()];
+                [$windowStart, $windowEnd] = $restWindows[$weekStart];
+                if ($windowStart < $shiftEndTs && $windowEnd > $shiftStartTs) {
+                    $windows[$weekStart] = $restWindows[$weekStart];
+                }
+            }
+            $windowsByShift[$shift->id] = array_values($windows);
         }
 
         // Per-employee state: weekly hours and worked dates (for the caps and the 5-day rule) and
@@ -729,9 +748,10 @@ class ShiftAutoAssignController extends Controller
         $runUserIds = [];
         $warnings = [];
 
-        // A failure part-way leaves no partial month behind.
-        DB::beginTransaction();
-        try {
+        // One transaction: a failure part-way leaves no partial month behind.
+        DB::transaction(function () use (
+            $request, $shifts, $employees, $blockedMap, $assignmentTracker, $weekKeyByDate, $weekCapByDate, $shiftTimes, $windowsByShift, $employeeState, $busy, $streakTimeline, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
+        ) {
             foreach ($shifts as $shift) {
                 $dateStr = $shift->date->format('Y-m-d');
                 $dayOfWeek = $shift->date->dayOfWeekIso;
@@ -754,14 +774,6 @@ class ShiftAutoAssignController extends Controller
                 if ($st['duration_hours'] > 13) {
                     $warnings[] = "{$dateStr} S{$shift->shift_number}: shift exceeds 13h limit ({$st['duration_hours']}h)";
                     continue;
-                }
-
-                // The 35 h windows this shift falls in: its date's week, and the next one when it
-                // runs past that week's end.
-                $windows = [$restWindows[$weekStartByDate[$dateStr]]];
-                $endDateStr = Carbon::createFromTimestamp($shiftEndTs - 1, BusinessDate::timezone())->toDateString();
-                if (isset($weekStartByDate[$endDateStr]) && $weekStartByDate[$endDateStr] !== $weekStartByDate[$dateStr]) {
-                    $windows[] = $restWindows[$weekStartByDate[$endDateStr]];
                 }
 
                 // Build list of eligible employees for this shift
@@ -792,7 +804,7 @@ class ShiftAutoAssignController extends Controller
                         continue;
 
                     // Rule: 35h uninterrupted weekly rest is still left in every week the shift touches
-                    foreach ($windows as [$windowStart, $windowEnd]) {
+                    foreach ($windowsByShift[$shift->id] as [$windowStart, $windowEnd]) {
                         if ($busy->longestRestWith($emp->id, $windowStart, $windowEnd, $shiftStartTs, $shiftEndTs) < BusyIntervals::MIN_WEEKLY_REST_HOURS * 3600)
                             continue 2;
                     }
@@ -841,11 +853,7 @@ class ShiftAutoAssignController extends Controller
 
             // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
             $janitor->clearUncovered($group, $runUserIds);
-            DB::commit();
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        });
 
         // Count night shifts
         $nightShiftCount = 0;

@@ -85,7 +85,9 @@
                         <span class="text-white font-medium text-sm">{{ user.name }}</span>
                         <span v-if="isCurrentNewbie(user.id)" class="text-yellow-400 text-xs shrink-0" title="Active Newbie">⭐</span>
                         <span v-else-if="hasAnyNewbiePeriod(user.id)" class="text-gray-500 text-xs shrink-0" title="Former Newbie (expired)">⭐</span>
-                        <span v-if="user.is_admin" class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full shrink-0">Admin</span>
+                        <span v-if="canManageSchedule(user)" data-testid="role-badge"
+                          :class="isAdmin(user) ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'"
+                          class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider border rounded-full shrink-0">{{ roleLabel(user.role) }}</span>
                         <span v-if="user.deactivated_at" class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-slate-500/15 text-slate-300 border border-slate-500/30 rounded-full shrink-0">Deactivated</span>
                       </div>
                       <div v-if="user.groups?.length" class="flex items-center gap-1 mt-1 flex-wrap">
@@ -355,18 +357,14 @@
             </div>
           </template>
 
-          <div class="flex items-center justify-between px-4 py-3 bg-white/5 border border-white/10 rounded-xl">
-            <div>
-              <p class="text-sm font-medium text-slate-300">Administrator</p>
-              <p class="text-xs text-slate-500">Can manage users and system settings</p>
-            </div>
-            <button type="button" @click="userForm.is_admin = !userForm.is_admin"
-              :class="userForm.is_admin ? 'bg-amber-500' : 'bg-white/10'"
-              class="relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none">
-              <span
-                :class="userForm.is_admin ? 'translate-x-5' : 'translate-x-0.5'"
-                class="inline-block w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform duration-200" />
-            </button>
+          <div>
+            <label for="user-role" class="block text-sm font-medium text-slate-300 mb-1.5">Role</label>
+            <!-- An admin can't change their own role (the server refuses it too). -->
+            <select id="user-role" v-model="userForm.role" :disabled="editingOwnAccount"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              <option v-for="option in ROLE_OPTIONS" :key="option.value" :value="option.value" class="bg-slate-800">{{ option.label }}</option>
+            </select>
+            <p class="mt-1 text-xs text-slate-500">{{ editingOwnAccount ? 'You cannot change your own role.' : roleHint }}</p>
           </div>
 
           <div class="flex items-center gap-3 pt-2">
@@ -733,6 +731,8 @@ import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { canManageSchedule, isAdmin, ROLE_OPTIONS, roleLabel } from '../roles.js';
+import { currentUser } from '../router/index.js';
 
 const { showToast } = useToast();
 
@@ -752,8 +752,16 @@ const userForm = reactive({
   email: '',
   password: '',
   password_confirmation: '',
-  is_admin: false,
+  role: 'employee',
 });
+
+const ROLE_HINTS = {
+  admin: 'Manages users, settings, procedures and the schedule.',
+  schedule_maintainer: 'Manages the schedule.',
+  employee: 'Fills checklists and sees their own shifts.',
+};
+const roleHint = computed(() => ROLE_HINTS[userForm.role] ?? '');
+const editingOwnAccount = computed(() => editingUser.value?.id === currentUser.value?.id);
 
 const showPasswordModal = ref(false);
 const passwordUser = ref(null);
@@ -935,7 +943,7 @@ function openCreateModal() {
   userForm.email = '';
   userForm.password = '';
   userForm.password_confirmation = '';
-  userForm.is_admin = false;
+  userForm.role = 'employee';
   formError.value = '';
   showUserModal.value = true;
 }
@@ -946,7 +954,7 @@ function openEditModal(user) {
   userForm.email = user.email;
   userForm.password = '';
   userForm.password_confirmation = '';
-  userForm.is_admin = user.is_admin;
+  userForm.role = user.role ?? 'employee';
   formError.value = '';
   showUserModal.value = true;
 }
@@ -964,7 +972,7 @@ async function saveUser() {
       await api.put(`/api/users/${editingUser.value.id}`, {
         name: userForm.name,
         email: userForm.email,
-        is_admin: userForm.is_admin,
+        role: userForm.role,
       });
       showToast(`User "${userForm.name}" updated successfully.`);
     } else {
@@ -973,7 +981,7 @@ async function saveUser() {
         email: userForm.email,
         password: userForm.password,
         password_confirmation: userForm.password_confirmation,
-        is_admin: userForm.is_admin,
+        role: userForm.role,
       });
       showToast(`User "${userForm.name}" created successfully.`);
     }

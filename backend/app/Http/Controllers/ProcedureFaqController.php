@@ -84,7 +84,7 @@ class ProcedureFaqController extends Controller
     public function toggleOutdatedItem(Request $request, ProcedureFaqItem $item)
     {
         $procedure = $item->procedure;
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->is_admin) {
+        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
@@ -95,7 +95,7 @@ class ProcedureFaqController extends Controller
     public function toggleOutdatedReply(Request $request, ProcedureFaqReply $reply)
     {
         $procedure = $reply->faqItem->procedure;
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->is_admin) {
+        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
@@ -105,7 +105,7 @@ class ProcedureFaqController extends Controller
 
     public function destroyItem(Request $request, ProcedureFaqItem $item)
     {
-        if ($item->created_by !== $request->user()->id && !$request->user()->is_admin) {
+        if ($item->created_by !== $request->user()->id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
         $item->delete();
@@ -114,7 +114,7 @@ class ProcedureFaqController extends Controller
 
     public function destroyReply(Request $request, ProcedureFaqReply $reply)
     {
-        if ($reply->created_by !== $request->user()->id && !$request->user()->is_admin) {
+        if ($reply->created_by !== $request->user()->id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
         $reply->delete();

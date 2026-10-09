@@ -61,8 +61,9 @@
           <!-- Outgoing User -->
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-1.5">Outgoing Employee <span class="text-slate-500 font-normal">(ending shift)</span></label>
-            <select v-model="setup.outgoingUserId"
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer">
+            <!-- Only an admin may file on someone's behalf; everyone else files as themselves. -->
+            <select v-model="setup.outgoingUserId" :disabled="!canFileForOthers" aria-label="Outgoing Employee"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-70">
               <option value="" disabled class="bg-slate-800 text-slate-400">Select...</option>
               <option v-for="u in users" :key="u.id" :value="u.id" class="bg-slate-800">{{ u.name }}</option>
             </select>
@@ -71,10 +72,10 @@
           <!-- Incoming User -->
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-1.5">Incoming Employee <span class="text-slate-500 font-normal">(starting shift — optional)</span></label>
-            <select v-model="setup.incomingUserId"
+            <select v-model="setup.incomingUserId" aria-label="Incoming Employee"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer">
               <option value="" class="bg-slate-800 text-slate-400">None (single user)</option>
-              <option v-for="u in users.filter(u => u.id !== setup.outgoingUserId)" :key="u.id" :value="u.id" class="bg-slate-800">{{ u.name }}</option>
+              <option v-for="u in incomingOptions" :key="u.id" :value="u.id" class="bg-slate-800">{{ u.name }}</option>
             </select>
           </div>
 
@@ -519,7 +520,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
@@ -527,6 +528,7 @@ import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { isAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
 const router = useRouter();
@@ -581,6 +583,18 @@ const setup = reactive({
   incomingUserId: '',
 });
 
+// The server enforces the same: non-admins file as themselves, and the incoming user is someone
+// other than the outgoing one and the person filing (so nobody confirms their own handover).
+const canFileForOthers = computed(() => isAdmin(currentUser.value));
+const incomingOptions = computed(() =>
+  users.value.filter((u) => u.id !== setup.outgoingUserId && u.id !== currentUser.value?.id),
+);
+watch(incomingOptions, (options) => {
+  if (setup.incomingUserId && !options.some((u) => u.id === setup.incomingUserId)) {
+    setup.incomingUserId = '';
+  }
+});
+
 const responses = ref({}); // { [itemId]: { value, checklist_item_id } }
 const rangeErrors = ref({}); // { [itemId]: errorMessage }
 const groupComments = ref({}); // { [groupId]: string }
@@ -628,8 +642,8 @@ async function loadData() {
     if (route.query.date) {
       setup.date = route.query.date;
     }
-    // Auto-select current user as outgoing
-    if (currentUser.value?.id && !setup.outgoingUserId) {
+    // Auto-select current user as outgoing (always, for non-admins)
+    if (currentUser.value?.id && (!setup.outgoingUserId || !canFileForOthers.value)) {
       setup.outgoingUserId = currentUser.value.id;
     }
 
@@ -874,16 +888,11 @@ async function submitChecklist() {
   }
 }
 
-// Confirmation flow
+// Confirmation flow: only handovers naming the current user as incoming (only they may confirm).
 async function loadPendingConfirmations() {
   try {
-    const response = await api.get('/api/checklist-submissions', {
-      params: {
-        status: 'pending_confirmation',
-        user_id: currentUser.value?.id,
-      },
-    });
-    pendingSubmissions.value = response.data.data || [];
+    const response = await api.get('/api/checklist-submissions/pending-confirmations');
+    pendingSubmissions.value = response.data || [];
     step.value = 'confirm';
   } catch {
     showToast('Failed to load pending confirmations.', 'error');
@@ -969,6 +978,17 @@ async function submitConfirmation() {
     confirmationRequests.invalidate();
     step.value = 'setup';
   } catch (err) {
+    if (err.response?.status === 403) {
+      // Not this user's handover to confirm (only its incoming user can): back to their own list.
+      showToast(
+        err.response.data?.message ||
+          'Only the incoming user named on this handover can confirm it.',
+        'error',
+      );
+      confirmationRequests.invalidate();
+      await loadPendingConfirmations();
+      return;
+    }
     const msg = err.response?.data?.message || 'Failed to confirm checklist.';
     showToast(msg, 'error');
   } finally {

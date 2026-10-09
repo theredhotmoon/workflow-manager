@@ -272,6 +272,7 @@ import api from '../../axios.js';
 import { confirm } from '../../composables/useConfirm.js';
 import { useFocusTrap } from '../../composables/useFocusTrap.js';
 import { useLatestRequest } from '../../composables/useLatestRequest.js';
+import { isAdmin } from '../../roles.js';
 import { currentUser as authUser } from '../../router/index.js';
 
 const props = defineProps({
@@ -621,7 +622,7 @@ async function loadData() {
       const res = await api.get(`/api/procedures/${props.procedureId}`);
       if (!loadRequests.isCurrent(token)) return;
       // Owner check
-      if (res.data.owner_id !== authUser.value?.id && !authUser.value?.is_admin) {
+      if (res.data.owner_id !== authUser.value?.id && !isAdmin(authUser.value)) {
         emit('close');
         return;
       }

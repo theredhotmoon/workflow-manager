@@ -8,7 +8,7 @@ use App\Models\User;
 it('lists on-call assignments with their callbacks for a group and month', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
         'user_id' => $employee->id,
@@ -34,7 +34,7 @@ it('lists on-call assignments with their callbacks for a group and month', funct
 it('creates an on-call assignment', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     $response = $this->actingAs($maintainer)->postJson('/api/on-call-assignments', [
         'shift_group_id' => $group->id,
@@ -50,7 +50,7 @@ it('creates an on-call assignment', function () {
 it('rejects an on-call assignment where ends_at is not after starts_at', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     $this->actingAs($maintainer)->postJson('/api/on-call-assignments', [
         'shift_group_id' => $group->id,
@@ -63,7 +63,7 @@ it('rejects an on-call assignment where ends_at is not after starts_at', functio
 it('deletes an on-call assignment and cascades its callbacks', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
         'user_id' => $employee->id,
@@ -85,7 +85,7 @@ it('deletes an on-call assignment and cascades its callbacks', function () {
 it('records a callback that starts within the on-call window', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
         'user_id' => $employee->id,
@@ -105,7 +105,7 @@ it('records a callback that starts within the on-call window', function () {
 it('allows a callback to extend past the on-call assignment end time', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
         'user_id' => $employee->id,
@@ -124,7 +124,7 @@ it('allows a callback to extend past the on-call assignment end time', function 
 it('rejects a callback whose starts_at falls outside the on-call assignment window', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
         'user_id' => $employee->id,
@@ -144,7 +144,7 @@ it('rejects a callback whose starts_at falls outside the on-call assignment wind
 it('deletes a callback', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
         'user_id' => $employee->id,
@@ -163,9 +163,9 @@ it('deletes a callback', function () {
 });
 
 it('rejects a plain employee from creating an on-call assignment', function () {
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
-    $target = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $target = User::factory()->create(['role' => 'employee']);
 
     $this->actingAs($employee)->postJson('/api/on-call-assignments', [
         'shift_group_id' => $group->id,

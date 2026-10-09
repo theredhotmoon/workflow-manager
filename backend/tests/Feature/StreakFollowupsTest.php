@@ -13,7 +13,7 @@ beforeEach(function () {
     $this->group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     // night 2 in a row → 2 days off.
     ShiftStreakRule::create(['shift_group_id' => $this->group->id, 'shift_type' => 'night', 'streak_length' => 2, 'rest_days' => 2]);
-    $this->employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $this->employee = User::factory()->create(['role' => 'employee']);
 });
 
 function sfuShift($test, string $date, ?string $type = 'night', int $slot = 1): Shift

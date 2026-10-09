@@ -16,6 +16,7 @@ class ChecklistSubmission extends Model
         'general_comments',
         'submitted_at',
         'confirmed_at',
+        'confirmed_by_id',
         'submitted_on_time',
     ];
 
@@ -39,6 +40,12 @@ class ChecklistSubmission extends Model
     public function incomingUser()
     {
         return $this->belongsTo(User::class, 'incoming_user_id');
+    }
+
+    /** Who confirmed the handover: always its incoming user. */
+    public function confirmedBy()
+    {
+        return $this->belongsTo(User::class, 'confirmed_by_id');
     }
 
     public function responses()

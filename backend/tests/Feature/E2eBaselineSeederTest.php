@@ -11,11 +11,11 @@ it('seeds an admin, a plain employee, and a schedule maintainer', function () {
 
     $admin = User::where('email', 'admin@shiftchanger.com')->first();
     expect($admin)->not->toBeNull();
-    expect($admin->is_admin)->toBeTrue();
+    expect($admin->role)->toBe('admin');
 
     $employee = User::where('email', 'regular@shiftchanger.com')->first();
     expect($employee)->not->toBeNull();
-    expect($employee->is_admin)->toBeFalse();
+    expect($employee->role)->toBe('employee');
 
     $maintainer = User::where('email', 'schedule@company.com')->first();
     expect($maintainer)->not->toBeNull();

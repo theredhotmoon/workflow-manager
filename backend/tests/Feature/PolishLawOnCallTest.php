@@ -12,7 +12,7 @@ it('blocks a regular shift that would start less than 11h after a logged callbac
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
     ]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     // An earlier shift the auto-assigner will fill first — proves the fix
     // survives the main loop overwriting $employeeState[...]['last_shift_end']
@@ -65,7 +65,7 @@ it('assigns the same shift when there is no callback blocking rest', function ()
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
     ]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     Shift::create([
         'date' => '2026-09-02', 'shift_number' => 1, 'shift_group_id' => $group->id,
@@ -92,7 +92,7 @@ it('counts a callback hours toward the settlement-anchored weekly_hour_cap, incl
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 10,
     ]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,
@@ -139,7 +139,7 @@ it('does not block a shift when the employee is on call but has no callback', fu
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
     ]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     OnCallAssignment::create([
         'shift_group_id' => $group->id,

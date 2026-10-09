@@ -137,8 +137,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
+import { isAdmin } from '../roles.js';
 
 const props = defineProps({
   monthKey: { type: String, required: true },
@@ -292,7 +293,7 @@ async function fetchData() {
       api.get('/api/user-groups').catch(() => ({ data: [] })),
     ]);
 
-    allEmployees.value = empRes.data.filter((e) => !e.is_admin);
+    allEmployees.value = empRes.data.filter((e) => !isAdmin(e));
     selectedIds.value = new Set(allEmployees.value.map((e) => e.id));
 
     const nbIds = new Set();

@@ -15,7 +15,6 @@ class ScheduleMaintainerSeeder extends Seeder
             [
                 'name' => 'Schedule Maintainer',
                 'password' => Hash::make('schedule123'),
-                'is_admin' => false,
                 'role' => 'schedule_maintainer',
             ]
         );

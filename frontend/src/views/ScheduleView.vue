@@ -246,7 +246,7 @@
                     <div class="flex items-center gap-1">
                       <span class="text-sm text-slate-300 font-medium truncate">{{ emp.name }}</span>
                       <span v-if="isCurrentNewbie(emp.id)" class="text-yellow-400 text-[10px]" title="Newbie">⭐</span>
-                      <span v-if="emp.is_admin" class="px-1 py-0.5 text-[7px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full shrink-0">A</span>
+                      <span v-if="isAdmin(emp)" class="px-1 py-0.5 text-[7px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full shrink-0">A</span>
                     </div>
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
@@ -528,14 +528,14 @@
                           <span v-if="assignment.in_rest" class="shrink-0 text-[9px] text-red-300"
                             :title="'Now on a rest day (resting until ' + assignment.resting_until + '): nobody chose how it counts'">⚠</span>
                           <!-- Employee: request day off button -->
-                          <button v-if="currentUser && !currentUser.is_admin && currentUser.id === assignment.user_id && !assignment.has_change_request && isShiftFuture(shift, day.dateStr)"
+                          <button v-if="currentUser && !isAdmin(currentUser) && currentUser.id === assignment.user_id && !assignment.has_change_request && isShiftFuture(shift, day.dateStr)"
                             @click.stop="openChangeRequestModal(assignment, shift, day.dateStr)"
                             class="ml-0.5 w-4 h-4 shrink-0 flex items-center justify-center text-[9px] text-slate-400 hover:text-orange-300 hover:bg-orange-500/15 rounded transition-all"
                             title="Request day off">
                             🔄
                           </button>
                           <!-- Pending badge for employee -->
-                          <span v-if="currentUser && !currentUser.is_admin && currentUser.id === assignment.user_id && assignment.has_change_request"
+                          <span v-if="currentUser && !isAdmin(currentUser) && currentUser.id === assignment.user_id && assignment.has_change_request"
                             class="ml-0.5 shrink-0 text-[7px] px-1 py-0.5 bg-orange-500/20 text-orange-300 rounded font-bold uppercase">Pending</span>
                           <!-- Admin: remove button -->
                           <button v-if="canManageSchedule" @click.stop="removeAssignment(assignment, shift)"
@@ -1318,6 +1318,7 @@ import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { isAdmin, canManageSchedule as userCanManageSchedule } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
 const router = useRouter();
@@ -1890,12 +1891,7 @@ const timeForm = ref({
 const { showToast } = useToast();
 
 // Computed
-const canManageSchedule = computed(
-  () =>
-    currentUser.value?.is_admin ||
-    currentUser.value?.role === 'admin' ||
-    currentUser.value?.role === 'schedule_maintainer',
-);
+const canManageSchedule = computed(() => userCanManageSchedule(currentUser.value));
 
 const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 

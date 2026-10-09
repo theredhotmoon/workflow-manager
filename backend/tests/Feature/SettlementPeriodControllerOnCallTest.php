@@ -16,7 +16,7 @@ it('includes callback hours in the settlement periods report', function () {
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01',
     ]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     $assignment = OnCallAssignment::create([
         'shift_group_id' => $group->id,

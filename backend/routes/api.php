@@ -44,6 +44,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Checklist submissions (any authenticated user)
     Route::get('/checklist-submissions', [ChecklistSubmissionController::class, 'index']);
     Route::post('/checklist-submissions', [ChecklistSubmissionController::class, 'store']);
+    // Before {checklistSubmission}, which would otherwise take "pending-confirmations" as an id.
+    Route::get('/checklist-submissions/pending-confirmations', [ChecklistSubmissionController::class, 'pendingConfirmations']);
     Route::get('/checklist-submissions/{checklistSubmission}', [ChecklistSubmissionController::class, 'show']);
     Route::put('/checklist-submissions/{checklistSubmission}/confirm', [ChecklistSubmissionController::class, 'confirm']);
 
@@ -56,7 +58,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         return response()->json(\App\Models\User::query()
             ->when(!$request->boolean('include_deactivated'), fn ($q) => $q->active())
             ->orderBy('name')
-            ->get(['id', 'name', 'email']));
+            ->get(['id', 'name', 'email', 'role']));
     });
 
     // Checklist alerts for current user
@@ -195,8 +197,6 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/procedures/{procedure}/versions/{version}', [ProcedureController::class, 'getVersion']);
     Route::post('/procedures/{procedure}/mark-read', [ProcedureController::class, 'markAsRead']);
     Route::get('/procedures-tree', [ProcedureController::class, 'tree']);
-    Route::put('/procedures/{procedure}/move', [ProcedureController::class, 'move']);
-    Route::put('/procedures/{procedure}/change-owner', [ProcedureController::class, 'changeOwner']);
     Route::get('/procedures-to-learn', [ProceduresToLearnController::class, 'index']);
     Route::get('/procedure-tags', [ProcedureTagController::class, 'index']);
     Route::post('/procedures/check-read-status', [ProcedureController::class, 'checkReadStatus']);
@@ -313,6 +313,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::put('/procedures/{procedure}/draft', [ProcedureController::class, 'saveDraft']);
         Route::post('/procedures/{procedure}/publish', [ProcedureController::class, 'publishDraft']);
         Route::delete('/procedures/{procedure}/draft', [ProcedureController::class, 'discardDraft']);
+        // Tree layout and ownership: admin-only (an owner can't hand a procedure on or rearrange the tree).
+        Route::put('/procedures/{procedure}/move', [ProcedureController::class, 'move']);
+        Route::put('/procedures/{procedure}/change-owner', [ProcedureController::class, 'changeOwner']);
 
         // Procedure response templates (write)
         Route::post('/procedures/{procedure}/templates', [ProcedureResponseTemplateController::class, 'store']);

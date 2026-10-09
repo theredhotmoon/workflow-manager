@@ -114,7 +114,7 @@ class ScheduleController extends Controller
 
         // Employees for the pool (deactivated users still show by name on their past assignments)
         $employees = User::active()->orderBy('name')
-            ->get(['id', 'name', 'email', 'is_admin']);
+            ->get(['id', 'name', 'email', 'role']);
 
         return response()->json([
             'schedule' => $schedule,

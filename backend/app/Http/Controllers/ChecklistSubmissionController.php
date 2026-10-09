@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ChecklistSubmissionController extends Controller
 {
@@ -47,6 +48,20 @@ class ChecklistSubmissionController extends Controller
     }
 
     /**
+     * Handovers waiting for the current user's confirmation: only those naming them as the incoming
+     * user (the history list, index(), shows both directions).
+     */
+    public function pendingConfirmations(Request $request)
+    {
+        return response()->json(ChecklistSubmission::with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name'])
+            ->where('status', 'pending_confirmation')
+            ->where('incoming_user_id', $request->user()->id)
+            ->orderBy('date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->get());
+    }
+
+    /**
      * Outgoing user creates and fills a submission.
      */
     public function store(Request $request)
@@ -56,8 +71,8 @@ class ChecklistSubmissionController extends Controller
             'checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')->whereNull('archived_at')],
             'shift_id' => ['nullable', 'exists:shifts,id'],
             'date' => ['required', 'date'],
-            'outgoing_user_id' => ['required', User::activeExistsRule()],
-            'incoming_user_id' => ['nullable', User::activeExistsRule()],
+            'outgoing_user_id' => ['required', 'integer', User::activeExistsRule()],
+            'incoming_user_id' => ['nullable', 'integer', 'different:outgoing_user_id', User::activeExistsRule()],
             'general_comments' => ['nullable', 'string'],
             'responses' => ['required', 'array'],
             'responses.*.checklist_item_id' => ['required', 'exists:checklist_items,id'],
@@ -67,7 +82,10 @@ class ChecklistSubmissionController extends Controller
             'checklist_template_id.exists' => 'This checklist template has been archived and can no longer be filled.',
             'outgoing_user_id.exists' => 'The outgoing user has been deactivated. Pick someone else.',
             'incoming_user_id.exists' => 'The incoming user has been deactivated. Pick someone else.',
+            'incoming_user_id.different' => 'The incoming employee must be someone other than the outgoing one.',
         ]);
+        // `different` compares strictly ("5" vs 5 passes it), so the checks below compare integers.
+        $this->ensureTwoPeople($request);
 
         $submission = DB::transaction(function () use ($request) {
             $hasConfirmationItems = ChecklistTemplate::find($request->checklist_template_id)
@@ -129,6 +147,38 @@ class ChecklistSubmissionController extends Controller
     }
 
     /**
+     * Keeps a handover's two-person check honest: the outgoing user is the caller (only an admin may
+     * file on someone's behalf), and the incoming user is someone else, never the filing admin.
+     * Ids are compared as integers, so "5" and 5 are the same person.
+     */
+    private function ensureTwoPeople(Request $request): void
+    {
+        $caller = $request->user();
+        $callerId = (int) $caller->id;
+        $outgoing = (int) $request->outgoing_user_id;
+        $incoming = $request->filled('incoming_user_id') ? (int) $request->incoming_user_id : null;
+
+        if ($outgoing !== $callerId && !$caller->isAdmin()) {
+            throw ValidationException::withMessages([
+                'outgoing_user_id' => 'You can only file a handover as its outgoing employee yourself.',
+            ]);
+        }
+        if ($incoming === null) {
+            return;
+        }
+        if ($incoming === $outgoing) {
+            throw ValidationException::withMessages([
+                'incoming_user_id' => 'The incoming employee must be someone other than the outgoing one.',
+            ]);
+        }
+        if ($incoming === $callerId) {
+            throw ValidationException::withMessages([
+                'incoming_user_id' => 'You cannot name yourself as incoming on a handover you file for someone else.',
+            ]);
+        }
+    }
+
+    /**
      * View a filled submission with all responses.
      */
     public function show(ChecklistSubmission $checklistSubmission)
@@ -161,10 +211,15 @@ class ChecklistSubmissionController extends Controller
     }
 
     /**
-     * Incoming user confirms flagged items.
+     * Incoming user confirms flagged items. Only they can: not the outgoing user, and not an admin on
+     * their behalf, so the handover keeps its two-person check.
      */
     public function confirm(Request $request, ChecklistSubmission $checklistSubmission)
     {
+        if ($request->user()->id !== $checklistSubmission->incoming_user_id) {
+            return response()->json(['message' => 'Only the incoming user named on this handover can confirm it.'], 403);
+        }
+
         if ($checklistSubmission->status !== 'pending_confirmation') {
             return response()->json(['message' => 'This submission is not awaiting confirmation.'], 422);
         }
@@ -184,11 +239,12 @@ class ChecklistSubmissionController extends Controller
             $checklistSubmission->update([
                 'status' => 'completed',
                 'confirmed_at' => now(),
+                'confirmed_by_id' => $request->user()->id,
                 'general_comments' => $request->general_comments ?? $checklistSubmission->general_comments,
             ]);
         });
 
-        $checklistSubmission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'responses']);
+        $checklistSubmission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'confirmedBy:id,name', 'responses']);
         return response()->json($checklistSubmission);
     }
 }

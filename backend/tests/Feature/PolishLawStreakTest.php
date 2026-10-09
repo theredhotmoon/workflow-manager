@@ -26,7 +26,7 @@ it('blocks the 4th night shift after a 3-shift streak and blocks a day shift too
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
     ]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     makeStreakShift($group->id, '2026-09-01', 1, 'night', '22:00', '06:00');
     makeStreakShift($group->id, '2026-09-02', 1, 'night', '22:00', '06:00');
@@ -57,7 +57,7 @@ it('carries streak state across separate generation requests for different month
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-08-01', 'weekly_hour_cap' => 168,
     ]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     // 2 night shifts in August — one shy of the streak, no rest window yet.
     makeStreakShift($group->id, '2026-08-30', 1, 'night', '22:00', '06:00');
@@ -100,7 +100,7 @@ it('is idempotent: running polishLaw twice over the same already-generated month
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
     ]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     makeStreakShift($group->id, '2026-09-01', 1, 'night', '22:00', '06:00');
     makeStreakShift($group->id, '2026-09-02', 1, 'night', '22:00', '06:00');
@@ -133,7 +133,7 @@ it('counts existing in-month assignments once: two manual nights then an auto-as
         'settlement_mode' => 'monthly', 'settlement_anchor_date' => '2026-09-01', 'weekly_hour_cap' => 168,
     ]);
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
-    $employee = User::factory()->create(['role' => 'employee', 'is_admin' => false]);
+    $employee = User::factory()->create(['role' => 'employee']);
 
     foreach (['2026-09-01', '2026-09-02'] as $date) {
         $shift = makeStreakShift($group->id, $date, 1, 'night', '22:00', '06:00');

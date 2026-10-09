@@ -281,6 +281,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../axios.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
+import { canManageSchedule as userCanManageSchedule, isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
 const router = useRouter();
@@ -292,10 +293,8 @@ const pwError = ref('');
 const pwSuccess = ref('');
 const pw = ref({ current: '', password: '', confirm: '' });
 
-const isAdmin = computed(() => currentUser.value?.is_admin || currentUser.value?.role === 'admin');
-const canManageSchedule = computed(
-  () => isAdmin.value || currentUser.value?.role === 'schedule_maintainer',
-);
+const isAdmin = computed(() => userIsAdmin(currentUser.value));
+const canManageSchedule = computed(() => userCanManageSchedule(currentUser.value));
 
 // Focus trap for the Change Password modal
 const passwordModalRef = ref(null);

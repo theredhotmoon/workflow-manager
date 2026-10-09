@@ -37,6 +37,9 @@ class ShiftChecklist extends Model
      * The handover's absolute deadline, in the business timezone: deadline_minutes after the shift
      * starts, or before it ends (an overnight shift ends the next day). A shift without the
      * reference time counts from its start, or from 00:00 of its date.
+     *
+     * The minutes are elapsed time, so they are counted in UTC: on a DST night 300 minutes after
+     * 22:00 is 02:00 or 04:00 on the local clock, not 03:00.
      */
     public function getDeadlineDatetime(Shift $shift): ?Carbon
     {
@@ -45,9 +48,9 @@ class ShiftChecklist extends Model
         }
 
         if ($this->deadline_reference === 'shift_end' && $shift->end_time) {
-            return BusinessDate::shiftEnd($shift)->subMinutes($this->deadline_minutes);
+            return BusinessDate::shiftEnd($shift)->utc()->subMinutes($this->deadline_minutes)->setTimezone(BusinessDate::timezone());
         }
 
-        return BusinessDate::shiftStart($shift)->addMinutes($this->deadline_minutes);
+        return BusinessDate::shiftStart($shift)->utc()->addMinutes($this->deadline_minutes)->setTimezone(BusinessDate::timezone());
     }
 }

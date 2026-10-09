@@ -68,6 +68,8 @@ final class BusinessDate
     /**
      * A local date and wall-clock time ("06:00" or "06:00:00") as an instant in the business
      * timezone. Building it there, rather than in UTC, keeps the hour right across DST changes.
+     * A time that doesn't exist on the spring-forward day (02:30) rolls forward to 03:30 CEST; one
+     * that happens twice on the fall-back day (02:30) is taken as the second, in CET (+01:00).
      */
     private static function at(string $date, ?string $time = null): Carbon
     {

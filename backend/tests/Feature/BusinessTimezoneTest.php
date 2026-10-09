@@ -4,6 +4,7 @@ use App\Models\ChecklistGroup;
 use App\Models\ChecklistItem;
 use App\Models\ChecklistSubmission;
 use App\Models\ChecklistTemplate;
+use App\Models\Delegation;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftChecklist;
@@ -15,6 +16,11 @@ use Illuminate\Support\Carbon;
 
 // Shift dates and times are Warsaw wall-clock; the app clock and storage are UTC. Every
 // setTestNow below is a UTC instant whose Warsaw day or hour differs from the UTC one.
+
+beforeEach(function () {
+    // The expected offsets (+01:00/+02:00) and DST days below are Warsaw's.
+    config(['app.business_timezone' => 'Europe/Warsaw']);
+});
 
 function btzGroup(): ShiftGroup
 {
@@ -251,4 +257,60 @@ it('picks the current settlement period by the Warsaw date', function () {
 
     expect($period['start']->toDateString())->toBe('2026-09-08');
     expect($period['end']->toDateString())->toBe('2026-09-14');
+});
+
+it('counts deadline minutes in elapsed time when the window crosses a DST change', function () {
+    // Fall back (2029-10-28 03:00 CEST -> 02:00 CET): 22:00 CEST on the 27th is 20:00Z; 300 real
+    // minutes later is 01:00Z (02:00 CET), not 03:00 on the wall clock.
+    $fall = btzShift('2029-10-27', '22:00', '06:00');
+    btzChecklist($fall, 300, 'shift_start');
+    $deadline = ShiftChecklist::where('shift_id', $fall->id)->first()->getDeadlineDatetime($fall);
+    expect($deadline->toIso8601String())->toBe('2029-10-28T02:00:00+01:00');
+    expect($deadline->copy()->utc()->toIso8601String())->toBe('2029-10-28T01:00:00+00:00');
+
+    // Spring forward (2029-03-25 02:00 CET -> 03:00 CEST): the shift ends 06:00 CEST = 04:00Z;
+    // 240 real minutes earlier is 00:00Z (01:00 CET), not 02:00 on the wall clock.
+    $spring = btzShift('2029-03-24', '22:00', '06:00', 2);
+    btzChecklist($spring, 240, 'shift_end');
+    $deadline = ShiftChecklist::where('shift_id', $spring->id)->first()->getDeadlineDatetime($spring);
+    expect($deadline->toIso8601String())->toBe('2029-03-25T01:00:00+01:00');
+    expect($deadline->copy()->utc()->toIso8601String())->toBe('2029-03-25T00:00:00+00:00');
+
+    // The same through the API: at 23:30Z on the 24th (00:30 CET) the deadline is 30 minutes away.
+    $user = btzAssign($spring);
+    Carbon::setTestNow('2029-03-24 23:30:00');
+    $alert = btzAlerts($this, $user)['current_shift_alerts'][0];
+    expect($alert['deadline_at'])->toBe('2029-03-25T01:00:00+01:00');
+    expect($alert['minutes_remaining'])->toBe(30);
+});
+
+it('resolves shift times that do not exist or repeat on the DST days deterministically', function () {
+    // 02:30 does not exist on the spring-forward day: it rolls forward to 03:30 CEST.
+    $gap = btzShift('2029-03-25', '02:30', '10:00');
+    expect(BusinessDate::shiftStart($gap)->toIso8601String())->toBe('2029-03-25T03:30:00+02:00');
+
+    // 02:30 happens twice on the fall-back day: it is taken as the second one, in CET (+01:00).
+    $repeat = btzShift('2029-10-28', '02:30', '10:00', 2);
+    expect(BusinessDate::shiftStart($repeat)->toIso8601String())->toBe('2029-10-28T02:30:00+01:00');
+});
+
+it('keeps a delegation open through its last day in Warsaw', function () {
+    $user = User::factory()->create();
+    $delegation = Delegation::create([
+        'name' => 'Expo',
+        'destination' => 'Berlin',
+        'start_datetime' => '2026-07-10',
+        'end_datetime' => '2026-07-15',
+        'registration_open' => true,
+        'created_by' => $user->id,
+    ]);
+    $openIds = fn () => collect($this->actingAs($user)->getJson('/api/delegations/open')->assertOk()->json())->pluck('id')->all();
+
+    // 10:00 UTC on the 15th: its last day, still open.
+    Carbon::setTestNow('2026-07-15 10:00:00');
+    expect($openIds())->toBe([$delegation->id]);
+
+    // 22:30 UTC on the 15th is 00:30 on the 16th in Warsaw: over.
+    Carbon::setTestNow('2026-07-15 22:30:00');
+    expect($openIds())->toBe([]);
 });

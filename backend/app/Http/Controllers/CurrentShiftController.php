@@ -17,7 +17,7 @@ class CurrentShiftController extends Controller
         // Shift dates and times are business-timezone wall-clock: compare instants built from them.
         $now = BusinessDate::now();
         $today = $now->toDateString();
-        $yesterday = BusinessDate::today()->subDay()->toDateString();
+        $yesterday = $now->copy()->startOfDay()->subDay()->toDateString();
 
         // Get today's shifts that have times set
         $todayShifts = Shift::with(['assignments.user:id,name,email'])

@@ -237,12 +237,28 @@ test.describe('Checklist archive', () => {
     expect(download.suggestedFilename()).toMatch(/^checklist-archive-\d{4}-\d{2}-\d{2}\.csv$/);
 
     const fs = await import('node:fs/promises');
-    const lines = (await fs.readFile(await download.path(), 'utf8')).trim().split('\n');
+    const lines = (await fs.readFile(await download.path(), 'utf8')).trimEnd().split('\n');
+    // Starts with a UTF-8 BOM, so Excel reads Polish names right (trim() would drop it: trimEnd).
     expect(lines[0]).toBe(
-      'Date,Template,"Outgoing Employee","Incoming Employee",Status,Timing,"Submitted At"',
+      '﻿Date,Template,"Outgoing Employee","Incoming Employee",Status,Timing,"Submitted At"',
     );
     expect(lines).toHaveLength(4);
     expect(lines[1]).toMatch(/^2096-12-30,"Hist Export, ""CSV""",/);
     expect(lines[3]).toMatch(/^2096-12-28,/);
+  });
+
+  test("a refused export shows the server's reason", async ({ adminPage }) => {
+    await adminPage.route('**/api/checklist-submissions/export**', (route) =>
+      route.fulfill({
+        status: 422,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'The selected sort is invalid.', errors: {} }),
+      }),
+    );
+
+    await adminPage.goto('/checklist/history');
+    await adminPage.getByRole('button', { name: 'Export CSV' }).click();
+
+    await expect(adminPage.getByText('The selected sort is invalid.')).toBeVisible();
   });
 });

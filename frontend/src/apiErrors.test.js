@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { describeApiError, fieldError } from './apiErrors.js';
+import { describeApiError, fieldError, readBlobErrorBody } from './apiErrors.js';
 
 const fail = (status, data) => ({ response: { status, data } });
 
@@ -63,5 +63,27 @@ test.describe('fieldError', () => {
     expect(fieldError(errors, 'tag_ids')).toBe('Bad tag.');
     expect(fieldError(errors, 'content')).toBe('');
     expect(fieldError(errors, 'tag')).toBe('');
+  });
+});
+
+test.describe('readBlobErrorBody', () => {
+  test('turns a JSON error body downloaded as a Blob back into data, so its message shows', async () => {
+    const err = {
+      response: {
+        status: 422,
+        data: new Blob([JSON.stringify({ message: 'The selected sort is invalid.' })], {
+          type: 'application/json',
+        }),
+      },
+    };
+    await readBlobErrorBody(err);
+    expect(describeApiError(err, 'Could not export').message).toBe('The selected sort is invalid.');
+  });
+
+  test('leaves a non-JSON blob and a missing response alone', async () => {
+    const html = { response: { status: 502, data: new Blob(['<html>Bad gateway</html>']) } };
+    await readBlobErrorBody(html);
+    expect(describeApiError(html, 'Could not export').message).toBe('Could not export (502).');
+    await expect(readBlobErrorBody({})).resolves.toBeUndefined();
   });
 });

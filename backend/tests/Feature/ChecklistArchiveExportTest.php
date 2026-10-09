@@ -38,11 +38,13 @@ function caeInsert(int $count, ChecklistTemplate $template, User $outgoing, ?Use
     }
 }
 
-/** The streamed CSV as rows of cells (header first). */
+/** The streamed CSV as rows of cells (header first), after checking and dropping the UTF-8 BOM. */
 function caeCsv($response): array
 {
+    $content = $response->streamedContent();
+    expect(substr($content, 0, 3))->toBe("\xEF\xBB\xBF");
     $handle = fopen('php://memory', 'r+');
-    fwrite($handle, $response->streamedContent());
+    fwrite($handle, substr($content, 3));
     rewind($handle);
     $rows = [];
     while (($row = fgetcsv($handle, null, ',', '"', '')) !== false) {
@@ -118,8 +120,9 @@ it('escapes commas, quotes and newlines, and defuses spreadsheet formulas', func
     $admin = User::factory()->create(['role' => 'admin']);
     $tricky = User::factory()->create(['name' => '=HYPERLINK("http://x.test","click")']);
     $plus = User::factory()->create(['name' => '+48 Plus']);
-    caeInsert(1, caeTemplate("Doors, \"front\"\nand back"), $tricky, $plus, ['date' => '2026-10-05']);
+    // Filed second, so exported first (newest filed first).
     caeInsert(1, caeTemplate('-1 Minus'), User::factory()->create(['name' => '@SUM(A1)']), null, ['date' => '2026-10-04']);
+    caeInsert(1, caeTemplate("Doors, \"front\"\nand back"), $tricky, $plus, ['date' => '2026-10-05']);
 
     $response = $this->actingAs($admin)->get('/api/checklist-submissions/export');
     $rows = caeCsv($response);
@@ -170,4 +173,30 @@ it('searches and sorts the list on the server', function () {
         ->and($names(['search' => 'zed']))->toBe(['Gamma checks', 'Alpha checks']);
 
     $this->actingAs($admin)->getJson('/api/checklist-submissions?sort=password')->assertUnprocessable();
+});
+
+it('starts the CSV with a UTF-8 BOM so Excel reads Polish names right', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    caeInsert(1, caeTemplate('Zmiana'), User::factory()->create(['name' => 'Kuba Urbańczyk']));
+
+    $response = $this->actingAs($admin)->get('/api/checklist-submissions/export');
+
+    expect(str_starts_with($response->streamedContent(), "\xEF\xBB\xBFDate,Template,"))->toBeTrue()
+        ->and(caeCsv($response)[1][2])->toBe('Kuba Urbańczyk');
+});
+
+it('exports newest filed first (by id) across chunks, whatever the list sort', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $template = caeTemplate();
+    // Filed in this order; their handover dates deliberately disagree with it.
+    foreach (['2026-10-01', '2026-10-09', '2026-10-05'] as $date) {
+        caeInsert(1, $template, $admin, null, ['date' => $date]);
+    }
+    // Enough later rows for several 500-row chunks.
+    caeInsert(1200, $template, $admin, null, ['date' => '2026-01-01']);
+
+    $rows = caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?sort=template&direction=asc'));
+
+    expect(count($rows) - 1)->toBe(1203)
+        ->and(array_column(array_slice($rows, -3), 0))->toBe(['2026-10-05', '2026-10-09', '2026-10-01']);
 });

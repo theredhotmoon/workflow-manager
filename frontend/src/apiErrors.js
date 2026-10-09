@@ -35,3 +35,18 @@ export function fieldError(fieldErrors, name) {
   const item = Object.keys(fieldErrors).find((key) => key.startsWith(`${name}.`));
   return item ? fieldErrors[item] : '';
 }
+
+/**
+ * A request made with `responseType: 'blob'` (a file download) gets its error body as a Blob too,
+ * so describeApiError() can't see the server's message. When that Blob is JSON, replace it with the
+ * parsed object in place; anything else (HTML from a proxy, empty) is left as it is.
+ */
+export async function readBlobErrorBody(err) {
+  const data = err?.response?.data;
+  if (typeof Blob === 'undefined' || !(data instanceof Blob)) return;
+  try {
+    err.response.data = JSON.parse(await data.text());
+  } catch {
+    err.response.data = {};
+  }
+}

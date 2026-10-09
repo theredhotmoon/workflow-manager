@@ -48,8 +48,11 @@ class ChecklistSubmissionController extends Controller
     }
 
     /**
-     * Every handover the archive list would show for the same filters and sort, as a CSV download.
-     * Streamed in chunks, so there is no row cap and the whole archive is never held in memory.
+     * Every handover the archive list would show for the same filters (and visibility), as a CSV
+     * download. Streamed in keyset chunks on the primary key (WHERE id < last id, 500 rows each),
+     * so there is no row cap, no growing OFFSET, the whole archive is never held in memory, and a
+     * row filed or removed mid-export can't shift the pages and duplicate or skip another.
+     * The order is therefore newest filed first (id descending), not the list's sort column.
      */
     public function export(Request $request)
     {
@@ -58,8 +61,10 @@ class ChecklistSubmissionController extends Controller
 
         return response()->streamDownload(function () use ($query) {
             $out = fopen('php://output', 'w');
+            // UTF-8 BOM: without it Excel reads the file as ANSI and garbles Polish names.
+            fwrite($out, "\xEF\xBB\xBF");
             self::csvRow($out, ['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Timing', 'Submitted At']);
-            foreach ($query->lazy(500) as $submission) {
+            foreach ($query->reorder()->lazyByIdDesc(500, 'checklist_submissions.id', 'id') as $submission) {
                 self::csvRow($out, [
                     $submission->date?->format('Y-m-d') ?? '',
                     $submission->template?->name ?? '',

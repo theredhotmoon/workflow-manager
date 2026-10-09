@@ -465,7 +465,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { describeApiError } from '../apiErrors.js';
+import { describeApiError, readBlobErrorBody } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
@@ -764,6 +764,8 @@ async function exportCSV() {
     a.click();
     URL.revokeObjectURL(url);
   } catch (err) {
+    // The error body came back as a Blob too; read it so the server's message can show.
+    await readBlobErrorBody(err);
     const e = describeApiError(err, 'Could not export the archive');
     if (!e.silent) showToast(e.message, 'error', 6000);
   } finally {

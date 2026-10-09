@@ -7,9 +7,11 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\UserAvailability;
+use App\Services\BusyIntervals;
 use App\Services\RestPolicyJanitor;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
+use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -62,7 +64,8 @@ class ShiftAutoAssignController extends Controller
 
     /**
      * Random Coverage Mode
-     * Assigns random users to each shift, respecting availability and no back-to-back rule.
+     * Assigns random users to each shift, respecting availability, approved delegations, the
+     * streak rest days and 11 h of rest around every other shift of the employee (in any group).
      */
     public function random(Request $request, RestPolicyJanitor $janitor)
     {
@@ -105,16 +108,13 @@ class ShiftAutoAssignController extends Controller
             ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all())
             : null;
 
+        [$busy, $spans] = $this->dailyRestState($employees->pluck('id')->all(), $shifts, $start, $end);
+
         $totalAssigned = 0;
         $runUserIds = [];
         $warnings = [];
-        $shiftsArray = $shifts->toArray();
-        $shiftsById = [];
-        foreach ($shifts as $shift) {
-            $shiftsById[$shift->id] = $shift;
-        }
 
-        // Track assignments as we go so adjacent checks work for newly created assignments
+        // Track assignments as we go so the same-date check sees newly created assignments
         $assignmentTracker = []; // dateStr:shiftNumber => [user_ids]
         foreach ($shifts as $shift) {
             $dateStr = $shift->date->format('Y-m-d');
@@ -122,60 +122,68 @@ class ShiftAutoAssignController extends Controller
             $assignmentTracker[$key] = $shift->assignments->pluck('user_id')->toArray();
         }
 
-        foreach ($shifts as $shift) {
-            $dateStr = $shift->date->format('Y-m-d');
-            $dayOfWeek = $shift->date->dayOfWeekIso; // 1=Mon, 7=Sun
-            $isWeekend = $dayOfWeek >= 6;
-            $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
+        // One transaction: a failure part-way leaves no partial month behind.
+        DB::transaction(function () use (
+            $request, $shifts, $employees, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
+        ) {
+            foreach ($shifts as $shift) {
+                $dateStr = $shift->date->format('Y-m-d');
+                $dayOfWeek = $shift->date->dayOfWeekIso; // 1=Mon, 7=Sun
+                $isWeekend = $dayOfWeek >= 6;
+                $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
 
-            $currentKey = $dateStr . ':' . $shift->shift_number;
-            $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
-            $spotsToFill = $needed - count($alreadyAssigned);
+                $currentKey = $dateStr . ':' . $shift->shift_number;
+                $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
+                $spotsToFill = $needed - count($alreadyAssigned);
 
-            if ($spotsToFill <= 0)
-                continue;
+                if ($spotsToFill <= 0)
+                    continue;
 
-            // Get available users for this shift
-            $available = $this->getAvailableUsers(
-                $dateStr,
-                $shift,
-                $employees,
-                $blockedMap,
-                $assignmentTracker,
-                $alreadyAssigned,
-                $streakTimeline
-            );
+                // Get available users for this shift
+                $available = $this->getAvailableUsers(
+                    $dateStr,
+                    $shift,
+                    $employees,
+                    $blockedMap,
+                    $assignmentTracker,
+                    $alreadyAssigned,
+                    $streakTimeline,
+                    $busy,
+                    $spans[$shift->id]
+                );
 
-            // Shuffle for randomness
-            $available = collect($available)->shuffle()->values()->toArray();
+                // Shuffle for randomness
+                $available = collect($available)->shuffle()->values()->toArray();
 
-            $assigned = 0;
-            foreach ($available as $userId) {
-                if ($assigned >= $spotsToFill)
-                    break;
+                $assigned = 0;
+                foreach ($available as $userId) {
+                    if ($assigned >= $spotsToFill)
+                        break;
 
-                ShiftAssignment::create([
-                    'shift_id' => $shift->id,
-                    'user_id' => $userId,
-                ]);
+                    ShiftAssignment::create([
+                        'shift_id' => $shift->id,
+                        'user_id' => $userId,
+                    ]);
 
-                $assignmentTracker[$currentKey][] = $userId;
-                $runUserIds[] = $userId;
-                if ($streakTimeline !== null)
-                    $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
-                $assigned++;
-                $totalAssigned++;
+                    $assignmentTracker[$currentKey][] = $userId;
+                    $runUserIds[] = $userId;
+                    $busy->add($userId, ...$spans[$shift->id]);
+                    if ($streakTimeline !== null)
+                        $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
+                    $assigned++;
+                    $totalAssigned++;
+                }
+
+                if ($assigned < $spotsToFill) {
+                    $warnings[] = "Could only assign {$assigned}/{$spotsToFill} users to {$dateStr} Shift {$shift->shift_number}";
+                }
             }
 
-            if ($assigned < $spotsToFill) {
-                $warnings[] = "Could only assign {$assigned}/{$spotsToFill} users to {$dateStr} Shift {$shift->shift_number}";
+            // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
+            if ($group) {
+                $janitor->clearUncovered($group, $runUserIds);
             }
-        }
-
-        // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
-        if ($group) {
-            $janitor->clearUncovered($group, $runUserIds);
-        }
+        });
 
         $message = "Auto-assigned {$totalAssigned} slots.";
         if (count($warnings) > 0) {
@@ -234,6 +242,8 @@ class ShiftAutoAssignController extends Controller
             ? app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all())
             : null;
 
+        [$busy, $spans] = $this->dailyRestState($employees->pluck('id')->all(), $shifts, $start, $end);
+
         // Group shifts by date
         $shiftsByDate = [];
         foreach ($shifts as $shift) {
@@ -264,116 +274,90 @@ class ShiftAutoAssignController extends Controller
         $rotationDays = $request->rotation_days;
         $dateChunks = array_chunk($dates, $rotationDays);
 
-        foreach ($dateChunks as $dateBlock) {
-            // Determine how many unique users this block needs:
-            // max users needed for any single shift × shifts per day
-            $shiftsPerDay = isset($shiftsByDate[$dateBlock[0]]) ? count($shiftsByDate[$dateBlock[0]]) : 1;
-            $maxPerShift = max($request->users_per_shift_weekday, $request->users_per_shift_weekend);
-            $teamSize = $maxPerShift * $shiftsPerDay;
+        // One transaction: a failure part-way leaves no partial month behind.
+        DB::transaction(function () use (
+            $request, $shifts, $shiftsByDate, $dateChunks, $employees, $employeeIds, $poolIndex, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
+        ) {
+            foreach ($dateChunks as $dateBlock) {
+                // Determine how many unique users this block needs:
+                // max users needed for any single shift × shifts per day
+                $shiftsPerDay = isset($shiftsByDate[$dateBlock[0]]) ? count($shiftsByDate[$dateBlock[0]]) : 1;
+                $maxPerShift = max($request->users_per_shift_weekday, $request->users_per_shift_weekend);
+                $teamSize = $maxPerShift * $shiftsPerDay;
 
-            // Build a subteam: pick users starting from poolIndex, wrapping around
-            $subteam = [];
-            $attempts = 0;
-            $idx = $poolIndex;
+                // Build a subteam: pick users starting from poolIndex, wrapping around
+                $subteam = [];
+                $attempts = 0;
+                $idx = $poolIndex;
 
-            while (count($subteam) < $teamSize && $attempts < count($employeeIds) * 2) {
-                $candidateId = $employeeIds[$idx % count($employeeIds)];
+                while (count($subteam) < $teamSize && $attempts < count($employeeIds) * 2) {
+                    $candidateId = $employeeIds[$idx % count($employeeIds)];
 
-                // Check if this user is blocked for ANY day in this block
-                $blockedForBlock = false;
-                foreach ($dateBlock as $dateStr) {
-                    if ($this->isUserBlockedOnDate($candidateId, $dateStr, $blockedMap)) {
-                        $blockedForBlock = true;
-                        break;
+                    // Check if this user is blocked for ANY day in this block
+                    $blockedForBlock = false;
+                    foreach ($dateBlock as $dateStr) {
+                        if ($this->isUserBlockedOnDate($candidateId, $dateStr, $blockedMap)) {
+                            $blockedForBlock = true;
+                            break;
+                        }
                     }
+
+                    if (!$blockedForBlock && !in_array($candidateId, $subteam)) {
+                        $subteam[] = $candidateId;
+                    }
+
+                    $idx++;
+                    $attempts++;
                 }
 
-                if (!$blockedForBlock && !in_array($candidateId, $subteam)) {
-                    $subteam[] = $candidateId;
-                }
+                // Advance pool index for next block
+                $poolIndex = ($poolIndex + count($subteam)) % count($employeeIds);
 
-                $idx++;
-                $attempts++;
-            }
-
-            // Advance pool index for next block
-            $poolIndex = ($poolIndex + count($subteam)) % count($employeeIds);
-
-            if (empty($subteam)) {
-                foreach ($dateBlock as $dateStr) {
-                    $warnings[] = "No available users for block starting {$dateStr}";
-                }
-                continue;
-            }
-
-            // Now assign the subteam across shifts in this date block
-            foreach ($dateBlock as $dateStr) {
-                if (!isset($shiftsByDate[$dateStr]))
+                if (empty($subteam)) {
+                    foreach ($dateBlock as $dateStr) {
+                        $warnings[] = "No available users for block starting {$dateStr}";
+                    }
                     continue;
+                }
 
-                $dayOfWeek = Carbon::parse($dateStr)->dayOfWeekIso;
-                $isWeekend = $dayOfWeek >= 6;
-                $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
-
-                foreach ($shiftsByDate[$dateStr] as $shift) {
-                    $currentKey = $dateStr . ':' . $shift->shift_number;
-                    $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
-                    $spotsToFill = $needed - count($alreadyAssigned);
-
-                    if ($spotsToFill <= 0)
+                // Now assign the subteam across shifts in this date block
+                foreach ($dateBlock as $dateStr) {
+                    if (!isset($shiftsByDate[$dateStr]))
                         continue;
 
-                    // Filter subteam to those available for this specific shift
-                    $availableFromTeam = [];
-                    foreach ($subteam as $userId) {
-                        if (in_array($userId, $alreadyAssigned))
+                    $dayOfWeek = Carbon::parse($dateStr)->dayOfWeekIso;
+                    $isWeekend = $dayOfWeek >= 6;
+                    $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
+
+                    foreach ($shiftsByDate[$dateStr] as $shift) {
+                        $currentKey = $dateStr . ':' . $shift->shift_number;
+                        $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
+                        $spotsToFill = $needed - count($alreadyAssigned);
+
+                        if ($spotsToFill <= 0)
                             continue;
-                        if ($this->isUserBlockedOnDate($userId, $dateStr, $blockedMap))
-                            continue;
-                        if ($streakTimeline !== null && $streakTimeline->wouldConflict($userId, $shift->shift_type, $shift->date, $shift->shift_number))
-                            continue;
-                        if ($this->isAdjacentAssigned($userId, $dateStr, $shift->shift_number, $assignmentTracker))
-                            continue;
-                        if ($this->isAlreadyAssignedOnDate($userId, $dateStr, $shift->shift_number, $assignmentTracker))
-                            continue;
-                        $availableFromTeam[] = $userId;
-                    }
 
-                    // Shuffle for variety within the subteam
-                    shuffle($availableFromTeam);
+                        // Filter subteam to those available for this specific shift
+                        $availableFromTeam = [];
+                        foreach ($subteam as $userId) {
+                            if (in_array($userId, $alreadyAssigned))
+                                continue;
+                            if ($this->isUserBlockedOnDate($userId, $dateStr, $blockedMap))
+                                continue;
+                            if ($streakTimeline !== null && $streakTimeline->wouldConflict($userId, $shift->shift_type, $shift->date, $shift->shift_number))
+                                continue;
+                            if (!$busy->allowsDailyRest($userId, ...$spans[$shift->id]))
+                                continue;
+                            if ($this->isAlreadyAssignedOnDate($userId, $dateStr, $shift->shift_number, $assignmentTracker))
+                                continue;
+                            $availableFromTeam[] = $userId;
+                        }
 
-                    $assigned = 0;
-                    foreach ($availableFromTeam as $userId) {
-                        if ($assigned >= $spotsToFill)
-                            break;
+                        // Shuffle for variety within the subteam
+                        shuffle($availableFromTeam);
 
-                        ShiftAssignment::create([
-                            'shift_id' => $shift->id,
-                            'user_id' => $userId,
-                        ]);
-
-                        $assignmentTracker[$currentKey][] = $userId;
-                        $runUserIds[] = $userId;
-                        if ($streakTimeline !== null)
-                            $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
-                        $assigned++;
-                        $totalAssigned++;
-                    }
-
-                    if ($assigned < $spotsToFill) {
-                        // Try filling from ANY available employee (fallback)
-                        $fallbackAvailable = $this->getAvailableUsers(
-                            $dateStr,
-                            $shift,
-                            $employees,
-                            $blockedMap,
-                            $assignmentTracker,
-                            $assignmentTracker[$currentKey],
-                            $streakTimeline
-                        );
-                        shuffle($fallbackAvailable);
-
-                        foreach ($fallbackAvailable as $userId) {
+                        $assigned = 0;
+                        foreach ($availableFromTeam as $userId) {
                             if ($assigned >= $spotsToFill)
                                 break;
 
@@ -384,6 +368,7 @@ class ShiftAutoAssignController extends Controller
 
                             $assignmentTracker[$currentKey][] = $userId;
                             $runUserIds[] = $userId;
+                            $busy->add($userId, ...$spans[$shift->id]);
                             if ($streakTimeline !== null)
                                 $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
                             $assigned++;
@@ -391,17 +376,51 @@ class ShiftAutoAssignController extends Controller
                         }
 
                         if ($assigned < $spotsToFill) {
-                            $warnings[] = "Could only assign {$assigned}/{$spotsToFill} users to {$dateStr} Shift {$shift->shift_number}";
+                            // Try filling from ANY available employee (fallback)
+                            $fallbackAvailable = $this->getAvailableUsers(
+                                $dateStr,
+                                $shift,
+                                $employees,
+                                $blockedMap,
+                                $assignmentTracker,
+                                $assignmentTracker[$currentKey],
+                                $streakTimeline,
+                                $busy,
+                                $spans[$shift->id]
+                            );
+                            shuffle($fallbackAvailable);
+
+                            foreach ($fallbackAvailable as $userId) {
+                                if ($assigned >= $spotsToFill)
+                                    break;
+
+                                ShiftAssignment::create([
+                                    'shift_id' => $shift->id,
+                                    'user_id' => $userId,
+                                ]);
+
+                                $assignmentTracker[$currentKey][] = $userId;
+                                $runUserIds[] = $userId;
+                                $busy->add($userId, ...$spans[$shift->id]);
+                                if ($streakTimeline !== null)
+                                    $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
+                                $assigned++;
+                                $totalAssigned++;
+                            }
+
+                            if ($assigned < $spotsToFill) {
+                                $warnings[] = "Could only assign {$assigned}/{$spotsToFill} users to {$dateStr} Shift {$shift->shift_number}";
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
-        if ($group) {
-            $janitor->clearUncovered($group, $runUserIds);
-        }
+            // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
+            if ($group) {
+                $janitor->clearUncovered($group, $runUserIds);
+            }
+        });
 
         $message = "Auto-assigned {$totalAssigned} slots using {$rotationDays}-day rotation.";
         if (count($warnings) > 0) {
@@ -448,6 +467,26 @@ class ShiftAutoAssignController extends Controller
             }
         }
 
+        // An approved delegation makes the employee unavailable on every day it covers: their own
+        // dates when set, else the delegation's. Delegation dates are business dates (no time).
+        $delegations = DB::table('delegation_user')
+            ->join('delegations', 'delegations.id', '=', 'delegation_user.delegation_id')
+            ->whereIn('delegation_user.user_id', $userIds)
+            ->where('delegation_user.status', 'approved')
+            ->whereRaw('COALESCE(delegation_user.custom_start, CAST(delegations.start_datetime AS DATE)) <= ?', [$end->toDateString()])
+            ->whereRaw('COALESCE(delegation_user.custom_end, CAST(delegations.end_datetime AS DATE)) >= ?', [$start->toDateString()])
+            ->get(['delegation_user.user_id', 'delegation_user.custom_start', 'delegation_user.custom_end',
+                'delegations.start_datetime', 'delegations.end_datetime']);
+        $monthFrom = $start->toDateString();
+        $monthTo = $end->toDateString();
+        foreach ($delegations as $d) {
+            $from = max(substr($d->custom_start ?? $d->start_datetime, 0, 10), $monthFrom);
+            $to = min(substr($d->custom_end ?? $d->end_datetime, 0, 10), $monthTo);
+            for ($cursor = Carbon::parse($from); $cursor->toDateString() <= $to; $cursor->addDay()) {
+                $map[$d->user_id][] = $cursor->toDateString();
+            }
+        }
+
         return $map;
     }
 
@@ -460,50 +499,24 @@ class ShiftAutoAssignController extends Controller
     }
 
     /**
-     * Check if user is assigned to an adjacent shift (back-to-back).
+     * The employees' busy intervals for the 11 h daily rest (their assignments in every group, from
+     * two days before the month to two days after it) and each shift's [start, end) span.
      */
-    private function isAdjacentAssigned(int $userId, string $dateStr, int $shiftNumber, array $assignmentTracker): bool
+    private function dailyRestState(array $userIds, $shifts, Carbon $start, Carbon $end): array
     {
-        // Check previous shift on same day
-        $prevKey = $dateStr . ':' . ($shiftNumber - 1);
-        if (isset($assignmentTracker[$prevKey]) && in_array($userId, $assignmentTracker[$prevKey])) {
-            return true;
+        $busy = new BusyIntervals();
+        $from = $start->copy()->subDays(2)->toDateString();
+        $to = $end->copy()->addDays(2)->toDateString();
+        foreach (BusyIntervals::loadAssignedShifts($userIds, $from, $to) as $assigned) {
+            $busy->add((int) $assigned->busy_user_id, ...BusyIntervals::shiftSpan($assigned));
         }
 
-        // Check next shift on same day
-        $nextKey = $dateStr . ':' . ($shiftNumber + 1);
-        if (isset($assignmentTracker[$nextKey]) && in_array($userId, $assignmentTracker[$nextKey])) {
-            return true;
+        $spans = [];
+        foreach ($shifts as $shift) {
+            $spans[$shift->id] = BusyIntervals::shiftSpan($shift);
         }
 
-        // Check last shift of previous day
-        if ($shiftNumber === 1) {
-            $prevDate = Carbon::parse($dateStr)->subDay()->format('Y-m-d');
-            // Find highest shift number on prev day
-            for ($sn = 10; $sn >= 1; $sn--) {
-                $key = $prevDate . ':' . $sn;
-                if (isset($assignmentTracker[$key])) {
-                    if (in_array($userId, $assignmentTracker[$key])) {
-                        return true;
-                    }
-                    break;
-                }
-            }
-        }
-
-        // Check first shift of next day (for last shift of current day)
-        // We need to know max shift number, so check if next shift doesn't exist
-        $nextShiftKey = $dateStr . ':' . ($shiftNumber + 1);
-        if (!isset($assignmentTracker[$nextShiftKey])) {
-            // This might be the last shift of the day
-            $nextDate = Carbon::parse($dateStr)->addDay()->format('Y-m-d');
-            $nextDayFirstKey = $nextDate . ':1';
-            if (isset($assignmentTracker[$nextDayFirstKey]) && in_array($userId, $assignmentTracker[$nextDayFirstKey])) {
-                return true;
-            }
-        }
-
-        return false;
+        return [$busy, $spans];
     }
 
     /**
@@ -515,8 +528,10 @@ class ShiftAutoAssignController extends Controller
         $employees,
         array $blockedMap,
         array $assignmentTracker,
-        array $excludeUserIds = [],
-        ?StreakTimeline $streakTimeline = null
+        array $excludeUserIds,
+        ?StreakTimeline $streakTimeline,
+        BusyIntervals $busy,
+        array $span
     ): array {
         $available = [];
 
@@ -525,7 +540,7 @@ class ShiftAutoAssignController extends Controller
                 continue;
             if ($this->isUserBlockedOnDate($emp->id, $dateStr, $blockedMap))
                 continue;
-            if ($this->isAdjacentAssigned($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
+            if (!$busy->allowsDailyRest($emp->id, ...$span))
                 continue;
             if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
                 continue;
@@ -560,13 +575,14 @@ class ShiftAutoAssignController extends Controller
      * Polish Labor Code compliant assignment.
      *
      * Rules enforced:
-     * - 11h uninterrupted daily rest after each shift
-     * - 35h uninterrupted weekly rest (last day of settlement-period-anchored week preferred)
+     * - 11h uninterrupted daily rest before and after each shift, against the employee's shifts in
+     *   every group (and the neighbouring months), on-call callbacks and the run's own picks
+     * - 35h uninterrupted weekly rest in every settlement-anchored week a shift touches
      * - Max weekly hour cap per settlement period (configurable via ShiftGroup.weekly_hour_cap)
      * - Max 13h work per day
      * - Max 5 working days per week average
      * - No same-day double shifts
-     * - Respects user unavailability
+     * - Respects user unavailability and approved delegations
      */
     public function polishLaw(Request $request, RestPolicyJanitor $janitor)
     {
@@ -607,53 +623,37 @@ class ShiftAutoAssignController extends Controller
 
         $blockedMap = $this->buildBlockedMap($employees->pluck('id')->toArray(), $request->month);
 
-        // On-call callbacks for this group/month — read-only input to the
-        // state walk below (see docs/superpowers/specs/2026-09-15-on-call-duty-design.md).
-        // polishLaw() never creates or mutates on-call data, only reads it.
-        $onCallCallbacks = \App\Models\OnCallCallback::whereHas('onCallAssignment', function ($q) use ($groupId, $employees) {
-            $q->where('shift_group_id', $groupId)
-                ->whereIn('user_id', $employees->pluck('id'));
-        })
-            ->whereBetween('starts_at', [$start, $end])
-            ->with('onCallAssignment:id,user_id')
-            ->orderBy('starts_at')
-            ->get();
+        $userIds = $employees->pluck('id')->all();
+        $monthFrom = $start->toDateString();
+        $monthTo = $end->toDateString();
 
-        // Pre-compute each distinct date's settlement-anchored week: a period-qualified
-        // key (so weeks from different periods never collide), the week's hour cap,
-        // and whether the date is the last day of its anchored week (used below in
-        // place of the old "is it Sunday" heuristic).
+        // Settlement-anchored weeks for every date whose 35 h window can reach into the month, and
+        // the dates those windows cover: from the day before the week holding the day before the
+        // month's first week (and the week holding the 6th day before the month: a shortened week's
+        // window still runs seven days, into the next period) to eight days after the month. So the
+        // caps and the 35 h rest see the neighbouring months too. Each date gets a period-qualified
+        // week key (weeks of different periods never collide), the week's hour cap and the date its
+        // week starts on.
         $weekKeyByDate = [];
         $weekCapByDate = [];
-        $weekEndByDate = [];
+        $weekStartByDate = [];
         try {
-            foreach ($shifts as $shift) {
-                $dateStr = $shift->date->format('Y-m-d');
-                if (isset($weekKeyByDate[$dateStr])) {
-                    continue;
-                }
-                $shiftDate = $shift->date->copy()->startOfDay();
-                $period = $calculator->periodContaining($group, $shiftDate);
-                $match = $calculator->weekFor($period, $shiftDate);
+            $weekStartOf = fn (Carbon $day) => $calculator->weekFor($calculator->periodContaining($group, $day), $day)['week']['start'];
+            $firstWeekStart = $weekStartOf($start);
+            $from = min(
+                $weekStartOf($firstWeekStart->copy()->subDay())->toDateString(),
+                $weekStartOf($start->copy()->subDays(6))->toDateString(),
+            );
+            $from = Carbon::parse($from)->subDay()->toDateString();
+            $to = $end->copy()->addDays(8)->toDateString();
+
+            for ($day = Carbon::parse($from); $day->toDateString() <= $to; $day->addDay()) {
+                $dateStr = $day->toDateString();
+                $period = $calculator->periodContaining($group, $day);
+                $match = $calculator->weekFor($period, $day);
                 $weekKeyByDate[$dateStr] = "{$period['period_number']}:{$match['index']}";
                 $weekCapByDate[$dateStr] = $match['week']['cap_hours'];
-                $weekEndByDate[$dateStr] = $dateStr === $match['week']['end']->format('Y-m-d');
-            }
-            // A callback can land on a date with no shift record at all
-            // (called in on an otherwise-scheduled day off) — a callback
-            // crossing midnight is attributed entirely to its starts_at
-            // date, the same convention Shift.date uses for overnight shifts.
-            foreach ($onCallCallbacks as $callback) {
-                $dateStr = $callback->starts_at->format('Y-m-d');
-                if (isset($weekKeyByDate[$dateStr])) {
-                    continue;
-                }
-                $callbackDate = $callback->starts_at->copy()->startOfDay();
-                $period = $calculator->periodContaining($group, $callbackDate);
-                $match = $calculator->weekFor($period, $callbackDate);
-                $weekKeyByDate[$dateStr] = "{$period['period_number']}:{$match['index']}";
-                $weekCapByDate[$dateStr] = $match['week']['cap_hours'];
-                $weekEndByDate[$dateStr] = $dateStr === $match['week']['end']->format('Y-m-d');
+                $weekStartByDate[$dateStr] = $match['week']['start']->toDateString();
             }
         } catch (\InvalidArgumentException $e) {
             return response()->json([
@@ -664,215 +664,204 @@ class ShiftAutoAssignController extends Controller
         // The replay holds every assignment in the group, including ones after this month, so
         // wouldConflict() can see later shifts a new one would turn into rest days. Days are processed
         // in date order below and every new assignment is appended, so eligibility stays exact.
-        $streakTimeline = app(StreakReplay::class)->forGroup($group, $employees->pluck('id')->all());
+        $streakTimeline = app(StreakReplay::class)->forGroup($group, $userIds);
 
-        // Build shift time info
+        // Shift instants in the business timezone; durations and gaps are elapsed time.
         $shiftTimes = [];
         foreach ($shifts as $shift) {
-            $timing = $calculator->shiftTiming($shift);
-
+            $shiftStart = BusinessDate::shiftStart($shift);
+            $shiftEnd = BusinessDate::shiftEnd($shift);
             $shiftTimes[$shift->id] = [
-                'start' => $timing['start'],
-                'end' => $timing['end'],
-                'duration_minutes' => $timing['duration_hours'] * 60,
-                'duration_hours' => $timing['duration_hours'],
-                'is_night' => $this->isNightShift($timing['start'], $timing['end']),
+                'span' => [$shiftStart->getTimestamp(), $shiftEnd->getTimestamp()],
+                'duration_hours' => ($shiftEnd->getTimestamp() - $shiftStart->getTimestamp()) / 3600,
+                'is_night' => $this->isNightShift($shiftStart, $shiftEnd),
             ];
         }
 
-        // Track per-employee state
+        // Each 35 h weekly-rest window: the seven days from its week's start, local midnight to
+        // local midnight. A week cut short by the end of a settlement period still gets seven days,
+        // or a one-day week could never hold 35 h.
+        $restWindows = [];
+        foreach (array_unique($weekStartByDate) as $weekStart) {
+            $windowStart = Carbon::parse($weekStart, BusinessDate::timezone());
+            $restWindows[$weekStart] = [$windowStart->getTimestamp(), $windowStart->copy()->addDays(7)->getTimestamp()];
+        }
+
+        // The 35 h windows each shift overlaps: those of every week starting from six days before its
+        // date through its end date (a shortened week's window reaches into the next week, period or
+        // month).
+        $windowsByShift = [];
+        foreach ($shifts as $shift) {
+            [$shiftStartTs, $shiftEndTs] = $shiftTimes[$shift->id]['span'];
+            $endDateStr = Carbon::createFromTimestamp($shiftEndTs - 1, BusinessDate::timezone())->toDateString();
+            $windows = [];
+            for ($day = $shift->date->copy()->subDays(6); $day->toDateString() <= $endDateStr; $day->addDay()) {
+                $weekStart = $weekStartByDate[$day->toDateString()];
+                [$windowStart, $windowEnd] = $restWindows[$weekStart];
+                if ($windowStart < $shiftEndTs && $windowEnd > $shiftStartTs) {
+                    $windows[$weekStart] = $restWindows[$weekStart];
+                }
+            }
+            $windowsByShift[$shift->id] = array_values($windows);
+        }
+
+        // Per-employee state: weekly hours and worked dates (for the caps and the 5-day rule) and
+        // the month's hours (for fairness).
         $employeeState = [];
-        foreach ($employees as $emp) {
-            $employeeState[$emp->id] = [
-                'last_shift_end' => null,        // Carbon of last shift end
-                'weekly_hours' => [],             // weekKey => hours
-                'weekly_days' => [],              // weekKey => [dates worked]
-                'total_hours' => 0,
-                'total_shifts' => 0,
-                'last_rest_start' => null,        // When last rest period began (for 35h weekly check)
-            ];
+        foreach ($userIds as $userId) {
+            $employeeState[$userId] = ['weekly_hours' => [], 'weekly_days' => [], 'total_hours' => 0];
+        }
+
+        // Busy time the run must respect: the employees' assignments in every group, and their
+        // on-call callbacks (read only; polishLaw never creates or changes on-call data). A callback
+        // counts as worked time on its start date, the convention Shift.date uses for overnight
+        // shifts, and may fall on a date with no shift at all.
+        $busy = new BusyIntervals();
+        $busyEntries = [];
+        foreach (BusyIntervals::loadAssignedShifts($userIds, $from, $to) as $assigned) {
+            $busyEntries[] = [(int) $assigned->busy_user_id, $assigned->date->format('Y-m-d'), BusyIntervals::shiftSpan($assigned)];
+        }
+        foreach (BusyIntervals::loadCallbacks($userIds, $from, $to) as $callback) {
+            $busyEntries[] = [(int) $callback->onCallAssignment->user_id, BusyIntervals::callbackDate($callback), BusyIntervals::callbackSpan($callback)];
+        }
+        foreach ($busyEntries as [$userId, $dateStr, $span]) {
+            $busy->add($userId, ...$span);
+            $hours = ($span[1] - $span[0]) / 3600;
+            if (isset($weekKeyByDate[$dateStr])) {
+                $weekNum = $weekKeyByDate[$dateStr];
+                $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $hours;
+                $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
+            }
+            if ($dateStr >= $monthFrom && $dateStr <= $monthTo) {
+                $employeeState[$userId]['total_hours'] += $hours;
+            }
         }
 
         // Track assignments
         $assignmentTracker = [];
         foreach ($shifts as $shift) {
-            $dateStr = $shift->date->format('Y-m-d');
-            $key = $dateStr . ':' . $shift->shift_number;
+            $key = $shift->date->format('Y-m-d') . ':' . $shift->shift_number;
             $assignmentTracker[$key] = $shift->assignments->pluck('user_id')->toArray();
-
-            // Pre-populate state for existing assignments
-            foreach ($shift->assignments as $a) {
-                if (isset($employeeState[$a->user_id]) && isset($shiftTimes[$shift->id])) {
-                    $st = $shiftTimes[$shift->id];
-                    $weekNum = $weekKeyByDate[$dateStr];
-                    $employeeState[$a->user_id]['last_shift_end'] = $st['end'];
-                    $employeeState[$a->user_id]['total_hours'] += $st['duration_hours'];
-                    $employeeState[$a->user_id]['total_shifts']++;
-                    $employeeState[$a->user_id]['weekly_hours'][$weekNum] = ($employeeState[$a->user_id]['weekly_hours'][$weekNum] ?? 0) + $st['duration_hours'];
-                    $employeeState[$a->user_id]['weekly_days'][$weekNum][$dateStr] = true;
-                }
-            }
-        }
-
-        // Fold on-call callbacks into the same per-employee state used for
-        // shifts: a callback counts as worked time for weekly_hour_cap/5-day
-        // purposes, added here since those totals are additive and
-        // order-independent. last_shift_end is NOT updated here — the main
-        // assignment loop below blindly overwrites last_shift_end on every
-        // shift it assigns (line ~800), which would silently erase a
-        // callback's effect on the rest clock the moment any earlier shift
-        // in the month gets assigned. Instead, $callbackEndsByUser is
-        // consulted fresh inside the 11h-rest eligibility check itself,
-        // where it cannot be stale regardless of assignment order.
-        $callbackEndsByUser = [];
-        foreach ($onCallCallbacks as $callback) {
-            $userId = $callback->onCallAssignment->user_id;
-            if (!isset($employeeState[$userId])) {
-                continue;
-            }
-
-            $dateStr = $callback->starts_at->format('Y-m-d');
-            $weekNum = $weekKeyByDate[$dateStr];
-            $durationHours = $callback->starts_at->diffInMinutes($callback->ends_at) / 60;
-
-            $employeeState[$userId]['total_hours'] += $durationHours;
-            $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $durationHours;
-            $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
-            $callbackEndsByUser[$userId][] = $callback->ends_at;
         }
 
         $totalAssigned = 0;
         $runUserIds = [];
         $warnings = [];
 
-        foreach ($shifts as $shift) {
-            $dateStr = $shift->date->format('Y-m-d');
-            $dayOfWeek = $shift->date->dayOfWeekIso;
-            $isWeekend = $dayOfWeek >= 6;
-            $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
-            $weekNum = $weekKeyByDate[$dateStr];
-            $weekCap = $weekCapByDate[$dateStr];
+        // One transaction: a failure part-way leaves no partial month behind.
+        DB::transaction(function () use (
+            $request, $shifts, $employees, $blockedMap, $assignmentTracker, $weekKeyByDate, $weekCapByDate, $shiftTimes, $windowsByShift, $employeeState, $busy, $streakTimeline, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
+        ) {
+            foreach ($shifts as $shift) {
+                $dateStr = $shift->date->format('Y-m-d');
+                $dayOfWeek = $shift->date->dayOfWeekIso;
+                $isWeekend = $dayOfWeek >= 6;
+                $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
+                $weekNum = $weekKeyByDate[$dateStr];
+                $weekCap = $weekCapByDate[$dateStr];
 
-            $currentKey = $dateStr . ':' . $shift->shift_number;
-            $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
-            $spotsToFill = $needed - count($alreadyAssigned);
+                $currentKey = $dateStr . ':' . $shift->shift_number;
+                $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
+                $spotsToFill = $needed - count($alreadyAssigned);
 
-            if ($spotsToFill <= 0)
-                continue;
-
-            if (!isset($shiftTimes[$shift->id]))
-                continue;
-            $st = $shiftTimes[$shift->id];
-
-            // Check shift doesn't exceed 13h
-            if ($st['duration_hours'] > 13) {
-                $warnings[] = "{$dateStr} S{$shift->shift_number}: shift exceeds 13h limit ({$st['duration_hours']}h)";
-                continue;
-            }
-
-            // Build list of eligible employees for this shift
-            $candidates = [];
-            foreach ($employees as $emp) {
-                if (in_array($emp->id, $alreadyAssigned))
-                    continue;
-                if ($this->isUserBlockedOnDate($emp->id, $dateStr, $blockedMap))
-                    continue;
-                if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
+                if ($spotsToFill <= 0)
                     continue;
 
-                $state = $employeeState[$emp->id];
+                $st = $shiftTimes[$shift->id];
+                [$shiftStartTs, $shiftEndTs] = $st['span'];
 
-                // Rule: 11h rest since last shift or last on-call callback,
-                // whichever is later and already occurred before this
-                // candidate shift starts. Computed fresh here (not folded
-                // into $state['last_shift_end']) because that field gets
-                // overwritten by every shift this loop assigns — see the
-                // callback pre-population comment above.
-                $lastActivityEnd = $state['last_shift_end'];
-                foreach ($callbackEndsByUser[$emp->id] ?? [] as $callbackEnd) {
-                    if ($callbackEnd->lte($st['start']) && ($lastActivityEnd === null || $callbackEnd->gt($lastActivityEnd))) {
-                        $lastActivityEnd = $callbackEnd;
+                // Check shift doesn't exceed 13h
+                if ($st['duration_hours'] > 13) {
+                    $warnings[] = "{$dateStr} S{$shift->shift_number}: shift exceeds 13h limit ({$st['duration_hours']}h)";
+                    continue;
+                }
+
+                // Build list of eligible employees for this shift
+                $candidates = [];
+                foreach ($employees as $emp) {
+                    if (in_array($emp->id, $alreadyAssigned))
+                        continue;
+                    if ($this->isUserBlockedOnDate($emp->id, $dateStr, $blockedMap))
+                        continue;
+                    if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
+                        continue;
+
+                    $state = $employeeState[$emp->id];
+
+                    // Rule: 11h rest before and after the shift, against every busy interval
+                    // (shifts in any group, callbacks, earlier picks of this run).
+                    if (!$busy->allowsDailyRest($emp->id, $shiftStartTs, $shiftEndTs))
+                        continue;
+
+                    // Rule: max weekly_hour_cap this settlement-anchored week
+                    $weekHours = $state['weekly_hours'][$weekNum] ?? 0;
+                    if ($weekHours + $st['duration_hours'] > $weekCap)
+                        continue;
+
+                    // Rule: max 5 working days this week
+                    $weekDays = $state['weekly_days'][$weekNum] ?? [];
+                    if (!isset($weekDays[$dateStr]) && count($weekDays) >= 5)
+                        continue;
+
+                    // Rule: 35h uninterrupted weekly rest is still left in every week the shift touches
+                    foreach ($windowsByShift[$shift->id] as [$windowStart, $windowEnd]) {
+                        if ($busy->longestRestWith($emp->id, $windowStart, $windowEnd, $shiftStartTs, $shiftEndTs) < BusyIntervals::MIN_WEEKLY_REST_HOURS * 3600)
+                            continue 2;
                     }
-                }
-                if ($lastActivityEnd !== null) {
-                    $restHours = $lastActivityEnd->diffInMinutes($st['start']) / 60;
-                    if ($restHours < 11)
+
+                    // Rule: shift-streak mandatory rest (see StreakTimeline)
+                    if ($streakTimeline->wouldConflict($emp->id, $shift->shift_type, $shift->date, $shift->shift_number)) {
                         continue;
+                    }
+
+                    // Scoring: prefer employees with fewer hours (fairness)
+                    $candidates[] = ['id' => $emp->id, 'score' => $state['total_hours']];
                 }
 
-                // Rule: max weekly_hour_cap this settlement-anchored week
-                $weekHours = $state['weekly_hours'][$weekNum] ?? 0;
-                if ($weekHours + $st['duration_hours'] > $weekCap)
-                    continue;
+                // Sort by fewest hours first (fair distribution)
+                usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
 
-                // Rule: max 5 working days this week
-                $weekDays = $state['weekly_days'][$weekNum] ?? [];
-                if (!isset($weekDays[$dateStr]) && count($weekDays) >= 5)
-                    continue;
+                $assigned = 0;
+                foreach ($candidates as $c) {
+                    if ($assigned >= $spotsToFill)
+                        break;
 
-                // Rule: 35h weekly rest — check if employee had at least 35h continuous rest this week
-                // (We enforce this by checking if the last day of the anchored week is free when
-                //  possible; the check below prevents assigning every day of the week without a break.)
-                if ($weekEndByDate[$dateStr]) {
-                    if (count($weekDays) >= 5)
-                        continue;
+                    $userId = $c['id'];
+
+                    ShiftAssignment::create([
+                        'shift_id' => $shift->id,
+                        'user_id' => $userId,
+                    ]);
+
+                    $assignmentTracker[$currentKey][] = $userId;
+                    $runUserIds[] = $userId;
+                    $busy->add($userId, $shiftStartTs, $shiftEndTs);
+                    $employeeState[$userId]['total_hours'] += $st['duration_hours'];
+                    $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $st['duration_hours'];
+                    $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
+
+                    $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
+
+                    $assigned++;
+                    $totalAssigned++;
                 }
 
-                // Rule: shift-streak mandatory rest (see StreakTimeline)
-                if ($streakTimeline->wouldConflict($emp->id, $shift->shift_type, $shift->date, $shift->shift_number)) {
-                    continue;
+                if ($assigned < $spotsToFill) {
+                    $warnings[] = "Could only assign {$assigned}/{$spotsToFill} to {$dateStr} S{$shift->shift_number} (labor code limits)";
                 }
-
-                // Scoring: prefer employees with fewer hours (fairness)
-                $score = $state['total_hours'];
-
-                $candidates[] = ['id' => $emp->id, 'score' => $score];
             }
 
-            // Sort by fewest hours first (fair distribution)
-            usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
-
-            $assigned = 0;
-            foreach ($candidates as $c) {
-                if ($assigned >= $spotsToFill)
-                    break;
-
-                $userId = $c['id'];
-
-                ShiftAssignment::create([
-                    'shift_id' => $shift->id,
-                    'user_id' => $userId,
-                ]);
-
-                $assignmentTracker[$currentKey][] = $userId;
-                $runUserIds[] = $userId;
-                $employeeState[$userId]['last_shift_end'] = $st['end'];
-                $employeeState[$userId]['total_hours'] += $st['duration_hours'];
-                $employeeState[$userId]['total_shifts']++;
-                $employeeState[$userId]['weekly_hours'][$weekNum] = ($employeeState[$userId]['weekly_hours'][$weekNum] ?? 0) + $st['duration_hours'];
-                $employeeState[$userId]['weekly_days'][$weekNum][$dateStr] = true;
-
-                $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
-
-                $assigned++;
-                $totalAssigned++;
-            }
-
-            if ($assigned < $spotsToFill) {
-                $warnings[] = "Could only assign {$assigned}/{$spotsToFill} to {$dateStr} S{$shift->shift_number} (labor code limits)";
-            }
-        }
+            // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
+            $janitor->clearUncovered($group, $runUserIds);
+        });
 
         // Count night shifts
         $nightShiftCount = 0;
-        foreach ($shifts as $shift) {
-            if (isset($shiftTimes[$shift->id]) && $shiftTimes[$shift->id]['is_night']) {
+        foreach ($shiftTimes as $times) {
+            if ($times['is_night']) {
                 $nightShiftCount++;
             }
         }
-
-        // A new shift can complete a streak earlier and move a later window off a shift that had a policy.
-        $janitor->clearUncovered($group, $runUserIds);
 
         $message = "Auto-assigned {$totalAssigned} slots (Polish Labor Code mode). {$nightShiftCount} night shifts identified.";
         if (count($warnings) > 0) {

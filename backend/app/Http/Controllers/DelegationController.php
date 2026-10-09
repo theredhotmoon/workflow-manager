@@ -63,8 +63,8 @@ class DelegationController extends Controller
             'name' => $validated['name'],
             'destination' => $validated['destination'],
             'description' => $validated['description'] ?? null,
-            'start_datetime' => $validated['start_datetime'],
-            'end_datetime' => $validated['end_datetime'],
+            'start_datetime' => self::dateOnly($validated['start_datetime']),
+            'end_datetime' => self::dateOnly($validated['end_datetime']),
             'registration_open' => $validated['registration_open'] ?? true,
             'created_by' => $request->user()->id,
         ]);
@@ -96,6 +96,12 @@ class DelegationController extends Controller
             'end_datetime' => ['sometimes', 'date'],
             'registration_open' => ['sometimes', 'boolean'],
         ]);
+
+        foreach (['start_datetime', 'end_datetime'] as $key) {
+            if (isset($validated[$key])) {
+                $validated[$key] = self::dateOnly($validated[$key]);
+            }
+        }
 
         $changes = [];
         foreach ($validated as $key => $value) {
@@ -136,9 +142,9 @@ class DelegationController extends Controller
 
         $pivotData = ['status' => 'approved'];
         if ($request->has('custom_start'))
-            $pivotData['custom_start'] = $request->custom_start;
+            $pivotData['custom_start'] = self::dateOnly($request->custom_start);
         if ($request->has('custom_end'))
-            $pivotData['custom_end'] = $request->custom_end;
+            $pivotData['custom_end'] = self::dateOnly($request->custom_end);
 
         $delegation->users()->syncWithoutDetaching([$request->user_id => $pivotData]);
 
@@ -164,8 +170,8 @@ class DelegationController extends Controller
         ]);
 
         $delegation->users()->updateExistingPivot($request->user_id, [
-            'custom_start' => $request->custom_start,
-            'custom_end' => $request->custom_end,
+            'custom_start' => self::dateOnly($request->custom_start),
+            'custom_end' => self::dateOnly($request->custom_end),
         ]);
 
         $userName = User::find($request->user_id)?->name ?? $request->user_id;
@@ -338,5 +344,15 @@ class DelegationController extends Controller
             ->get();
 
         return response()->json($delegations);
+    }
+
+    /**
+     * Delegations are whole days in the business calendar. The UI sends "Y-m-d"; a value with a
+     * time or an offset keeps the date as written ("2026-10-05T00:30:00+05:00" is the 5th), so
+     * it is never shifted to another day by a timezone conversion.
+     */
+    private static function dateOnly(?string $value): ?string
+    {
+        return $value === null || $value === '' ? null : Carbon::parse($value)->format('Y-m-d');
     }
 }

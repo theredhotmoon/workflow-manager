@@ -17,10 +17,11 @@ it('blocks a regular shift that would start less than 11h after a logged callbac
     // An earlier shift the auto-assigner will fill first — proves the fix
     // survives the main loop overwriting $employeeState[...]['last_shift_end']
     // with this shift's end time before the callback-blocked shift below is
-    // evaluated.
+    // evaluated. It ends at 14:00, 12h before the callback starts: the rest
+    // check now also looks forward, so a 16:00 end (10h) would be refused too.
     Shift::create([
         'date' => '2026-09-01', 'shift_number' => 1, 'shift_group_id' => $group->id,
-        'start_time' => '08:00', 'end_time' => '16:00',
+        'start_time' => '08:00', 'end_time' => '14:00',
     ]);
 
     $assignment = OnCallAssignment::create([

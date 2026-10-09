@@ -63,6 +63,10 @@ class ChecklistSubmissionController extends Controller
             'responses.*.checklist_item_id' => ['required', 'exists:checklist_items,id'],
             'responses.*.value' => ['nullable'],
             'responses.*.group_comment' => ['nullable', 'string'],
+        ], [
+            'checklist_template_id.exists' => 'This checklist template has been archived and can no longer be filled.',
+            'outgoing_user_id.exists' => 'The outgoing user has been deactivated. Pick someone else.',
+            'incoming_user_id.exists' => 'The incoming user has been deactivated. Pick someone else.',
         ]);
 
         $submission = DB::transaction(function () use ($request) {

@@ -101,6 +101,8 @@
                 <td class="px-6 py-4 text-slate-400 text-sm hidden md:table-cell">{{ formatDate(user.created_at) }}</td>
                 <td class="px-6 py-4">
                   <div class="flex items-center justify-end gap-1">
+                    <!-- A deactivated user can only be reactivated. -->
+                    <template v-if="!user.deactivated_at">
                     <button @click="openEditModal(user)" title="Edit"
                       class="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all duration-200">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -126,6 +128,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                       </svg>
                     </button>
+                    </template>
                     <button v-if="user.deactivated_at" @click="reactivateUser(user)" :disabled="reactivatingId === user.id"
                       title="Reactivate"
                       class="px-2.5 py-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-all duration-200 disabled:opacity-50">
@@ -451,13 +454,13 @@
           <p class="text-slate-400 text-sm">Deactivate <span class="text-white font-medium">{{ deactivateTarget?.name }}</span>? They will no longer be able to log in or be picked for shifts. Their history (shifts worked, handovers, procedures they own) is kept, and they can be reactivated later.</p>
         </div>
 
-        <div v-if="futureAssignmentsCount === null" class="mb-4 text-center text-slate-500 text-sm">Checking upcoming shifts…</div>
-        <label v-else-if="futureAssignmentsCount > 0" class="mb-4 flex items-start gap-2 text-sm text-slate-300 cursor-pointer select-none">
+        <div v-if="futureWork === null" class="mb-4 text-center text-slate-500 text-sm">Checking upcoming shifts…</div>
+        <label v-else-if="futureWorkTotal > 0" class="mb-4 flex items-start gap-2 text-sm text-slate-300 cursor-pointer select-none">
           <input v-model="removeFutureAssignments" type="checkbox"
             class="mt-0.5 w-4 h-4 rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/40" />
-          <span>Also remove them from these {{ futureAssignmentsCount }} future shift{{ futureAssignmentsCount === 1 ? '' : 's' }}</span>
+          <span>Also remove them from these {{ futureWorkLabel }} from tomorrow on</span>
         </label>
-        <p v-else class="mb-4 text-center text-slate-500 text-sm">They have no shifts from today on.</p>
+        <p v-else class="mb-4 text-center text-slate-500 text-sm">They have no shifts or on-call duties from tomorrow on.</p>
 
         <div v-if="deactivateError" class="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
           <span class="text-red-300 text-sm">{{ deactivateError }}</span>
@@ -468,7 +471,7 @@
             class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
             Cancel
           </button>
-          <button @click="deactivateUserConfirmed" :disabled="deactivating || futureAssignmentsCount === null"
+          <button @click="deactivateUserConfirmed" :disabled="deactivating || futureWork === null"
             class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
             <svg v-if="deactivating" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -769,7 +772,19 @@ const showDeactivateModal = ref(false);
 const deactivateTarget = ref(null);
 const deactivating = ref(false);
 const deactivateError = ref('');
-const futureAssignmentsCount = ref(null); // null while loading
+// Shifts and on-call duties the user has from tomorrow on (today's may already be worked and stay).
+const futureWork = ref(null); // { shifts, onCall }; null while loading
+const futureWorkTotal = computed(() =>
+  futureWork.value ? futureWork.value.shifts + futureWork.value.onCall : 0,
+);
+const futureWorkLabel = computed(() => {
+  if (!futureWork.value) return '';
+  const { shifts, onCall } = futureWork.value;
+  const parts = [];
+  if (shifts) parts.push(`${shifts} shift${shifts === 1 ? '' : 's'}`);
+  if (onCall) parts.push(`${onCall} on-call dut${onCall === 1 ? 'y' : 'ies'}`);
+  return parts.join(' and ');
+});
 const removeFutureAssignments = ref(true);
 const reactivatingId = ref(null);
 
@@ -1014,17 +1029,20 @@ async function confirmDeactivate(user) {
   const token = futureCountRequests.begin();
   deactivateTarget.value = user;
   deactivateError.value = '';
-  futureAssignmentsCount.value = null;
+  futureWork.value = null;
   removeFutureAssignments.value = true;
   showDeactivateModal.value = true;
   try {
     const res = await api.get(`/api/users/${user.id}`);
     if (futureCountRequests.isCurrent(token)) {
-      futureAssignmentsCount.value = res.data.future_assignments_count;
+      futureWork.value = {
+        shifts: res.data.future_assignments_count ?? 0,
+        onCall: res.data.future_on_call_count ?? 0,
+      };
     }
   } catch {
     if (!futureCountRequests.isCurrent(token)) return;
-    futureAssignmentsCount.value = 0;
+    futureWork.value = { shifts: 0, onCall: 0 };
     deactivateError.value = 'Could not check their upcoming shifts; none will be removed.';
   }
 }
@@ -1040,7 +1058,7 @@ async function deactivateUserConfirmed() {
   deactivateError.value = '';
   try {
     await api.post(`/api/users/${deactivateTarget.value.id}/deactivate`, {
-      remove_future_assignments: futureAssignmentsCount.value > 0 && removeFutureAssignments.value,
+      remove_future_assignments: futureWorkTotal.value > 0 && removeFutureAssignments.value,
     });
     showToast(`User "${deactivateTarget.value.name}" deactivated.`);
     closeDeactivateModal();

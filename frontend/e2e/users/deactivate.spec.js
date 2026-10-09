@@ -1,7 +1,7 @@
 import { createUser } from '../fixtures/api-setup.js';
-import { expect, test } from '../fixtures/auth.js';
+import { expect, getXsrfHeader, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
 
-// Works on a throwaway user only: other specs log in as the seeded admin and employee.
+// Works on throwaway users only: other specs log in as the seeded admin and employee.
 test.describe('Users: deactivate instead of delete', () => {
   test('deactivating hides the user, "Show deactivated" brings them back, reactivate restores', async ({
     adminPage,
@@ -16,7 +16,7 @@ test.describe('Users: deactivate instead of delete', () => {
     await row.getByRole('button', { name: 'Deactivate' }).click();
     const dialog = adminPage.getByRole('dialog', { name: 'Deactivate User' });
     await expect(dialog).toContainText(name);
-    await expect(dialog).toContainText('They have no shifts from today on.');
+    await expect(dialog).toContainText('They have no shifts or on-call duties from tomorrow on.');
     await dialog.getByRole('button', { name: 'Deactivate', exact: true }).click();
 
     await expect(adminPage.getByText(`User "${name}" deactivated.`)).toBeVisible();
@@ -25,6 +25,9 @@ test.describe('Users: deactivate instead of delete', () => {
     await adminPage.getByLabel('Show deactivated').check();
     await expect(row).toBeVisible();
     await expect(row.getByText('Deactivated', { exact: true })).toBeVisible();
+    // A deactivated user can only be reactivated.
+    await expect(row.getByTitle('Edit')).toHaveCount(0);
+    await expect(row.getByTitle('Change Password')).toHaveCount(0);
 
     await row.getByRole('button', { name: 'Reactivate' }).click();
     await expect(adminPage.getByText(`User "${name}" reactivated.`)).toBeVisible();
@@ -32,5 +35,35 @@ test.describe('Users: deactivate instead of delete', () => {
     await adminPage.getByLabel('Show deactivated').uncheck();
     await expect(row).toBeVisible();
     await expect(row.getByRole('button', { name: 'Deactivate' })).toBeVisible();
+  });
+
+  test('a user deactivated while logged in is sent to the login page on their next action', async ({
+    adminPage,
+    browser,
+  }) => {
+    const admin = adminPage.context();
+    const stamp = Date.now();
+    const email = `deact-live-${stamp}@example.test`;
+    const user = await createUser(admin, { name: `Deact Live ${stamp}`, email });
+
+    const userContext = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
+    try {
+      await loginAs(userContext, email, 'password123');
+      const page = await userContext.newPage();
+      await page.goto('/my-shifts');
+      await expect(page.getByRole('button', { name: 'Next month' })).toBeVisible();
+
+      const res = await admin.request.post(`/api/users/${user.id}/deactivate`, {
+        headers: await getXsrfHeader(admin),
+      });
+      expect(res.ok()).toBe(true);
+
+      // An in-page API call (not a navigation) answers 401: the SPA signs them out with the reason.
+      await page.getByRole('button', { name: 'Next month' }).click();
+      await expect(page).toHaveURL(/\/login$/);
+      await expect(page.getByText('This account is deactivated.')).toBeVisible();
+    } finally {
+      await userContext.close();
+    }
   });
 });

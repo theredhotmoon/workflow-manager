@@ -6,6 +6,7 @@ use App\Models\Delegation;
 use App\Models\DelegationLog;
 use App\Models\NewbiePeriod;
 use App\Models\OfficeClosure;
+use App\Models\OnCallAssignment;
 use App\Models\Procedure;
 use App\Models\ProcedureAccessLog;
 use App\Models\Shift;
@@ -25,14 +26,22 @@ function cdlEmployee(array $fields = []): User
     return User::factory()->create(array_merge(['is_admin' => false, 'role' => 'employee'], $fields));
 }
 
-/** Gives $user authored history of every kind the brief lists, plus a past and two future assignments. */
+/**
+ * Gives $user authored history of every kind the brief lists, plus a past, a today's and a future
+ * shift assignment and on-call duty (now is 2026-10-09).
+ */
 function cdlUserWithHistory(User $user): array
 {
     $group = ShiftGroup::firstOrCreate(['name' => 'Main'], ['is_default' => true, 'sort_order' => 0]);
     $assignments = [];
+    $onCall = [];
     foreach (['2026-10-01' => 'past', '2026-10-09' => 'today', '2026-10-20' => 'future'] as $date => $key) {
         $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id]);
         $assignments[$key] = ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $user->id]);
+        $onCall[$key] = OnCallAssignment::create([
+            'shift_group_id' => $group->id, 'user_id' => $user->id,
+            'starts_at' => "{$date} 20:00:00", 'ends_at' => Carbon::parse($date)->addDay()->format('Y-m-d 08:00:00'),
+        ]);
     }
 
     $procedure = Procedure::create(['identifier' => 'CDL-1', 'title' => 'Owned', 'owner_id' => $user->id]);
@@ -50,7 +59,7 @@ function cdlUserWithHistory(User $user): array
     ]);
     $access = ProcedureAccessLog::create(['procedure_id' => $procedure->id, 'user_id' => $user->id, 'accessed_at' => now()]);
 
-    return compact('group', 'assignments', 'procedure', 'delegation', 'log', 'closure', 'newbie', 'handover', 'access');
+    return compact('group', 'assignments', 'onCall', 'procedure', 'delegation', 'log', 'closure', 'newbie', 'handover', 'access');
 }
 
 beforeEach(function () {
@@ -70,26 +79,65 @@ it('deactivates instead of deleting, keeping everything the user created', funct
     foreach (['procedure', 'delegation', 'log', 'closure', 'newbie', 'handover', 'access'] as $key) {
         expect($h[$key]->fresh())->not->toBeNull("{$key} must survive deactivation");
     }
-    // remove_future_assignments=false keeps every assignment.
+    // remove_future_assignments=false keeps every assignment and on-call duty.
     expect(ShiftAssignment::where('user_id', $user->id)->count())->toBe(3);
+    expect(OnCallAssignment::where('user_id', $user->id)->count())->toBe(3);
 });
 
-it('removes only assignments from today on when asked to', function () {
+it('removes only shifts and on-call duties from tomorrow on when asked to', function () {
     $admin = cdlUserAdmin();
     $user = cdlEmployee();
     $h = cdlUserWithHistory($user);
 
     $this->actingAs($admin)->getJson("/api/users/{$user->id}")
         ->assertOk()
-        ->assertJsonPath('future_assignments_count', 2);
+        ->assertJsonPath('future_assignments_count', 1)
+        ->assertJsonPath('future_on_call_count', 1);
 
     $this->actingAs($admin)
         ->postJson("/api/users/{$user->id}/deactivate", ['remove_future_assignments' => true])
         ->assertOk()
-        ->assertJsonPath('removed_assignments', 2);
+        ->assertJsonPath('removed_assignments', 1)
+        ->assertJsonPath('removed_on_call', 1);
 
-    expect(ShiftAssignment::where('user_id', $user->id)->pluck('id')->all())->toBe([$h['assignments']['past']->id]);
+    // Today's shift may already be worked, so it stays with the past one.
+    expect(ShiftAssignment::where('user_id', $user->id)->orderBy('id')->pluck('id')->all())
+        ->toBe([$h['assignments']['past']->id, $h['assignments']['today']->id]);
+    expect(OnCallAssignment::where('user_id', $user->id)->orderBy('id')->pluck('id')->all())
+        ->toBe([$h['onCall']['past']->id, $h['onCall']['today']->id]);
     expect($h['procedure']->fresh())->not->toBeNull();
+    // Delegation memberships and newbie periods are not touched.
+    expect($h['newbie']->fresh())->not->toBeNull();
+});
+
+it('takes "tomorrow" in Warsaw time, not UTC, when removing future work', function () {
+    // 23:30 UTC on the 5th is 00:30 on the 6th in Warsaw: the 6th is today, only the 7th is future.
+    Carbon::setTestNow('2029-01-05 23:30:00');
+    $admin = cdlUserAdmin();
+    $user = cdlEmployee();
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    $ids = [];
+    $onCallIds = [];
+    foreach (['2029-01-05', '2029-01-06', '2029-01-07'] as $date) {
+        $shift = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id]);
+        $ids[$date] = ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $user->id])->id;
+        $onCallIds[$date] = OnCallAssignment::create([
+            'shift_group_id' => $group->id, 'user_id' => $user->id,
+            'starts_at' => "{$date} 08:00:00", 'ends_at' => "{$date} 20:00:00",
+        ])->id;
+    }
+
+    $this->actingAs($admin)->getJson("/api/users/{$user->id}")
+        ->assertJsonPath('future_assignments_count', 1)
+        ->assertJsonPath('future_on_call_count', 1);
+    $this->actingAs($admin)
+        ->postJson("/api/users/{$user->id}/deactivate", ['remove_future_assignments' => true])
+        ->assertOk();
+
+    expect(ShiftAssignment::where('user_id', $user->id)->orderBy('id')->pluck('id')->all())
+        ->toBe([$ids['2029-01-05'], $ids['2029-01-06']]);
+    expect(OnCallAssignment::where('user_id', $user->id)->orderBy('id')->pluck('id')->all())
+        ->toBe([$onCallIds['2029-01-05'], $onCallIds['2029-01-06']]);
 });
 
 it('no longer allows a user to be hard-deleted through the API', function () {
@@ -211,4 +259,22 @@ it('makes a stray hard delete of a user with history fail instead of cascading',
     Procedure::create(['identifier' => 'CDL-2', 'title' => 'Owned', 'owner_id' => $user->id]);
 
     expect(fn () => $user->delete())->toThrow(QueryException::class);
+});
+
+it('refuses a new handover to a deactivated incoming user with a clear message', function () {
+    $admin = cdlUserAdmin();
+    $gone = cdlEmployee();
+    $gone->forceFill(['deactivated_at' => now()])->save();
+    $template = ChecklistTemplate::create(['name' => 'Handover', 'is_active' => true]);
+    $group = \App\Models\ChecklistGroup::create(['checklist_template_id' => $template->id, 'name' => 'G', 'sort_order' => 0]);
+    $item = \App\Models\ChecklistItem::create(['checklist_group_id' => $group->id, 'label' => 'Done', 'type' => 'checkbox', 'sort_order' => 0]);
+
+    $this->actingAs($admin)->postJson('/api/checklist-submissions', [
+        'checklist_template_id' => $template->id,
+        'date' => '2026-10-09',
+        'outgoing_user_id' => $admin->id,
+        'incoming_user_id' => $gone->id,
+        'responses' => [['checklist_item_id' => $item->id, 'value' => true]],
+    ])->assertStatus(422)
+        ->assertJsonPath('errors.incoming_user_id.0', 'The incoming user has been deactivated. Pick someone else.');
 });

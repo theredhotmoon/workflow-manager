@@ -86,6 +86,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Business Timezone
+    |--------------------------------------------------------------------------
+    |
+    | Where the shifts happen. Timestamps stay in UTC (above), but "today" for
+    | shift dates (which are local calendar days) is taken in this zone; see
+    | App\Support\BusinessDate.
+    |
+    */
+
+    'business_timezone' => env('BUSINESS_TIMEZONE', 'Europe/Warsaw'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |

@@ -19,7 +19,7 @@ export async function loginAs(context, email, password) {
 // Sanctum only treats a request as stateful (session auth) when Origin/Referer is a configured
 // frontend domain; context.request sends neither, so API calls after login would be 401.
 // The suite's own dev server origin (playwright.config.js sets E2E_BASE_URL from E2E_PORT).
-const STATEFUL_ORIGIN = { Origin: process.env.E2E_BASE_URL || 'http://localhost:5173' };
+export const STATEFUL_ORIGIN = { Origin: process.env.E2E_BASE_URL || 'http://localhost:5173' };
 
 export const test = base.extend({
   adminPage: async ({ browser }, use) => {

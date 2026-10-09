@@ -6,7 +6,7 @@ use App\Models\ChecklistTemplate;
 use App\Models\ChecklistGroup;
 use App\Models\ChecklistItem;
 use App\Models\ShiftChecklist;
-use Carbon\Carbon;
+use App\Support\BusinessDate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -197,8 +197,9 @@ class ChecklistTemplateController extends Controller
 
     /**
      * Archive a template (the route stays DELETE, but nothing is deleted). It disappears from the
-     * builder, filling and shift pickers; its submissions and responses stay. Shifts from today on
-     * stop requiring it, past shifts keep what they had.
+     * builder, filling and shift pickers; its submissions and responses stay. Shifts from tomorrow
+     * on (business timezone) stop requiring it; past shifts and today's, whose handover may already
+     * be submitted, keep what they had.
      */
     public function destroy(ChecklistTemplate $checklistTemplate)
     {
@@ -208,7 +209,7 @@ class ChecklistTemplateController extends Controller
             }
 
             ShiftChecklist::where('checklist_template_id', $checklistTemplate->id)
-                ->whereHas('shift', fn ($q) => $q->where('date', '>=', Carbon::today()->toDateString()))
+                ->whereHas('shift', fn ($q) => $q->where('date', '>', BusinessDate::todayString()))
                 ->delete();
         });
 

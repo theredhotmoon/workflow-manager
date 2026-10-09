@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\OnCallAssignment;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftChangeRequest;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Services\RestPolicyJanitor;
-use Carbon\Carbon;
+use App\Support\BusinessDate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -51,14 +52,17 @@ class UserController extends Controller
     }
 
     /**
-     * Get a single user, with how many shifts they are assigned to from today on (the deactivate
-     * dialog offers to remove those).
+     * Get a single user, with how many shifts and on-call duties they have from tomorrow on (the
+     * deactivate dialog offers to remove those).
      */
     public function show(User $user)
     {
         return response()->json(array_merge(
             $user->only(['id', 'name', 'email', 'is_admin', 'deactivated_at', 'created_at', 'updated_at']),
-            ['future_assignments_count' => $this->futureAssignments($user)->count()],
+            [
+                'future_assignments_count' => $this->futureAssignments($user)->count(),
+                'future_on_call_count' => $this->futureOnCall($user)->count(),
+            ],
         ));
     }
 
@@ -81,7 +85,8 @@ class UserController extends Controller
     /**
      * Deactivate a user instead of deleting them: they can't log in and drop out of pickers and new
      * schedules, while everything they created or own stays. Optionally takes them off their shifts
-     * from today on.
+     * and on-call duties from tomorrow on (today's may already be worked). Delegation memberships
+     * and newbie periods are left as they are.
      */
     public function deactivate(Request $request, User $user, RestPolicyJanitor $janitor)
     {
@@ -95,35 +100,37 @@ class UserController extends Controller
             ], 422);
         }
 
-        $removed = DB::transaction(function () use ($request, $user, $janitor) {
+        [$removedAssignments, $removedOnCall] = DB::transaction(function () use ($request, $user, $janitor) {
             $user->forceFill(['deactivated_at' => $user->deactivated_at ?? now()])->save();
             $user->tokens()->delete();
 
             if (!$request->boolean('remove_future_assignments')) {
-                return 0;
+                return [0, 0];
             }
+
+            $removedOnCall = $this->futureOnCall($user)->delete();
 
             $assignments = $this->futureAssignments($user)->with('shift:id,shift_group_id')->get();
-            if ($assignments->isEmpty()) {
-                return 0;
-            }
-            // As when a manager unassigns: pending change requests are settled, then the rest
-            // policies this user's removed shifts held in place are cleared.
-            ShiftChangeRequest::whereIn('shift_assignment_id', $assignments->pluck('id'))
-                ->where('status', 'pending')
-                ->update(['status' => 'acknowledged']);
-            ShiftAssignment::whereIn('id', $assignments->pluck('id'))->delete();
-            $groupIds = $assignments->pluck('shift.shift_group_id')->filter()->unique();
-            foreach (ShiftGroup::whereIn('id', $groupIds)->get() as $group) {
-                $janitor->clearUncovered($group, [$user->id]);
+            if ($assignments->isNotEmpty()) {
+                // As when a manager unassigns: pending change requests are settled, then the rest
+                // policies this user's removed shifts held in place are cleared.
+                ShiftChangeRequest::whereIn('shift_assignment_id', $assignments->pluck('id'))
+                    ->where('status', 'pending')
+                    ->update(['status' => 'acknowledged']);
+                ShiftAssignment::whereIn('id', $assignments->pluck('id'))->delete();
+                $groupIds = $assignments->pluck('shift.shift_group_id')->filter()->unique();
+                foreach (ShiftGroup::whereIn('id', $groupIds)->get() as $group) {
+                    $janitor->clearUncovered($group, [$user->id]);
+                }
             }
 
-            return $assignments->count();
+            return [$assignments->count(), $removedOnCall];
         });
 
         return response()->json([
             'message' => "User \"{$user->name}\" deactivated.",
-            'removed_assignments' => $removed,
+            'removed_assignments' => $removedAssignments,
+            'removed_on_call' => $removedOnCall,
         ]);
     }
 
@@ -153,10 +160,20 @@ class UserController extends Controller
         return response()->json(['message' => 'Password changed successfully.']);
     }
 
-    /** The user's assignments on shifts from today on. */
+    /** The user's assignments on shifts from tomorrow on (business timezone). */
     private function futureAssignments(User $user)
     {
         return $user->assignments()
-            ->whereHas('shift', fn ($q) => $q->where('date', '>=', Carbon::today()->toDateString()));
+            ->whereHas('shift', fn ($q) => $q->where('date', '>', BusinessDate::todayString()));
+    }
+
+    /**
+     * The user's on-call duties starting from tomorrow on. starts_at holds local wall-clock time
+     * (like shift dates), so it is compared with the business date's midnight as is.
+     */
+    private function futureOnCall(User $user)
+    {
+        return OnCallAssignment::where('user_id', $user->id)
+            ->where('starts_at', '>=', BusinessDate::today()->addDay()->format('Y-m-d H:i:s'));
     }
 }

@@ -150,8 +150,9 @@ it('archives a template instead of deleting it, keeping its handovers', function
     $t = cdlTemplateWithSubmission($admin);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     $past = Shift::create(['date' => '2026-10-01', 'shift_number' => 1, 'shift_group_id' => $group->id]);
+    $today = Shift::create(['date' => '2026-10-09', 'shift_number' => 1, 'shift_group_id' => $group->id]);
     $future = Shift::create(['date' => '2026-10-20', 'shift_number' => 1, 'shift_group_id' => $group->id]);
-    foreach ([$past, $future] as $shift) {
+    foreach ([$past, $today, $future] as $shift) {
         ShiftChecklist::create(['shift_id' => $shift->id, 'checklist_template_id' => $t['template']->id, 'is_required' => true]);
     }
 
@@ -176,9 +177,29 @@ it('archives a template instead of deleting it, keeping its handovers', function
     $this->actingAs($admin)->getJson('/api/checklist-submissions')
         ->assertJsonPath('data.0.template.name', 'Handover');
 
-    // Future shifts no longer require it; past shifts keep what they had.
+    // Shifts from tomorrow on no longer require it; past shifts and today's (whose handover may
+    // already be submitted) keep what they had.
     expect(ShiftChecklist::where('shift_id', $future->id)->exists())->toBeFalse();
+    expect(ShiftChecklist::where('shift_id', $today->id)->exists())->toBeTrue();
     expect(ShiftChecklist::where('shift_id', $past->id)->exists())->toBeTrue();
+});
+
+it('takes "tomorrow" in Warsaw time, not UTC, when archiving', function () {
+    // 23:30 UTC on the 5th is 00:30 on the 6th in Warsaw: the 6th is today, only the 7th is future.
+    Carbon::setTestNow('2029-01-05 23:30:00');
+    $admin = cdlAdmin();
+    $t = cdlTemplateWithSubmission($admin);
+    $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    $shifts = [];
+    foreach (['2029-01-05', '2029-01-06', '2029-01-07'] as $date) {
+        $shifts[$date] = Shift::create(['date' => $date, 'shift_number' => 1, 'shift_group_id' => $group->id]);
+        ShiftChecklist::create(['shift_id' => $shifts[$date]->id, 'checklist_template_id' => $t['template']->id, 'is_required' => true]);
+    }
+
+    $this->actingAs($admin)->deleteJson("/api/checklist-templates/{$t['template']->id}")->assertOk();
+
+    $kept = ShiftChecklist::where('checklist_template_id', $t['template']->id)->pluck('shift_id')->sort()->values()->all();
+    expect($kept)->toBe([$shifts['2029-01-05']->id, $shifts['2029-01-06']->id]);
 });
 
 it('does not raise overdue alerts or accept new handovers for an archived template', function () {

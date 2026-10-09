@@ -100,7 +100,7 @@ it('prorates the trailing partial week of a period not divisible by 7', function
         expect($week['cap_hours'])->toBe(40.0);
     }
     $lastWeek = $period['weeks'][12];
-    expect($lastWeek['start']->diffInDays($lastWeek['end']) + 1)->toBe(5);
+    expect((int) $lastWeek['start']->diffInDays($lastWeek['end'], true) + 1)->toBe(5);
     expect($lastWeek['cap_hours'])->toBe(round(40.0 * 5 / 7, 2));
 });
 

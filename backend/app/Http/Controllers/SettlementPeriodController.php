@@ -64,7 +64,7 @@ class SettlementPeriodController extends Controller
 
         foreach ($callbacks as $callback) {
             $match = $calculator->weekFor($period, $callback->starts_at->copy()->startOfDay());
-            $durationHours = $callback->starts_at->diffInMinutes($callback->ends_at) / 60;
+            $durationHours = (int) $callback->starts_at->diffInMinutes($callback->ends_at, true) / 60;
 
             $userId = $callback->onCallAssignment->user_id;
             $employeeNames[$userId] = $callback->onCallAssignment->user->name;

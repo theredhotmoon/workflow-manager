@@ -79,7 +79,9 @@ it('ends a session that only logged in (never called the API) when the password 
     $this->withHeader('Referer', 'http://localhost')
         ->postJson('/api/login', ['email' => $user->email, 'password' => 'password'])
         ->assertOk();
-    expect(session('password_hash_web'))->toBe($user->password);
+    // fresh(): the login may rehash the password (Laravel 11+ rehash_on_login, when the bcrypt cost
+    // differs, e.g. the factory's hash against the suite's BCRYPT_ROUNDS=4).
+    expect(session('password_hash_web'))->toBe($user->fresh()->password);
 
     // Changed in another session / by an admin.
     $user->forceFill(['password' => bcrypt('changed-elsewhere')])->save();

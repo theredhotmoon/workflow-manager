@@ -57,7 +57,7 @@ class SettlementPeriodCalculator
         return [
             'start' => $startTime,
             'end' => $endTime,
-            'duration_hours' => $startTime->diffInMinutes($endTime) / 60,
+            'duration_hours' => (int) $startTime->diffInMinutes($endTime, true) / 60,
         ];
     }
 
@@ -90,13 +90,13 @@ class SettlementPeriodCalculator
     {
         if (in_array($mode, ['weekly', 'custom'], true)) {
             $lengthDays = $this->fixedLengthDays($mode, $customLength);
-            $diffDays = $anchor->diffInDays($date, false);
+            $diffDays = (int) $anchor->diffInDays($date, false);
 
             return intdiv($diffDays >= 0 ? $diffDays : $diffDays - $lengthDays + 1, $lengthDays);
         }
 
         $monthsPerPeriod = $mode === 'quarterly' ? 3 : 1;
-        $diffMonths = $anchor->diffInMonths($date, false);
+        $diffMonths = (int) $anchor->diffInMonths($date, false);
         $periodNumber = intdiv($diffMonths >= 0 ? $diffMonths : $diffMonths - $monthsPerPeriod + 1, $monthsPerPeriod);
 
         while ($anchor->copy()->addMonthsNoOverflow($periodNumber * $monthsPerPeriod)->gt($date)) {
@@ -139,7 +139,7 @@ class SettlementPeriodCalculator
             if ($weekEnd->gt($end)) {
                 $weekEnd = $end->copy();
             }
-            $daysInWeek = $cursor->diffInDays($weekEnd) + 1;
+            $daysInWeek = (int) $cursor->diffInDays($weekEnd, true) + 1;
             $weeks[] = [
                 'start' => $cursor->copy(),
                 'end' => $weekEnd->copy(),

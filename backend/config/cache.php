@@ -107,4 +107,18 @@ return [
 
     'prefix' => env('CACHE_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_cache_'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Serializable Classes
+    |--------------------------------------------------------------------------
+    |
+    | The PHP classes cached values may unserialize into. false (Laravel 13's
+    | default) allows none, so a leaked APP_KEY or a writable cache can't be
+    | turned into a deserialization gadget chain. The app caches only scalars
+    | and arrays (rate limiter counters); list a class here before caching one.
+    |
+    */
+
+    'serializable_classes' => false,
+
 ];

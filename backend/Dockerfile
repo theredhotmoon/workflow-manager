@@ -16,7 +16,7 @@ RUN composer dump-autoload --optimize --classmap-authoritative
 
 
 # ─── Stage 2: Runtime image ───────────────────────────────────────────────────
-FROM php:8.2-fpm-alpine
+FROM php:8.4-fpm-alpine
 
 LABEL maintainer="Shift Changer"
 

@@ -4,6 +4,40 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — ⬆️ Laravel 13 on PHP 8.4 (off end-of-life Laravel 9)
+
+> **Action needed (existing deployments)**
+> - **Rebuild the backend image**: `docker compose up -d --build backend`. It now runs PHP 8.4 (was 8.2); the entrypoint re-caches config, routes and views on start, so no manual `cache:clear` is needed. Running artisan or the tests on the host now needs PHP 8.4.
+> - No new env keys and no new migrations. Logged-in users stay logged in: sessions keep the `php` serializer, and sessions from before the upgrade are still accepted.
+
+- **The backend ran on Laravel 9, unsupported since February 2024**, so framework security fixes since then never reached it. It is now on Laravel 13 (security fixes until early 2028), upgraded one major at a time (10, 11, 12, 13) with the backend suite green after each. PHP moves to 8.4 in the image and CI (security support until the end of 2028; PHP 8.2's ends December 2026). `composer audit` reports no advisories.
+- **The application structure is unchanged**: same HTTP Kernel, middleware, service providers and config files (Laravel 11+ still supports the Laravel 10 layout).
+- **Date maths keeps its results under Carbon 3**, whose `diffIn*` methods return signed fractions where Carbon 2 returned whole absolute numbers. The settlement period calculator and on-call callback hours now ask for absolute values explicitly and round down as before.
+- **Session files no longer contain password hashes.** Logging in records an HMAC of the password hash (what Laravel 12.45+ and Sanctum's `AuthenticateSession` now store) instead of the bcrypt hash itself; a password change still ends the user's other sessions.
+- **Cached values can no longer unserialize into PHP objects** (`cache.serializable_classes = false`, Laravel 13's default), so a leaked `APP_KEY` or writable cache can't be turned into a deserialization attack. The app caches only counters.
+- **CSRF protection also accepts a same-origin `Sec-Fetch-Site` header** (Laravel 13's `PreventRequestForgery`); requests without it still need the XSRF token, as before.
+
+### Backend
+| What | Details |
+|------|---------|
+| Changed | `laravel/framework` ^9.19 (9.52.21) → ^13.0 (13.35.0); `laravel/sanctum` ^3.0 → ^4.0 (4.3.3); `laravel/tinker` ^2.7 → ^3.0; `nunomaduro/collision` ^6.1 → ^8.6; `spatie/laravel-ignition` ^1.0 → ^2.4; `nesbot/carbon` 2 → 3 |
+| Changed | Tests: `pestphp/pest` ^1.23 → ^4.0, `pestphp/pest-plugin-laravel` ^1.4 → ^4.0, `phpunit/phpunit` ^9.5 → ^12.0; `phpunit.xml` `<coverage processUncoveredFiles>` → `<source>` |
+| Changed | `composer.json` `php` ^8.0.2 → ^8.4 |
+| Changed | `SettlementPeriodCalculator`, `SettlementPeriodController`: `diffInMinutes/Days/Months` with an explicit absolute flag and `(int)` casts (Carbon 3) |
+| Changed | `AuthController::login()`: stores `password_hash_{guard}` via the guard's `hashPasswordForCookie()` when it has one |
+| Changed | `config/sanctum.php`: `verify_csrf_token` → `validate_csrf_token` (Sanctum 4 key, same `App\Http\Middleware\VerifyCsrfToken`) |
+| Changed | `App\Http\Middleware\VerifyCsrfToken` extends `PreventRequestForgery` (was the deprecated `VerifyCsrfToken` alias) |
+| Added | `config/cache.php`: `serializable_classes => false` |
+
+### Infrastructure
+| What | Details |
+|------|---------|
+| Changed | `backend/Dockerfile`: `php:8.2-fpm-alpine` → `php:8.4-fpm-alpine` |
+| Changed | `.github/workflows/backend-tests.yml`: PHP 8.0 → 8.4 |
+| Changed | README: Laravel 13 / PHP 8.4, and how to run the Pest suite in the backend image without PHP 8.4 on the host |
+
+---
+
 ## 2026-10-09 — 🔐 Secrets and logins: no default admin password in production, per-account login limit, password changes end other sessions, `.env` out of git
 
 > **Action needed (existing deployments)**

@@ -126,11 +126,27 @@ function clientError(field) {
   }
 }
 
+// A field the user changed after the server rejected it no longer shows that rejection (the
+// next submit re-checks it). New server errors bring them all back.
+const editedSinceServerErrors = reactive(new Set());
+watch(
+  () => props.serverErrors,
+  () => editedSinceServerErrors.clear(),
+);
+for (const field of Object.keys(touched)) {
+  watch(
+    () => form[field],
+    () => editedSinceServerErrors.add(field),
+  );
+}
+
 const errors = computed(() =>
   Object.fromEntries(
     Object.keys(touched).map((field) => [
       field,
-      clientError(field) || props.serverErrors[field] || '',
+      clientError(field) ||
+        (editedSinceServerErrors.has(field) ? '' : props.serverErrors[field]) ||
+        '',
     ]),
   ),
 );

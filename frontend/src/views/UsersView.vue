@@ -611,7 +611,8 @@
 
           <p v-if="delegationError" class="text-red-400 text-sm mb-3">{{ delegationError }}</p>
 
-          <DelegationForm v-if="delegationMode === 'create'"
+          <!-- v-show, not v-if: a look at "Assign Existing" must not lose what was typed here. -->
+          <DelegationForm v-show="delegationMode === 'create'"
             :initial="delegationInitial"
             :saving="savingDelegation"
             :server-errors="delegationFieldErrors"

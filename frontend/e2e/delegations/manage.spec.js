@@ -90,4 +90,51 @@ test.describe('Delegations: create, act, withdraw', () => {
     await employeePage.getByRole('dialog').getByRole('button', { name: 'Withdraw' }).click();
     await expect(card.getByRole('button', { name: /I want to take part/ })).toBeVisible();
   });
+
+  test("a field's server error clears once that field is changed", async ({ adminPage }) => {
+    await adminPage.route('**/api/delegations', (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({
+            status: 422,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              message: 'The end date is not allowed.',
+              errors: { end_datetime: ['The end date is not allowed.'] },
+            }),
+          })
+        : route.continue(),
+    );
+
+    await adminPage.goto('/delegations-manage');
+    await adminPage.getByRole('button', { name: '+ New Delegation' }).click();
+    await adminPage.getByLabel('Name').fill('Deleg Server Error');
+    await adminPage.getByLabel('Destination').fill('Łódź');
+    await adminPage.getByLabel('Start Date').fill('2098-02-20');
+    await adminPage.getByLabel('End Date').fill('2098-02-21');
+    await adminPage.getByRole('button', { name: 'Create', exact: true }).click();
+
+    const fieldError = adminPage.locator('form').getByText('The end date is not allowed.');
+    await expect(fieldError).toBeVisible();
+    // Another field changing leaves it; changing the end date clears it.
+    await adminPage.getByLabel('Name').fill('Deleg Server Error 2');
+    await expect(fieldError).toBeVisible();
+    await adminPage.getByLabel('End Date').fill('2098-02-22');
+    await expect(fieldError).toHaveCount(0);
+  });
+
+  test('Users: what was typed in Create & Assign survives a look at Assign Existing', async ({
+    adminPage,
+  }) => {
+    await adminPage.goto('/users');
+    const row = adminPage.getByRole('row', { name: /Regular Employee/ });
+    await row.getByTitle('Delegation').click();
+
+    await adminPage.getByLabel('Name').fill('Deleg Draft Kept');
+    await adminPage.getByLabel('Start Date').fill('2098-02-25');
+    await adminPage.getByRole('button', { name: 'Assign Existing' }).click();
+    await adminPage.getByRole('button', { name: 'Create New' }).click();
+
+    await expect(adminPage.getByLabel('Name')).toHaveValue('Deleg Draft Kept');
+    await expect(adminPage.getByLabel('Start Date')).toHaveValue('2098-02-25');
+  });
 });

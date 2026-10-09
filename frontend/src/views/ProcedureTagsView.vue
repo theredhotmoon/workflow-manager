@@ -63,7 +63,9 @@
               <div>
                 <label class="block text-sm font-medium text-slate-300 mb-1.5">Name</label>
                 <input v-model="form.name" type="text" required placeholder="e.g. Security"
+                  :aria-invalid="nameError ? 'true' : undefined"
                   class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+                <p v-if="nameError" data-testid="tag-name-error" class="mt-1 text-xs text-red-400">{{ nameError }}</p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-300 mb-1.5">Color</label>
@@ -82,14 +84,20 @@
         </div>
       </Transition>
     </main>
+    <AppToast />
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { confirm } from '../composables/useConfirm.js';
+import { onMounted, ref } from 'vue';
+import { describeApiError, fieldError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
+
+const { showToast } = useToast();
 
 const tags = ref([]);
 const loading = ref(true);
@@ -97,12 +105,20 @@ const showModal = ref(false);
 const saving = ref(false);
 const editingId = ref(null);
 const form = ref({ name: '', color: '#6366f1' });
+const nameError = ref('');
+
+function toastError(err, fallback) {
+  const e = describeApiError(err, fallback);
+  if (!e.silent) showToast(e.message, 'error', 6000);
+  return e;
+}
 
 async function fetchTags() {
   loading.value = true;
   try {
     tags.value = (await api.get('/api/procedure-tags')).data;
-  } catch {
+  } catch (err) {
+    toastError(err, 'Could not load the tags, try again');
   } finally {
     loading.value = false;
   }
@@ -111,29 +127,39 @@ async function fetchTags() {
 function openCreate() {
   editingId.value = null;
   form.value = { name: '', color: '#6366f1' };
+  nameError.value = '';
   showModal.value = true;
 }
 
 function openEdit(tag) {
   editingId.value = tag.id;
   form.value = { name: tag.name, color: tag.color };
+  nameError.value = '';
   showModal.value = true;
 }
 
+// A failed save (e.g. a duplicate name, 422) keeps the dialog open with the server's message.
 async function saveTag() {
+  if (saving.value) return;
   saving.value = true;
+  nameError.value = '';
+  const editing = editingId.value;
   try {
-    if (editingId.value) {
-      await api.put(`/api/procedure-tags/${editingId.value}`, form.value);
+    if (editing) {
+      await api.put(`/api/procedure-tags/${editing}`, form.value);
     } else {
       await api.post('/api/procedure-tags', form.value);
     }
     showModal.value = false;
-    await fetchTags();
-  } catch {
+    showToast(editing ? 'Tag updated' : 'Tag created');
+  } catch (err) {
+    const e = toastError(err, 'Could not save the tag, try again');
+    nameError.value = fieldError(e.fieldErrors, 'name');
+    return;
   } finally {
     saving.value = false;
   }
+  await fetchTags();
 }
 
 async function deleteTag(tag) {
@@ -146,8 +172,12 @@ async function deleteTag(tag) {
   if (!ok) return;
   try {
     await api.delete(`/api/procedure-tags/${tag.id}`);
-    await fetchTags();
-  } catch {}
+  } catch (err) {
+    toastError(err, 'Could not delete the tag, try again');
+    return;
+  }
+  showToast('Tag deleted');
+  await fetchTags();
 }
 
 onMounted(fetchTags);

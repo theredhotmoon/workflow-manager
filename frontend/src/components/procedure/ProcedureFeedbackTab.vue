@@ -43,12 +43,27 @@
 </template>
 
 <script setup>
+import { watch } from 'vue';
+import { describeApiError } from '../../apiErrors.js';
 import api from '../../axios.js';
+import { useToast } from '../../composables/useToast.js';
 
-defineProps({
+const props = defineProps({
   feedbacks: { type: Array, required: true },
   isAdmin: { type: Boolean, default: false },
 });
+
+const { showToast } = useToast();
+
+// The last status the server accepted per feedback, to put back when a change fails.
+const savedStatus = new Map();
+watch(
+  () => props.feedbacks,
+  (list) => {
+    for (const fb of list) if (!savedStatus.has(fb.id)) savedStatus.set(fb.id, fb.status);
+  },
+  { immediate: true },
+);
 
 function fmtDate(d) {
   if (!d) return '';
@@ -60,8 +75,15 @@ function fmtDate(d) {
 }
 
 async function updateStatus(fb) {
+  const previous = savedStatus.get(fb.id) ?? null;
   try {
     await api.put(`/api/procedure-feedbacks/${fb.id}`, { status: fb.status });
-  } catch {}
+    savedStatus.set(fb.id, fb.status);
+    showToast('Feedback status saved');
+  } catch (err) {
+    if (previous !== null) fb.status = previous;
+    const e = describeApiError(err, 'Could not change the status, try again');
+    if (!e.silent) showToast(e.message, 'error', 6000);
+  }
 }
 </script>

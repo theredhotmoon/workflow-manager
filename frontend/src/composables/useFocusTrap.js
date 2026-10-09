@@ -9,6 +9,37 @@ const FOCUSABLE_SELECTORS = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
+// Open modals form a stack (an editor, a dialog over it, a confirm over that). One document
+// listener hands each key to the top layer only: Escape closes the dialog the user is looking at,
+// not every layer below it, and Tab wraps inside the top dialog.
+const layers = [];
+
+/** Sends a keydown to the top layer. Exported for tests; the document listener calls it. */
+export function handleModalKeydown(event) {
+  layers[layers.length - 1]?.(event);
+}
+
+/** Puts a layer on top of the stack. Returns a function that removes it (idempotent). */
+export function pushModalLayer(onKeydown) {
+  const layer = (event) => onKeydown(event);
+  layers.push(layer);
+  if (layers.length === 1 && typeof document !== 'undefined') {
+    document.addEventListener('keydown', handleModalKeydown);
+  }
+  return () => {
+    const index = layers.indexOf(layer);
+    if (index === -1) return;
+    layers.splice(index, 1);
+    if (!layers.length && typeof document !== 'undefined') {
+      document.removeEventListener('keydown', handleModalKeydown);
+    }
+  };
+}
+
+export function modalLayerCount() {
+  return layers.length;
+}
+
 /**
  * Traps keyboard focus inside a modal element while it is open.
  *
@@ -16,10 +47,12 @@ const FOCUSABLE_SELECTORS = [
  * @param {import('vue').Ref<boolean>}          isOpen       - reactive flag that controls modal visibility
  * @param {object}                               options
  * @param {() => void}                           [options.onEscape] - callback invoked when the user presses Escape
+ *                                                    while this modal is the top one
  */
 export function useFocusTrap(containerRef, isOpen, options = {}) {
   const { onEscape } = options;
   let triggerElement = null;
+  let releaseLayer = null;
 
   function getFocusableElements() {
     if (!containerRef.value) return [];
@@ -60,13 +93,15 @@ export function useFocusTrap(containerRef, isOpen, options = {}) {
     if (opened) {
       // Remember where focus was before the modal opened so we can restore it
       triggerElement = document.activeElement;
-      document.addEventListener('keydown', handleKeydown);
+      releaseLayer?.();
+      releaseLayer = pushModalLayer(handleKeydown);
       // Move focus inside the modal after Vue renders it
       await nextTick();
       const focusable = getFocusableElements();
       if (focusable.length) focusable[0].focus();
     } else {
-      document.removeEventListener('keydown', handleKeydown);
+      releaseLayer?.();
+      releaseLayer = null;
       // Restore focus to the element that triggered the modal
       if (triggerElement instanceof HTMLElement) {
         triggerElement.focus();
@@ -76,6 +111,7 @@ export function useFocusTrap(containerRef, isOpen, options = {}) {
   });
 
   onUnmounted(() => {
-    document.removeEventListener('keydown', handleKeydown);
+    releaseLayer?.();
+    releaseLayer = null;
   });
 }

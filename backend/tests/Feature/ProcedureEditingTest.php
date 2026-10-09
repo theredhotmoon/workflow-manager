@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Procedure;
+use App\Models\ProcedureFeedback;
 use App\Models\ProcedureVersion;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -154,4 +155,48 @@ it('rolls back the update when the snapshot cannot be stored', function () {
     $procedure->refresh();
     expect($procedure->version)->toBe(1);
     expect($procedure->title)->toBe('Original title');
+});
+
+it('refuses a direct update while a draft is pending, so publishing it cannot overwrite the update', function () {
+    $admin = pedUser('admin');
+    $procedure = pedProcedure(pedUser());
+    test()->actingAs($admin)->putJson("/api/procedures/{$procedure->id}/draft", ['title' => 'Draft title'])
+        ->assertOk();
+
+    test()->actingAs($admin)->putJson("/api/procedures/{$procedure->id}", ['title' => 'Direct title'])
+        ->assertStatus(409);
+
+    $procedure->refresh();
+    expect($procedure->title)->toBe('Original title');
+    expect($procedure->version)->toBe(1);
+    expect($procedure->draft_title)->toBe('Draft title');
+});
+
+it('resolves open feedback for older versions when an update publishes a new one', function () {
+    $admin = pedUser('admin');
+    $reporter = pedUser();
+    $procedure = pedProcedure(pedUser());
+    $old = ProcedureFeedback::create([
+        'procedure_id' => $procedure->id, 'user_id' => $reporter->id, 'type' => 'error',
+        'description' => 'Step 2 is wrong', 'status' => 'open', 'for_version' => 1,
+    ]);
+
+    test()->actingAs($admin)->putJson("/api/procedures/{$procedure->id}", ['content' => '<p>v2</p>'])
+        ->assertOk()->assertJsonPath('version', 2);
+
+    expect($old->refresh()->status)->toBe('resolved');
+});
+
+it('creates a procedure and its v1 snapshot together or not at all', function () {
+    $admin = pedUser('admin');
+    // Any v1 snapshot insert fails: the procedure must not be left behind without /versions/1.
+    DB::statement("CREATE FUNCTION ped_fail() RETURNS trigger AS \$\$ BEGIN RAISE EXCEPTION 'no snapshots'; END; \$\$ LANGUAGE plpgsql");
+    DB::statement('CREATE TRIGGER ped_fail BEFORE INSERT ON procedure_versions FOR EACH ROW EXECUTE FUNCTION ped_fail()');
+
+    test()->actingAs($admin)->postJson('/api/procedures', [
+        'title' => 'Never half created',
+        'owner_id' => $admin->id,
+    ])->assertStatus(500);
+
+    expect(Procedure::where('title', 'Never half created')->exists())->toBeFalse();
 });

@@ -12,7 +12,8 @@
             <span v-if="fb.for_version" class="px-1.5 py-0.5 text-[9px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full tabular-nums">v{{ fb.for_version }}</span>
             <span class="text-[10px] text-slate-500">{{ fb.user?.name }} · {{ fmtDate(fb.created_at) }}</span>
           </div>
-          <select v-if="isAdmin" v-model="fb.status" @change="updateStatus(fb)"
+          <select v-if="isAdmin" :value="fb.status" @change="updateStatus(fb, $event.target.value)"
+            :aria-label="`Status of feedback from ${fb.user?.name ?? 'unknown'}`"
             class="px-2 py-1 bg-white/5 border border-white/10 rounded text-[10px] text-slate-300 focus:outline-none">
             <option value="open" class="bg-slate-800">Open</option>
             <option value="reviewed" class="bg-slate-800">Reviewed</option>
@@ -43,27 +44,16 @@
 </template>
 
 <script setup>
-import { watch } from 'vue';
 import { describeApiError } from '../../apiErrors.js';
 import api from '../../axios.js';
 import { useToast } from '../../composables/useToast.js';
 
-const props = defineProps({
+defineProps({
   feedbacks: { type: Array, required: true },
   isAdmin: { type: Boolean, default: false },
 });
 
 const { showToast } = useToast();
-
-// The last status the server accepted per feedback, to put back when a change fails.
-const savedStatus = new Map();
-watch(
-  () => props.feedbacks,
-  (list) => {
-    for (const fb of list) if (!savedStatus.has(fb.id)) savedStatus.set(fb.id, fb.status);
-  },
-  { immediate: true },
-);
 
 function fmtDate(d) {
   if (!d) return '';
@@ -74,14 +64,15 @@ function fmtDate(d) {
   });
 }
 
-async function updateStatus(fb) {
-  const previous = savedStatus.get(fb.id) ?? null;
+// The select shows the new status at once; a failed save puts the one it had back.
+async function updateStatus(fb, status) {
+  const previous = fb.status;
+  fb.status = status;
   try {
-    await api.put(`/api/procedure-feedbacks/${fb.id}`, { status: fb.status });
-    savedStatus.set(fb.id, fb.status);
+    await api.put(`/api/procedure-feedbacks/${fb.id}`, { status });
     showToast('Feedback status saved');
   } catch (err) {
-    if (previous !== null) fb.status = previous;
+    if (fb.status === status) fb.status = previous;
     const e = describeApiError(err, 'Could not change the status, try again');
     if (!e.silent) showToast(e.message, 'error', 6000);
   }

@@ -11,7 +11,7 @@ import {
 import { expect, test } from '../fixtures/auth.js';
 import { dragToShiftDropzone } from '../fixtures/drag.js';
 
-// Months reserved for this file: 2029-01 (extends rest), 2029-02 (cancel).
+// Months reserved for this file: 2029-01 (extends rest), 2029-02 (cancel), 2029-05 (Escape).
 const EMPLOYEE = 'Regular Employee';
 
 async function seedRestingEmployee(context, name, month) {
@@ -143,6 +143,38 @@ test.describe('Rest-day policy prompt', () => {
     const { schedule } = await getShiftGroupsAndShifts(context, '2029-02', groupId);
     expect(
       schedule['2029-02-03'][0].assignments.filter((x) => x.user_id === employeeId),
+    ).toHaveLength(0);
+  });
+
+  // The dialog is on the shared modal stack (useFocusTrap): it gets Escape while it is the top layer.
+  test('Escape cancels like Cancel and leaves nothing assigned', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const { groupId, employeeId } = await seedRestingEmployee(
+      context,
+      'Rest Escape Team',
+      '2029-05',
+    );
+
+    await adminPage.goto('/schedule/2029-05');
+    await adminPage.getByRole('button', { name: /Rest Escape Team/ }).click();
+    const day3 = adminPage.locator('[data-date="2029-05-03"]');
+    const zone = day3.locator('[data-shift-id]').first();
+    await expect(zone).toBeVisible();
+    const chip = adminPage.locator('div.cursor-grab.rounded-xl', { hasText: EMPLOYEE });
+    await expect(chip).toBeVisible();
+    await dragToShiftDropzone(adminPage, chip, zone);
+    await confirmBackToBack(adminPage);
+
+    const dialog = adminPage.getByRole('dialog', { name: /rest day/i });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('radio').first()).toBeFocused(); // focus moved into the dialog
+    await adminPage.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(zone.locator('div', { hasText: EMPLOYEE })).toHaveCount(0);
+
+    const { schedule } = await getShiftGroupsAndShifts(context, '2029-05', groupId);
+    expect(
+      schedule['2029-05-03'][0].assignments.filter((x) => x.user_id === employeeId),
     ).toHaveLength(0);
   });
 });

@@ -114,19 +114,25 @@ class ProcedureController extends Controller
             'tag_ids.*' => ['exists:procedure_tags,id'],
         ]);
 
-        $validated['identifier'] = Procedure::nextIdentifier();
-        $validated['version'] = 1;
+        // The procedure, its tags and its v1 snapshot exist together or not at all (no procedure
+        // without /versions/1).
+        $procedure = DB::transaction(function () use ($request, $validated) {
+            $validated['identifier'] = Procedure::nextIdentifier();
+            $validated['version'] = 1;
 
-        $procedure = Procedure::create(collect($validated)->except(['tag_ids'])->toArray());
+            $procedure = Procedure::create(collect($validated)->except(['tag_ids'])->toArray());
 
-        if (!empty($validated['tag_ids'])) {
-            $procedure->tags()->sync($validated['tag_ids']);
-        }
+            if (!empty($validated['tag_ids'])) {
+                $procedure->tags()->sync($validated['tag_ids']);
+            }
+
+            // Save initial version snapshot
+            $this->snapshotVersion($procedure, 'Initial version', $request->user()->id);
+
+            return $procedure;
+        });
 
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
-
-        // Save initial version snapshot
-        $this->snapshotVersion($procedure, 'Initial version', $request->user()->id);
 
         return response()->json($procedure, 201);
     }
@@ -179,7 +185,10 @@ class ProcedureController extends Controller
     /**
      * Edit the published procedure directly (admin route). Changing a versioned field (title,
      * purpose, requirements, content) publishes a new version with its snapshot, as publishDraft()
-     * does. The owner is changed only through changeOwner(), which records who changed it and why.
+     * does (including resolving open feedback on older versions). While a draft is pending such a
+     * change is refused (409): publishing the draft later would silently overwrite it. The owner is
+     * changed only through changeOwner(), which records who changed it and why. No SPA screen calls
+     * this endpoint (the editor uses draft + publish); it is kept for API clients.
      */
     public function update(Request $request, Procedure $procedure)
     {
@@ -197,13 +206,17 @@ class ProcedureController extends Controller
             'owner_id.in' => 'Change the owner with change-owner, which records the reason.',
         ]);
 
-        DB::transaction(function () use ($request, $procedure, $validated) {
+        $updated = DB::transaction(function () use ($request, $procedure, $validated) {
             // Lock the row, then re-read it: a concurrent edit or publish can't take the same version.
             $procedure->newQuery()->whereKey($procedure->id)->lockForUpdate()->first();
             $procedure->refresh();
 
             $fields = collect($validated)->only(self::VERSIONED_FIELDS)->all();
             $changed = collect($fields)->contains(fn ($value, $field) => $value !== $procedure->{$field});
+
+            if ($changed && $procedure->has_draft) {
+                return false;
+            }
 
             if ($changed) {
                 $fields['version'] = $procedure->version + 1;
@@ -213,12 +226,21 @@ class ProcedureController extends Controller
             if ($changed) {
                 $reason = trim((string) ($validated['change_reason'] ?? ''));
                 $this->snapshotVersion($procedure, $reason !== '' ? $reason : 'Updated', $request->user()->id);
+                $this->resolveFeedbackBefore($procedure, $procedure->version);
             }
 
             if (isset($validated['tag_ids'])) {
                 $procedure->tags()->sync($validated['tag_ids']);
             }
+
+            return true;
         });
+
+        if (!$updated) {
+            return response()->json([
+                'message' => 'This procedure has an unpublished draft. Publish or discard the draft first.',
+            ], 409);
+        }
 
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
         return response()->json($procedure);
@@ -238,6 +260,15 @@ class ProcedureController extends Controller
             'published_by' => $publishedBy,
             'published_at' => now(),
         ]);
+    }
+
+    /** Open feedback on versions before $version is settled by publishing $version. */
+    private function resolveFeedbackBefore(Procedure $procedure, int $version): void
+    {
+        $procedure->feedbacks()
+            ->where('status', 'open')
+            ->where('for_version', '<', $version)
+            ->update(['status' => 'resolved']);
     }
 
     /**
@@ -309,10 +340,7 @@ class ProcedureController extends Controller
             $this->snapshotVersion($procedure, $validated['change_reason'], $request->user()->id);
 
             // Mark open feedbacks for previous versions as resolved
-            $procedure->feedbacks()
-                ->where('status', 'open')
-                ->where('for_version', '<', $newVersion)
-                ->update(['status' => 'resolved']);
+            $this->resolveFeedbackBefore($procedure, $newVersion);
 
             return true;
         });

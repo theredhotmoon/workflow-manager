@@ -153,8 +153,10 @@ async function saveTag() {
     showModal.value = false;
     showToast(editing ? 'Tag updated' : 'Tag created');
   } catch (err) {
-    const e = toastError(err, 'Could not save the tag, try again');
+    // A name error (e.g. a duplicate, 422) is shown under the field only; anything else as a toast.
+    const e = describeApiError(err, 'Could not save the tag, try again');
     nameError.value = fieldError(e.fieldErrors, 'name');
+    if (!e.silent && !nameError.value) showToast(e.message, 'error', 6000);
     return;
   } finally {
     saving.value = false;

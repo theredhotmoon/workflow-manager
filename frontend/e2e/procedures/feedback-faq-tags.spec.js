@@ -63,6 +63,23 @@ test.describe('Procedure feedback, FAQ and templates', () => {
     expect(posts()).toBe(1);
   });
 
+  test('double-clicking "mark as outdated" toggles once', async ({ adminPage }) => {
+    const procedure = await adminProcedure(adminPage, `FAQ Toggle ${Date.now()}`);
+    const item = await askFaqQuestion(adminPage.context(), procedure.id, 'Still current?');
+    const path = `/api/procedure-faq/${item.id}/toggle-outdated`;
+    const puts = countRequests(adminPage, 'PUT', path);
+    const held = await holdRequests(adminPage, (url) => url.pathname === path, { method: 'PUT' });
+
+    await adminPage.goto(`/procedures/${procedure.id}`);
+    await adminPage.getByRole('button', { name: /^FAQ/ }).click();
+    await adminPage.getByRole('button', { name: 'Mark question as outdated' }).dblclick();
+    await held.seen;
+    await held.releaseAndSettle();
+
+    await expect(adminPage.getByText('Outdated', { exact: true })).toBeVisible();
+    expect(puts()).toBe(1);
+  });
+
   test('deleting a FAQ question asks first', async ({ adminPage }) => {
     const procedure = await adminProcedure(adminPage, `FAQ Delete ${Date.now()}`);
     await askFaqQuestion(adminPage.context(), procedure.id, 'Is this question deletable?');
@@ -134,5 +151,7 @@ test.describe('Procedure tags', () => {
     );
     await expect(adminPage.getByRole('heading', { name: 'New Tag' })).toBeVisible();
     await expect(adminPage.getByPlaceholder('e.g. Security')).toHaveValue(name);
+    // Once, under the field: no error toast repeating it.
+    await expect(adminPage.getByText('The name has already been taken.')).toHaveCount(1);
   });
 });

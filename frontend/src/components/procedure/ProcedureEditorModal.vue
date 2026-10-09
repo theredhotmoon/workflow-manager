@@ -378,9 +378,34 @@ function showActionError(err, fallback) {
 // Unsaved changes: the form as last loaded or saved, compared with what is on screen now.
 const savedForm = ref(null);
 const formSnapshot = () => JSON.stringify({ ...form, tag_ids: [...form.tag_ids].sort() });
-function markSaved() {
-  savedForm.value = formSnapshot();
+// A save stores the snapshot taken when its request was sent, not when it returns: what the user
+// types while the request is in flight was not saved and must still count as a change.
+function markSaved(snapshot = formSnapshot()) {
+  savedForm.value = snapshot;
 }
+
+// A server error on a field goes away once the user edits that field (the summary stays until the
+// next attempt).
+function clearServerError(name) {
+  const keys = Object.keys(serverErrors.value).filter(
+    (k) => k === name || k.startsWith(`${name}.`),
+  );
+  if (!keys.length) return;
+  const next = { ...serverErrors.value };
+  for (const k of keys) delete next[k];
+  serverErrors.value = next;
+}
+for (const name of ['title', 'purpose', 'requirements', 'content', 'owner_id']) {
+  watch(
+    () => form[name],
+    () => clearServerError(name),
+  );
+}
+watch(
+  () => [...form.tag_ids],
+  () => clearServerError('tag_ids'),
+);
+watch(changeReason, () => clearServerError('change_reason'));
 const isDirty = computed(() => savedForm.value !== null && formSnapshot() !== savedForm.value);
 
 const pendingFeedbacks = computed(() => {
@@ -551,9 +576,10 @@ async function saveDraft() {
   clearErrors();
   saving.value = true;
   try {
+    const sent = formSnapshot();
     await api.put(`/api/procedures/${props.procedureId}/draft`, form);
     hasDraft.value = true;
-    markSaved();
+    markSaved(sent);
     showToast('Draft saved');
   } catch (err) {
     showSaveError(err);
@@ -569,9 +595,10 @@ async function publishOrCreate() {
   try {
     if (isEdit.value) {
       // Save draft first, then publish with change_reason
+      const sent = formSnapshot();
       await api.put(`/api/procedures/${props.procedureId}/draft`, form);
       hasDraft.value = true;
-      markSaved();
+      markSaved(sent);
       const nextVersion = originalVersion.value + 1;
       await api.post(`/api/procedures/${props.procedureId}/publish`, {
         change_reason: changeReason.value,
@@ -580,8 +607,9 @@ async function publishOrCreate() {
       showToast(`Published v${nextVersion}`);
       emit('saved', props.procedureId);
     } else {
+      const sent = formSnapshot();
       const res = await api.post('/api/procedures', form);
-      markSaved();
+      markSaved(sent);
       showToast('Procedure created');
       emit('saved', res.data.id);
     }

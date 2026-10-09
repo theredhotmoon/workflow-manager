@@ -300,7 +300,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::put('/procedure-tags/{procedureTag}', [ProcedureTagController::class, 'update']);
         Route::delete('/procedure-tags/{procedureTag}', [ProcedureTagController::class, 'destroy']);
 
-        // Procedures (write operations — owner check inside controller)
+        // Procedures (write operations): admin-only, this group is the only rule; the controller has
+        // no per-owner check, so these routes must stay inside the admin group.
         Route::post('/procedures', [ProcedureController::class, 'store']);
         Route::put('/procedures/{procedure}', [ProcedureController::class, 'update']);
         Route::delete('/procedures/{procedure}', [ProcedureController::class, 'destroy']);

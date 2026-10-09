@@ -1,6 +1,6 @@
 <template>
   <div class="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="emit('cancel')">
-    <div role="dialog" aria-modal="true" aria-labelledby="rest-day-title"
+    <div ref="dialogRef" role="dialog" aria-modal="true" aria-labelledby="rest-day-title"
       class="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl">
       <h2 id="rest-day-title" class="text-lg font-semibold text-white mb-1">{{ affected ? 'This makes a later shift a rest day' : 'Assign on a rest day?' }}</h2>
       <p v-if="affected" class="text-sm text-slate-300 mb-4">
@@ -33,7 +33,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { useFocusTrap } from '../composables/useFocusTrap.js';
 
 const props = defineProps({
   userName: { type: String, required: true },
@@ -74,9 +75,12 @@ const affectedType = computed(
   () => [...new Set((props.affected || []).map((a) => a.shift_type))].join('/') || 'shift',
 );
 
-function onKeydown(e) {
-  if (e.key === 'Escape') emit('cancel');
-}
-onMounted(() => document.addEventListener('keydown', onKeydown));
-onUnmounted(() => document.removeEventListener('keydown', onKeydown));
+// On the shared modal stack: Escape cancels only while this dialog is the top one (a confirm opened
+// over it gets the key instead). The parent mounts it to show it, so it opens on mount.
+const dialogRef = ref(null);
+const open = ref(false);
+useFocusTrap(dialogRef, open, { onEscape: () => emit('cancel') });
+onMounted(() => {
+  open.value = true;
+});
 </script>

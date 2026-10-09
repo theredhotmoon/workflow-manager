@@ -1,5 +1,6 @@
 import { createProcedure, createUser, getEmployeeIdByEmail } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
+import { holdRequests } from '../fixtures/hold.js';
 
 const TITLE_PLACEHOLDER = 'e.g. Password Reset via Database';
 
@@ -89,6 +90,10 @@ test.describe('Procedure editor: save errors', () => {
     await expect(editor).toBeVisible();
     await expect(editor.getByPlaceholder(TITLE_PLACEHOLDER)).toHaveValue('Kept title');
     await expect(adminPage.getByText('Draft saved')).toHaveCount(0);
+
+    // Editing the field clears its server error (the summary stays until the next attempt).
+    await editor.getByPlaceholder(TITLE_PLACEHOLDER).fill('Another title');
+    await expect(editor.getByTestId('title-error')).toHaveCount(0);
   });
 
   test('a 500 on Save Draft shows a message; the retry clears it and says "Draft saved"', async ({
@@ -175,8 +180,9 @@ test.describe('Procedure editor: save errors', () => {
 test.describe('Procedure editor: Escape and unsaved changes', () => {
   test('Escape on a confirm over the editor closes only the confirm', async ({ adminPage }) => {
     const procedure = await adminProcedure(adminPage, `Escape Stack ${Date.now()}`);
+    // A clean editor: with unsaved changes the editor would ask before closing, which would hide a
+    // stray Escape reaching it. Clean, a stray Escape closes it outright.
     const editor = await openEditor(adminPage, procedure);
-    await editor.getByPlaceholder(TITLE_PLACEHOLDER).fill('Unsaved title');
 
     await editor.getByRole('button', { name: 'Delete Procedure' }).click();
     const confirmDialog = adminPage.getByRole('dialog', { name: 'Delete Procedure' });
@@ -184,10 +190,12 @@ test.describe('Procedure editor: Escape and unsaved changes', () => {
     await adminPage.keyboard.press('Escape');
 
     await expect(confirmDialog).toHaveCount(0);
-    // A closing editor stays in the DOM for its 200ms fade-out; look after that.
-    await adminPage.waitForTimeout(400);
+    // Focus is back on the confirm's trigger inside the editor. Had the Escape also closed the
+    // (clean) editor, the editor's own trap would have moved focus out to its Edit button. (A
+    // visibility check alone can't tell: a closing editor stays in the DOM for its 200ms fade-out.)
+    await expect(editor.getByRole('button', { name: 'Delete Procedure' })).toBeFocused();
     await expect(editor).toBeVisible();
-    await expect(editor.getByPlaceholder(TITLE_PLACEHOLDER)).toHaveValue('Unsaved title');
+    await expect(editor.getByPlaceholder(TITLE_PLACEHOLDER)).toHaveValue(procedure.title);
   });
 
   test('closing an editor with unsaved changes asks first; a clean one just closes', async ({
@@ -211,7 +219,7 @@ test.describe('Procedure editor: Escape and unsaved changes', () => {
     await expect(discardPrompt).toBeVisible();
     await adminPage.keyboard.press('Escape');
     await expect(discardPrompt).toHaveCount(0);
-    await adminPage.waitForTimeout(400); // past the editor's 200ms fade-out, had it closed
+    await expect(editor.getByPlaceholder(TITLE_PLACEHOLDER)).toBeFocused(); // back where the user was
     await expect(editor).toBeVisible();
     await expect(editor.getByPlaceholder(TITLE_PLACEHOLDER)).toHaveValue('Typed but not saved');
 
@@ -224,5 +232,22 @@ test.describe('Procedure editor: Escape and unsaved changes', () => {
     await editor.getByRole('button', { name: 'Close editor' }).click();
     await discardPrompt.getByRole('button', { name: 'Discard changes' }).click();
     await expect(editor).toHaveCount(0);
+  });
+
+  test('typing while Save Draft is in flight still counts as unsaved', async ({ adminPage }) => {
+    const procedure = await adminProcedure(adminPage, `Save Race ${Date.now()}`);
+    const editor = await openEditor(adminPage, procedure);
+    const title = editor.getByPlaceholder(TITLE_PLACEHOLDER);
+    await title.fill('Sent with the save');
+    const save = await holdRequests(adminPage, draftUrl(procedure.id), { method: 'PUT' });
+
+    await editor.getByRole('button', { name: 'Save Draft' }).click();
+    await save.seen;
+    await title.fill('Typed after the save was sent');
+    await save.releaseAndSettle();
+    await expect(adminPage.getByText('Draft saved')).toBeVisible();
+
+    await adminPage.keyboard.press('Escape');
+    await expect(adminPage.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible();
   });
 });

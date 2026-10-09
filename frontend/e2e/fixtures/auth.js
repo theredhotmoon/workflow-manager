@@ -29,6 +29,14 @@ export const test = base.extend({
     await use(page);
     await context.close();
   },
+  // Seeded by ScheduleMaintainerSeeder (role schedule_maintainer).
+  maintainerPage: async ({ browser }, use) => {
+    const context = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
+    await loginAs(context, 'schedule@company.com', 'schedule123');
+    const page = await context.newPage();
+    await use(page);
+    await context.close();
+  },
   employeePage: async ({ browser }, use) => {
     const context = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
     await loginAs(context, 'regular@shiftchanger.com', 'password123');

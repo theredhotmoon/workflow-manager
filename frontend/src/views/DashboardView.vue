@@ -267,6 +267,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import { localDateStr } from '../dates.js';
 import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
 import { isAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
@@ -289,10 +290,7 @@ const todayFormatted = computed(() => {
   });
 });
 
-const todayDateStr = computed(() => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-});
+const todayDateStr = computed(() => localDateStr(new Date()));
 
 const todayMonthKey = computed(() => {
   const d = new Date();

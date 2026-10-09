@@ -79,27 +79,27 @@
             <span v-else class="w-2.5 h-2.5 rounded-full shrink-0 bg-slate-500/50"></span>
 
             <!-- Inline rename -->
-            <template v-if="canManageSchedule && editingGroupId === group.id">
+            <template v-if="isAdmin(currentUser) && editingGroupId === group.id">
               <input v-model="editingGroupName" type="text" @keyup.enter="saveGroupRename" @keyup.escape="editingGroupId = null" @blur="saveGroupRename"
                 class="w-24 px-1.5 py-0.5 bg-white/10 border border-indigo-500/30 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
                 ref="groupRenameInput" />
             </template>
             <template v-else>
-              <span @dblclick.stop="canManageSchedule && startGroupRename(group)">{{ group.name }}</span>
+              <span @dblclick.stop="isAdmin(currentUser) && startGroupRename(group)">{{ group.name }}</span>
             </template>
 
             <span v-if="activeGroupId === group.id && group.is_default" class="text-[8px] text-indigo-400/60 uppercase tracking-wider">default</span>
 
-            <!-- Delete group button (admin, non-default) -->
-            <button v-if="canManageSchedule && !group.is_default && activeGroupId === group.id"
+            <!-- Delete group button (admin only, non-default) -->
+            <button v-if="isAdmin(currentUser) && !group.is_default && activeGroupId === group.id"
               @click.stop="deleteShiftGroup(group)"
               class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-red-400 transition-colors ml-1"
               title="Delete group">
               <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
 
-            <!-- Group settlement settings (admin/schedule_maintainer) -->
-            <button v-if="canManageSchedule && activeGroupId === group.id"
+            <!-- Group settlement settings (admin only: saving writes the group) -->
+            <button v-if="isAdmin(currentUser) && activeGroupId === group.id"
               @click.stop="openGroupSettings(group)"
               class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-indigo-400 transition-colors ml-1"
               title="Settlement period settings">
@@ -107,8 +107,8 @@
             </button>
           </button>
 
-          <!-- New Group button (admin) -->
-          <button v-if="canManageSchedule" @click="showNewGroupInput = !showNewGroupInput"
+          <!-- New Group button (admin only) -->
+          <button v-if="isAdmin(currentUser)" @click="showNewGroupInput = !showNewGroupInput"
             class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border border-dashed border-white/15 text-slate-500 hover:text-indigo-400 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
             New Group
@@ -118,7 +118,7 @@
         <!-- New group inline form -->
         <Transition enter-active-class="transition-all duration-200 ease-out" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0"
           leave-active-class="transition-all duration-150 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
-          <div v-if="showNewGroupInput" class="mt-3 flex items-center gap-2">
+          <div v-if="showNewGroupInput && isAdmin(currentUser)" class="mt-3 flex items-center gap-2">
             <input v-model="newGroupColor" type="color" class="w-8 h-8 rounded-lg border border-white/10 cursor-pointer bg-transparent shrink-0" />
             <input v-model="newGroupName" type="text" placeholder="Group name (e.g. Event Coverage)"
               class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500"
@@ -504,9 +504,7 @@
                         v-model="shift.assignments"
                         :group="{ name: 'shifts', pull: canManageSchedule, put: canManageSchedule }"
                         :data-shift-id="shift.id"
-                        @start="onShiftDragStart($event, shift)"
                         @add="onDrop($event, shift, day.dateStr)"
-                        @remove="onRemove($event, shift)"
                         class="min-h-[28px] bg-white/[0.03] border border-dashed border-white/10 rounded-lg flex flex-wrap gap-1 p-1 transition-colors hover:border-indigo-500/30 hover:bg-indigo-500/5"
                       >
                         <div v-for="assignment in shift.assignments" :key="assignment.user_id"
@@ -1318,6 +1316,7 @@ import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { localDateStr, todayStr } from '../dates.js';
 import { isAdmin, canManageSchedule as userCanManageSchedule } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -1563,15 +1562,22 @@ async function clearMonth() {
 // It runs after every schedule load and when the overlay is switched on; only the latest call may
 // apply, so a slow previous month's list can't replace the month on screen.
 const delegationRequests = useLatestRequest();
+// A failed load is not "nobody is on delegation": the drop-time check warns instead of passing.
+const delegationsFailed = ref(false);
 
 async function fetchDelegations() {
+  if (!canManageSchedule.value) return; // manager-only data (overlay and drop checks)
   const token = delegationRequests.begin();
   try {
     const res = await api.get('/api/delegations/month', { params: { month: monthKey.value } });
     if (!delegationRequests.isCurrent(token)) return;
     monthDelegations.value = res.data;
+    delegationsFailed.value = false;
   } catch {
-    if (delegationRequests.isCurrent(token)) monthDelegations.value = [];
+    if (!delegationRequests.isCurrent(token)) return;
+    monthDelegations.value = [];
+    delegationsFailed.value = true;
+    showToast("Couldn't load delegations: delegation conflicts can't be checked.", 'warning');
   }
 }
 
@@ -1600,13 +1606,16 @@ const monthNewbies = ref([]);
 const newbieRequests = useLatestRequest();
 
 async function fetchNewbies() {
+  if (!canManageSchedule.value) return; // manager-only data (overlay and roster stars)
   const token = newbieRequests.begin();
   try {
     const res = await api.get('/api/newbie-periods/month', { params: { month: monthKey.value } });
     if (!newbieRequests.isCurrent(token)) return;
     monthNewbies.value = res.data;
   } catch {
-    if (newbieRequests.isCurrent(token)) monthNewbies.value = [];
+    if (!newbieRequests.isCurrent(token)) return;
+    monthNewbies.value = [];
+    showToast("Couldn't load newbie periods.", 'warning');
   }
 }
 
@@ -1637,7 +1646,9 @@ async function fetchClosures() {
     if (!closureRequests.isCurrent(token)) return;
     monthClosures.value = res.data;
   } catch {
-    if (closureRequests.isCurrent(token)) monthClosures.value = [];
+    if (!closureRequests.isCurrent(token)) return;
+    monthClosures.value = [];
+    showToast("Couldn't load office closures.", 'warning');
   }
 }
 
@@ -1652,7 +1663,7 @@ watch(showClosures, (val) => {
 
 // Newbie helpers
 function isCurrentNewbie(userId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayStr();
   return monthNewbies.value.some((np) => {
     const start = np.start_date?.substring(0, 10);
     const end = np.end_date?.substring(0, 10);
@@ -1946,13 +1957,9 @@ function getOvernightFromPrevDay(dateStr) {
   if (!dateStr) return [];
   const prevDate = new Date(dateStr + 'T12:00:00');
   prevDate.setDate(prevDate.getDate() - 1);
-  const prevDateStr = formatLocalDate(prevDate);
+  const prevDateStr = localDateStr(prevDate);
   const prevDayShifts = schedule.value[prevDateStr] || [];
   return prevDayShifts.filter((s) => s.start_time && s.end_time && s.end_time < s.start_time);
-}
-
-function formatLocalDate(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // Sorted employee pool for display
@@ -1983,8 +1990,7 @@ const calendarWeeks = computed(() => {
   let startWeekday = firstDay.getDay() - 1;
   if (startWeekday < 0) startWeekday = 6;
 
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+  const today = todayStr();
 
   const weeks = [];
   let currentWeek = [];
@@ -2009,7 +2015,7 @@ const calendarWeeks = computed(() => {
       dayNumber: d,
       dateStr,
       isCurrentMonth: true,
-      isToday: dateStr === todayStr,
+      isToday: dateStr === today,
       shifts: schedule.value[dateStr] || [],
     });
     if (currentWeek.length === 7) {
@@ -2102,6 +2108,7 @@ async function fetchSchedule({ quiet = false } = {}) {
 }
 
 async function fetchTemplates() {
+  if (!canManageSchedule.value) return; // only the checklist pickers use them
   try {
     const response = await api.get('/api/checklist-templates');
     checklistTemplates.value = response.data;
@@ -2244,7 +2251,15 @@ async function generateMonth() {
         return; // Wait for confirmation
       }
     } catch {
-      /* proceed if check fails */
+      // Not "no closures": say the check didn't run and let the manager decide.
+      showGenerateModal.value = false;
+      const ok = await confirm({
+        title: "Couldn't check office closures",
+        message:
+          'The closed dates for this month could not be loaded, so office shifts may land on days the office is closed. Generate anyway?',
+        confirmLabel: 'Generate anyway',
+      });
+      if (!ok) return;
     }
   }
 
@@ -2428,7 +2443,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
   if (shiftIdx === 0) {
     const prevDate = new Date(dateStr + 'T12:00:00');
     prevDate.setDate(prevDate.getDate() - 1);
-    const prevDateStr = formatLocalDate(prevDate);
+    const prevDateStr = localDateStr(prevDate);
     const prevDayShifts = schedule.value[prevDateStr] || [];
     if (prevDayShifts.length > 0) {
       const lastShift = prevDayShifts[prevDayShifts.length - 1];
@@ -2452,7 +2467,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
   if (isOvernightShift(targetShift)) {
     const nextDate = new Date(dateStr + 'T12:00:00');
     nextDate.setDate(nextDate.getDate() + 1);
-    const nextDateStr = formatLocalDate(nextDate);
+    const nextDateStr = localDateStr(nextDate);
     const nextDayShifts = schedule.value[nextDateStr] || [];
     if (nextDayShifts.length > 0) {
       const firstShift = nextDayShifts[0];
@@ -2473,7 +2488,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
   if (shiftIdx === dayShifts.length - 1 && !isOvernightShift(targetShift)) {
     const nextDate = new Date(dateStr + 'T12:00:00');
     nextDate.setDate(nextDate.getDate() + 1);
-    const nextDateStr = formatLocalDate(nextDate);
+    const nextDateStr = localDateStr(nextDate);
     const nextDayShifts = schedule.value[nextDateStr] || [];
     if (nextDayShifts.length > 0) {
       const firstShift = nextDayShifts[0];
@@ -2511,9 +2526,20 @@ async function proceedWithAdjacentCheck(shift, item, index, dateStr) {
   await doAssign(shift, item, index);
 }
 
+// A chip dragged from another shift is a move: the server removes the old assignment and creates the
+// new one in one transaction (move_from_assignment_id), so a cancelled or refused move leaves the
+// employee where they were. Keyed by the dropped chip; read by every assign attempt for that drop.
+// Taken from the drop event itself rather than the source list's `remove` event, which Sortable
+// fires after `add`.
+const pendingMoves = new WeakMap();
+
 async function onDrop(evt, shift, dateStr) {
   const item = shift.assignments[evt.newIndex];
   if (!item || !item.user_id) return;
+  // Roster cards are clones without an id; a chip from another shift still carries its assignment id.
+  if (evt.from !== evt.to && evt.from?.dataset?.shiftId && item.id) {
+    pendingMoves.set(item, item.id);
+  }
 
   // Check if user has unavailable entries for this date
   // For overnight shifts, also check the next day
@@ -2522,7 +2548,7 @@ async function onDrop(evt, shift, dateStr) {
   if (isOvernightShift(shift)) {
     const nextDate = new Date(dateStr + 'T12:00:00');
     nextDate.setDate(nextDate.getDate() + 1);
-    datesToCheck.push(formatLocalDate(nextDate));
+    datesToCheck.push(localDateStr(nextDate));
   }
 
   try {
@@ -2548,15 +2574,21 @@ async function onDrop(evt, shift, dateStr) {
       return; // Wait for user confirmation
     }
   } catch {
-    // If availability check fails, proceed without blocking
+    // Don't block the drop, but don't pretend the check passed either.
+    showToast("Couldn't check this employee's availability.", 'warning');
   }
 
   // No unavailability conflict — check delegation conflict
   await proceedWithDelegationCheck(shift, item, evt.newIndex, dateStr);
 }
 
-// The DELETE of a drag-move's source slot (see onRemove); resolved when there is none.
-let pendingMoveRemoval = Promise.resolve();
+// Takes a dropped chip back off its target. For a move, the source chip (already gone from its list
+// on screen) comes back with a quiet reload; the server never removed it.
+function abandonDrop(shift, item) {
+  const i = shift.assignments.indexOf(item);
+  if (i !== -1) shift.assignments.splice(i, 1);
+  if (pendingMoves.delete(item)) fetchSchedule({ quiet: true });
+}
 
 // Resolves to { status: 'assigned' | 'prompted' (waiting on the rest-day dialog) | 'failed', updatedCount }.
 // laterRestPolicy goes with the ids of the later shifts the manager was shown; if the server's list
@@ -2569,22 +2601,24 @@ async function doAssign(
   laterRestPolicy = null,
   expectedAffectedIds = null,
 ) {
+  const moveFrom = pendingMoves.get(item);
   try {
     const response = await api.post('/api/schedule/assign', {
       shift_id: shift.id,
       user_id: item.user_id,
+      ...(moveFrom ? { move_from_assignment_id: moveFrom } : {}),
       ...(restPolicy ? { rest_policy: restPolicy } : {}),
       ...(laterRestPolicy
         ? { later_rest_policy: laterRestPolicy, expected_affected_ids: expectedAffectedIds || [] }
         : {}),
     });
+    pendingMoves.delete(item);
     item.id = response.data.id;
     item.user_name = response.data.user_name;
     item.rest_policy = response.data.rest_policy;
     const updatedIds = response.data.updated_assignment_ids || [];
     // Any assignment can start, move or end a rest window, so other chips' ⚠ / ⏸ / resting-until
-    // can change: reload them from the server — after a drag-move's DELETE of the old slot, if any.
-    await pendingMoveRemoval;
+    // can change: reload them from the server.
     await fetchSchedule({ quiet: true });
     return { status: 'assigned', updatedCount: updatedIds.length };
   } catch (err) {
@@ -2597,8 +2631,7 @@ async function doAssign(
       restPrompt.value = { shift, item, index, conflict: err.response.data, restPolicy };
       return { status: 'prompted', updatedCount: 0 };
     }
-    const i = shift.assignments.indexOf(item);
-    if (i !== -1) shift.assignments.splice(i, 1);
+    abandonDrop(shift, item);
     const msg = err.response?.data?.message || 'Failed to assign user.';
     showToast(msg, 'error');
     return { status: 'failed', updatedCount: 0 };
@@ -2639,15 +2672,12 @@ async function chooseRestPolicy(policy) {
 function cancelRestPolicy() {
   const { shift, item } = restPrompt.value;
   restPrompt.value = null;
-  const i = shift.assignments.indexOf(item);
-  if (i !== -1) shift.assignments.splice(i, 1);
+  abandonDrop(shift, item);
 }
 
 function cancelAvailConfirm() {
-  const { shift, itemIndex } = availConfirm.value;
-  if (shift && itemIndex !== null) {
-    shift.assignments.splice(itemIndex, 1);
-  }
+  const { shift, item } = availConfirm.value;
+  if (shift && item) abandonDrop(shift, item);
   availConfirm.value = {
     show: false,
     shift: null,
@@ -2678,6 +2708,9 @@ async function confirmAvailAssign() {
 }
 
 async function proceedWithDelegationCheck(shift, item, itemIndex, dateStr) {
+  if (delegationsFailed.value) {
+    showToast("Couldn't check delegations: the month's delegations failed to load.", 'warning');
+  }
   // Check delegation conflict
   try {
     const matchingDelegations = monthDelegations.value.filter((d) => {
@@ -2706,10 +2739,8 @@ async function proceedWithDelegationCheck(shift, item, itemIndex, dateStr) {
 }
 
 function cancelDelegConfirm() {
-  const { shift, itemIndex } = delegConfirm.value;
-  if (shift && itemIndex !== null) {
-    shift.assignments.splice(itemIndex, 1);
-  }
+  const { shift, item } = delegConfirm.value;
+  if (shift && item) abandonDrop(shift, item);
   delegConfirm.value = {
     show: false,
     shift: null,
@@ -2739,10 +2770,8 @@ async function confirmDelegAssign() {
 }
 
 function cancelAdjacentConfirm() {
-  const { shift, itemIndex } = adjacentConfirm.value;
-  if (shift && itemIndex !== null) {
-    shift.assignments.splice(itemIndex, 1);
-  }
+  const { shift, item } = adjacentConfirm.value;
+  if (shift && item) abandonDrop(shift, item);
   adjacentConfirm.value = {
     show: false,
     shift: null,
@@ -2770,28 +2799,6 @@ async function confirmAdjacentAssign() {
     dateStr: '',
     conflicts: [],
   };
-}
-
-const pendingRemoveAssignmentId = ref(null);
-
-function onShiftDragStart(evt, shift) {
-  // Capture the assignment id BEFORE the array is mutated
-  const assignment = shift.assignments[evt.oldIndex];
-  pendingRemoveAssignmentId.value = assignment?.id || null;
-}
-
-async function onRemove(evt, shift) {
-  // When dragged away to another slot, onDrop handles the target.
-  // We need to unassign the old assignment from the source shift.
-  const assignmentId = pendingRemoveAssignmentId.value;
-  pendingRemoveAssignmentId.value = null;
-  if (assignmentId) {
-    // doAssign() waits for this before reloading, so a move's old slot is gone from the refetch.
-    pendingMoveRemoval = api.delete(`/api/schedule/unassign/${assignmentId}`).catch(() => {
-      // silently handle
-    });
-    await pendingMoveRemoval;
-  }
 }
 
 async function removeAssignment(assignment, shift) {

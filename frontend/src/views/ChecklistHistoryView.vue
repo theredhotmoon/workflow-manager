@@ -454,6 +454,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { todayStr } from '../dates.js';
 
 const router = useRouter();
 const loading = ref(true);
@@ -757,7 +758,7 @@ function exportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `checklist-archive-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `checklist-archive-${todayStr()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -159,6 +159,7 @@ import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { localDateStr, todayStr } from '../dates.js';
 
 const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth());
@@ -197,7 +198,7 @@ function nextMonth() {
 
 const calendarWeeks = computed(() => {
   const first = new Date(currentYear.value, currentMonth.value, 1);
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayStr();
   let startDay = first.getDay() === 0 ? 6 : first.getDay() - 1;
   const weeks = [];
   let week = [];
@@ -206,7 +207,7 @@ const calendarWeeks = computed(() => {
   for (let i = 0; i < 42; i++) {
     const d = new Date(startDate);
     d.setDate(startDate.getDate() + i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = localDateStr(d);
     week.push({
       dateStr,
       dayNumber: d.getDate(),

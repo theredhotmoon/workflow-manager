@@ -156,6 +156,7 @@ import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
+import { localDateStr } from '../dates.js';
 
 const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth());
@@ -229,13 +230,6 @@ const calendarWeeks = computed(() => {
 
 function getEntriesForDate(dateStr) {
   return entries.value.filter((e) => dateStr >= e.start_date && dateStr <= e.end_date);
-}
-
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
 }
 
 function openAddModal(dateStr) {

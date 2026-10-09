@@ -4,6 +4,33 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🗓️ Schedule screen: remote shifts, safe drag-moves, correct closure dates, maintainer access
+
+- **Remote shifts showed as Office after a reload.** The month view didn't send a shift's work mode, so a remote shift came back as 🏢, the toggle needed two clicks, and **Switch to Remote** in the "office closed" dialog of Generate Month switched nothing. Editing a day's shift count also dropped the day-off request chip, because that answer had a different shape. Every schedule answer now has the same shape, with the work mode and the request fields.
+- **Moving a chip and then cancelling a warning unassigned the employee.** The old shift was removed the moment the chip left it, before any back-to-back / unavailable / delegation / rest-day dialog. A move is now one request: the old assignment goes and the new one is created together, and a Cancel, a refused rest day or any error leaves the employee on the original shift (the chip comes back).
+- **Office closures landed a day early east of UTC.** In Warsaw, clicking the 15th on the Office Availability calendar created a closure on the 14th, existing closures showed a day late and "today" could be wrong. Calendar dates are now built in local time everywhere (one shared helper), including the checklist form's default date, the newbie star and the CSV file name.
+- **Schedule maintainers hit silent permission errors.** Delegations, newbie periods, office closures and closure conflicts, checklist templates and shift colours were admin-only, so for maintainers the overlays were empty, the delegation warning never appeared, auto-fill's player list stayed empty and colours were missing. Maintainers can now read them (changing them stays admin-only); shift colours are visible to everyone. When one of these loads fails, the screen now says the check couldn't run instead of treating it as "nothing found". Creating, renaming, deleting a shift group and its settlement settings are shown to admins only (they always were admin-only on the server).
+
+### Backend
+| What | Details |
+|------|---------|
+| Changed | `GET /api/schedule` and `PUT /api/schedule/day-shifts` build shifts with one shared builder: both include `work_mode` (default `office`) and the assignment's `has_change_request`, `change_request_reason`, `change_request_id`, `change_request_date` |
+| Added | `POST /api/schedule/assign` takes optional `move_from_assignment_id` (the same user's assignment, not on the target shift; 422 otherwise). The source is removed (pending day-off requests acknowledged, rest policies cleaned up, as for unassign) and the new assignment created in one transaction; a 409/422 rolls everything back. The 201 body adds `moved_from_assignment_id` |
+| Changed | Moved to the `admin:schedule` group (admins and schedule maintainers): `GET /api/delegations/month`, `GET /api/newbie-periods/month`, `GET /api/office-closures`, `GET /api/office-closures/conflicts`, `GET /api/checklist-templates`. `GET /api/shift-colors` is open to every signed-in user. All writes stay admin-only |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Changed | Schedule: dragging a chip to another shift sends one assign with `move_from_assignment_id` (also on the retries after the rest-day and confirm dialogs); no more `DELETE` on drag. Cancel or a failed assign reloads the board quietly |
+| Added | `src/dates.js` (`localDateStr`, `todayStr`) replacing `toISOString()` dates in Office Availability, Schedule, Users, Checklist fill/history and the copies in My Availability, My Shifts and Dashboard |
+| Changed | Schedule: failed delegation / newbie / closure loads and availability checks show a warning; a failed closure check before Generate Month asks before generating. Delegations, newbies and templates are only loaded for schedule managers. Auto-fill's player list says when newbie periods or delegations couldn't load |
+| Changed | Schedule: New Group, rename, delete and group settings only for admins |
+
+### Tests
+- Pest `ScheduleScreenTest` (payload shape, generate-as-remote, atomic moves incl. rollbacks and 422s, maintainer/employee access); unit `dates.test.js` (runs in `Europe/Warsaw`); e2e `schedule/move-assignment.spec.js` (cancelled move, move, remote after reload, maintainer delegation warning) and a Warsaw-timezone closure click in `office-availability/closures.spec.js`. The drag helper moved to `e2e/fixtures/drag.js`; a `maintainerPage` fixture logs in the seeded schedule maintainer.
+
+---
+
 ## 2026-10-09 — 🔒 Closed three privilege gaps: handover confirmation, procedure ownership, admin status
 
 - **Anyone could confirm anyone's handover.** The outgoing employee (or any user) could confirm a handover in place of the incoming one, which defeats the two-person check. Now only the incoming user named on the handover can confirm it (admins can't confirm on someone's behalf); everyone else gets *"Only the incoming user named on this handover can confirm it."* The confirmation records who confirmed. Filing is closed too: an employee files a handover only as its outgoing employee themselves (the Outgoing select is fixed to them), the incoming employee must be someone else, and an admin filing on someone's behalf can't name themselves as incoming. (A handover with no incoming employee still completes at once, as before.) **View Pending Confirmations** now lists only handovers naming you as the incoming user (it used to list your own outgoing ones too); Checklist History still shows both directions.

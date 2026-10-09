@@ -9,6 +9,8 @@
       <span class="text-[10px] text-slate-500 tabular-nums ml-auto">{{ summaryLabel }}</span>
     </div>
 
+    <p v-if="loadWarning" role="alert" class="text-[10px] text-amber-400 leading-snug">{{ loadWarning }}</p>
+
     <!-- Mode selector -->
     <div class="flex items-center gap-1.5">
       <button v-for="opt in modeOptions" :key="opt.value"
@@ -162,6 +164,8 @@ const allEmployees = ref([]);
 const newbieIds = ref([]);
 const delegatedIds = ref([]);
 const groups = ref([]);
+// Set when part of the data failed to load, so an empty newbie/delegation list isn't read as "none".
+const loadWarning = ref('');
 
 const modeOptions = [
   { value: 'all', label: 'All players' },
@@ -285,11 +289,24 @@ watch(selectionMode, (mode) => {
 
 // Fetch data
 async function fetchData() {
+  loadWarning.value = '';
+  const failed = [];
+  const optional = (request, label) =>
+    request.catch(() => {
+      failed.push(label);
+      return { data: [] };
+    });
   try {
     const [empRes, newbieRes, delegRes, groupRes] = await Promise.all([
       api.get('/api/employees'),
-      api.get('/api/newbie-periods/month', { params: { month: props.monthKey } }),
-      api.get('/api/delegations/month', { params: { month: props.monthKey } }),
+      optional(
+        api.get('/api/newbie-periods/month', { params: { month: props.monthKey } }),
+        'newbie periods',
+      ),
+      optional(
+        api.get('/api/delegations/month', { params: { month: props.monthKey } }),
+        'delegations',
+      ),
       api.get('/api/user-groups').catch(() => ({ data: [] })),
     ]);
 
@@ -311,8 +328,11 @@ async function fetchData() {
     delegatedIds.value = Array.from(delIds);
 
     groups.value = groupRes.data;
+    if (failed.length)
+      loadWarning.value = `Couldn't load ${failed.join(' and ')}: those filters may be incomplete.`;
   } catch (err) {
     console.error('PlayerSelectionPanel: fetch error', err);
+    loadWarning.value = "Couldn't load the player list.";
   }
 }
 

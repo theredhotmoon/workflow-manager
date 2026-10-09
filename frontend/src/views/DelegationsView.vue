@@ -66,8 +66,8 @@
                   <span class="block px-3 py-1.5 text-xs font-bold text-amber-400 bg-amber-500/15 border border-amber-500/20 rounded-xl mb-1.5">
                     ⏳ Awaiting approval
                   </span>
-                  <button @click="withdraw(del)"
-                    class="text-[10px] text-slate-500 hover:text-red-400 transition-all">
+                  <button @click="withdraw(del)" :disabled="busyIds.has(del.id)"
+                    class="text-[10px] text-slate-500 hover:text-red-400 transition-all disabled:opacity-40">
                     Withdraw request
                   </button>
                 </div>
@@ -79,8 +79,8 @@
                   class="block px-3 py-1.5 text-xs font-bold text-red-400 bg-red-500/15 border border-red-500/20 rounded-xl">
                   ✕ Rejected
                 </span>
-                <button v-else @click="requestJoin(del)"
-                  class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition-all whitespace-nowrap">
+                <button v-else @click="requestJoin(del)" :disabled="busyIds.has(del.id)"
+                  class="disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-emerald-500/25 transition-all whitespace-nowrap">
                   🙋 I want to take part
                 </button>
               </div>
@@ -102,11 +102,8 @@
                 <div class="flex items-center gap-3 mb-1 flex-wrap">
                   <h3 class="text-white font-semibold">{{ del.name }}</h3>
                   <!-- Time status -->
-                  <span :class="['px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border',
-                    isPast(del) ? 'bg-slate-500/15 text-slate-400 border-slate-500/20'
-                    : isActive(del) ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
-                    : 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20']">
-                    {{ isPast(del) ? 'Completed' : isActive(del) ? 'Active' : 'Upcoming' }}
+                  <span data-testid="delegation-time-status" :class="['px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border', STATUS_CLASSES[delegationStatus(del)]]">
+                    {{ DELEGATION_STATUS_LABELS[delegationStatus(del)] }}
                   </span>
                   <!-- Approval status -->
                   <span :class="['px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full border',
@@ -139,20 +136,36 @@
         </div>
       </div>
     </main>
+    <AppToast />
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
+import { DELEGATION_STATUS_LABELS, delegationStatus } from '../delegationStatus.js';
 import { currentUser } from '../router/index.js';
+
+const { showToast } = useToast();
+
+const STATUS_CLASSES = {
+  completed: 'bg-slate-500/15 text-slate-400 border-slate-500/20',
+  ongoing: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+  upcoming: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20',
+};
 
 const tab = ref('open');
 const openDelegations = ref([]);
 const myDelegations = ref([]);
 const loading = ref(true);
 const currentUserId = ref(null);
+// Delegations with a join/withdraw request in flight: their button is disabled.
+const busyIds = reactive(new Set());
 
 function formatDate(d) {
   if (!d) return '';
@@ -167,31 +180,46 @@ function approvedUsers(del) {
   return (del.users || []).filter((u) => u.pivot?.status === 'approved');
 }
 
-function isPast(del) {
-  return new Date(del.end_datetime) < new Date();
+function showError(err, fallback) {
+  const e = describeApiError(err, fallback);
+  if (!e.silent) showToast(e.message, 'error', 6000);
 }
 
-function isActive(del) {
-  const now = new Date();
-  return new Date(del.start_datetime) <= now && new Date(del.end_datetime) >= now;
-}
-
-async function requestJoin(del) {
+async function runFor(del, request, fallback) {
+  if (busyIds.has(del.id)) return;
+  busyIds.add(del.id);
   try {
-    await api.post(`/api/delegations/${del.id}/self-register`);
-    await fetchData();
-  } catch (e) {
-    console.error(e);
+    await request();
+  } catch (err) {
+    showError(err, fallback);
+    return;
+  } finally {
+    busyIds.delete(del.id);
   }
+  await fetchData();
+}
+
+function requestJoin(del) {
+  return runFor(
+    del,
+    () => api.post(`/api/delegations/${del.id}/self-register`),
+    'Could not send your request',
+  );
 }
 
 async function withdraw(del) {
-  try {
-    await api.delete(`/api/delegations/${del.id}/self-unregister`);
-    await fetchData();
-  } catch (e) {
-    console.error(e);
-  }
+  const ok = await confirm({
+    title: 'Withdraw request',
+    message: `Withdraw your request to join "${del.name}"?`,
+    confirmLabel: 'Withdraw',
+    danger: true,
+  });
+  if (!ok) return;
+  await runFor(
+    del,
+    () => api.delete(`/api/delegations/${del.id}/self-unregister`),
+    'Could not withdraw your request',
+  );
 }
 
 async function fetchData() {
@@ -204,8 +232,8 @@ async function fetchData() {
     openDelegations.value = openRes.data;
     myDelegations.value = myRes.data;
     currentUserId.value = currentUser.value?.id;
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    showError(err, 'Could not load delegations');
   } finally {
     loading.value = false;
   }

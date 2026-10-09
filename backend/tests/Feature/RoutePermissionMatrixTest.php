@@ -36,6 +36,7 @@ function rpmExpected(): array
             'GET /api/alarms/latest',
             'GET /api/alarms/unread-count',
             'GET /api/checklist-submissions',
+            'GET /api/checklist-submissions/export',
             'GET /api/checklist-submissions/pending-confirmations',
             'GET /api/checklist-submissions/{checklistSubmission}',
             'GET /api/checklist-templates/active',
@@ -251,7 +252,7 @@ it('puts every route but login behind a session and an active account', function
 it('answers 401 to a guest on every route but login', function () {
     foreach (['authenticated', 'admin', 'schedule'] as $group) {
         foreach (rpmRequests($group) as [$method, $uri, $route]) {
-            $status = test()->json($method, $uri)->status();
+            $status = test()->json($method, $uri)->getStatusCode();
             expect($status)->toBe(401, "{$route} answered {$status} to a guest");
         }
     }
@@ -262,7 +263,7 @@ it('enforces the admin and admin:schedule groups on every route', function (stri
 
     foreach (['admin' => $admin, 'schedule' => $schedule] as $group => $allowed) {
         foreach (rpmRequests($group) as [$method, $uri, $route]) {
-            $status = test()->actingAs($user)->json($method, $uri)->status();
+            $status = test()->actingAs($user)->json($method, $uri)->getStatusCode();
             if ($allowed) {
                 expect($status)->not->toBeIn([401, 403], "{$route} refused a {$role} ({$status})");
             } else {
@@ -283,7 +284,7 @@ it('lets every role past the middleware of the routes open to all', function (st
         if ($route === 'POST /api/logout') {
             continue; // would end the session the rest of the walk runs on
         }
-        $status = test()->actingAs($user)->json($method, $uri)->status();
+        $status = test()->actingAs($user)->json($method, $uri)->getStatusCode();
         expect($status)->not->toBe(401, "{$route} answered 401 to a {$role}");
     }
 })->with(['employee', 'schedule_maintainer', 'admin']);

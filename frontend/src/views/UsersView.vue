@@ -611,40 +611,15 @@
 
           <p v-if="delegationError" class="text-red-400 text-sm mb-3">{{ delegationError }}</p>
 
-          <form v-if="delegationMode === 'create'" @submit.prevent="createDelegation" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Delegation name</label>
-              <input v-model="delForm.name" type="text" required
-                class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 placeholder-slate-500"
-                placeholder="e.g. Client meeting Warsaw" />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Destination</label>
-              <input v-model="delForm.destination" type="text" required
-                class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 placeholder-slate-500"
-                placeholder="e.g. Warsaw, Poland" />
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Start</label>
-                <input v-model="delForm.start_datetime" type="datetime-local" required
-                  class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">End</label>
-                <input v-model="delForm.end_datetime" type="datetime-local" required
-                  class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
-              </div>
-            </div>
-            <div class="flex justify-end gap-3 pt-2">
-              <button type="button" @click="closeDelegationModal" class="px-5 py-2 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
-              <button type="submit" :disabled="savingDelegation"
-                class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                <svg v-if="savingDelegation" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                Create & Assign
-              </button>
-            </div>
-          </form>
+          <!-- v-show, not v-if: a look at "Assign Existing" must not lose what was typed here. -->
+          <DelegationForm v-show="delegationMode === 'create'"
+            :initial="delegationInitial"
+            :saving="savingDelegation"
+            :server-errors="delegationFieldErrors"
+            :show-details="false"
+            submit-label="Create & Assign"
+            @submit="createDelegation"
+            @cancel="closeDelegationModal" />
 
           <div v-if="delegationMode === 'assign'" class="space-y-4">
             <div v-if="allDelegations.length === 0" class="text-center py-8 text-slate-500 text-sm">No delegations exist yet. Create one first.</div>
@@ -661,7 +636,7 @@
                   </div>
                 </div>
                 <button @click="assignToExisting(del)"
-                  :disabled="del.users?.some(u => u.id === delegationUser?.id)"
+                  :disabled="del.users?.some(u => u.id === delegationUser?.id) || assigningDelegationId !== null"
                   :class="['px-3 py-1.5 text-xs font-medium rounded-lg transition-all shrink-0 ml-3',
                     del.users?.some(u => u.id === delegationUser?.id)
                       ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 cursor-default'
@@ -726,9 +701,11 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import DelegationForm from '../components/DelegationForm.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 import { todayStr } from '../dates.js';
@@ -822,7 +799,9 @@ const delegationMode = ref('create');
 const savingDelegation = ref(false);
 const delegationError = ref('');
 const allDelegations = ref([]);
-const delForm = reactive({ name: '', destination: '', start_datetime: '', end_datetime: '' });
+const delegationInitial = ref({});
+const delegationFieldErrors = ref({});
+const assigningDelegationId = ref(null);
 
 // ── Newbie ─────────────────────────────────────────────
 const showNewbieModal = ref(false);
@@ -1199,8 +1178,10 @@ async function fetchDelegations() {
   try {
     const res = await api.get('/api/delegations');
     allDelegations.value = res.data;
-  } catch {
+  } catch (err) {
     allDelegations.value = [];
+    const e = describeApiError(err, 'Could not load delegations');
+    if (!e.silent) delegationError.value = e.message;
   }
 }
 
@@ -1208,10 +1189,8 @@ function openDelegationModal(user) {
   delegationUser.value = user;
   delegationMode.value = 'create';
   delegationError.value = '';
-  delForm.name = '';
-  delForm.destination = '';
-  delForm.start_datetime = '';
-  delForm.end_datetime = '';
+  delegationInitial.value = {};
+  delegationFieldErrors.value = {};
   showDelegationModal.value = true;
   fetchDelegations();
 }
@@ -1221,27 +1200,37 @@ function closeDelegationModal() {
   delegationUser.value = null;
 }
 
-async function createDelegation() {
+async function createDelegation(payload) {
+  if (savingDelegation.value) return;
   savingDelegation.value = true;
   delegationError.value = '';
+  delegationFieldErrors.value = {};
   try {
-    await api.post('/api/delegations', { ...delForm, user_ids: [delegationUser.value.id] });
-    showToast(`Delegation "${delForm.name}" created and ${delegationUser.value.name} assigned.`);
+    await api.post('/api/delegations', { ...payload, user_ids: [delegationUser.value.id] });
+    showToast(`Delegation "${payload.name}" created and ${delegationUser.value.name} assigned.`);
     closeDelegationModal();
   } catch (err) {
-    delegationError.value = err.response?.data?.message || 'Failed to create delegation.';
+    const e = describeApiError(err, 'Failed to create delegation');
+    if (!e.silent) delegationError.value = e.message;
+    delegationFieldErrors.value = e.fieldErrors;
   } finally {
     savingDelegation.value = false;
   }
 }
 
 async function assignToExisting(del) {
+  if (assigningDelegationId.value !== null) return;
+  assigningDelegationId.value = del.id;
+  delegationError.value = '';
   try {
     await api.post(`/api/delegations/${del.id}/add-user`, { user_id: delegationUser.value.id });
     showToast(`${delegationUser.value.name} assigned to "${del.name}".`);
     await fetchDelegations();
   } catch (err) {
-    delegationError.value = err.response?.data?.message || 'Failed to assign.';
+    const e = describeApiError(err, 'Failed to assign');
+    if (!e.silent) delegationError.value = e.message;
+  } finally {
+    assigningDelegationId.value = null;
   }
 }
 

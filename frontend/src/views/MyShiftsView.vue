@@ -19,12 +19,33 @@
         </div>
       </div>
 
+      <!-- Shifts loaded but delegations did not: a small, non-blocking notice -->
+      <div v-if="!loading && !shiftsError && delegationsFailed" role="status"
+        class="mb-4 flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300">
+        <span>Delegations couldn't be loaded, so they may be missing below.</span>
+        <button @click="fetchMyShifts" class="font-semibold text-amber-200 hover:text-white">Retry</button>
+      </div>
+
       <!-- Loading -->
       <div v-if="loading" class="flex items-center justify-center py-20">
         <svg class="animate-spin w-8 h-8 text-indigo-400" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
         </svg>
+      </div>
+
+      <!-- Shifts failed to load: say so (not "no shifts") and offer a retry -->
+      <div v-else-if="shiftsError" role="alert" class="text-center py-20">
+        <div class="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+        </div>
+        <p class="text-red-300 text-sm mb-4">{{ shiftsError }}</p>
+        <button @click="fetchMyShifts"
+          class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all">
+          Retry
+        </button>
       </div>
 
       <!-- No shifts -->
@@ -204,6 +225,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
@@ -214,6 +236,9 @@ import { localDateStr } from '../dates.js';
 const loading = ref(true);
 const shifts = ref({});
 const delegations = ref([]);
+// Why the shifts didn't load ('' when they did); delegations failing alone only adds a notice.
+const shiftsError = ref('');
+const delegationsFailed = ref(false);
 const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth());
 
@@ -322,21 +347,30 @@ const shiftsRequests = useLatestRequest();
 async function fetchMyShifts() {
   const token = shiftsRequests.begin();
   loading.value = true;
-  try {
-    const [shiftRes, delRes] = await Promise.all([
-      api.get('/api/my-shifts', { params: { month: monthKey.value } }),
-      api.get('/api/my-delegations', { params: { month: monthKey.value } }),
-    ]);
-    if (!shiftsRequests.isCurrent(token)) return;
-    shifts.value = shiftRes.data;
-    delegations.value = delRes.data;
-  } catch {
-    if (!shiftsRequests.isCurrent(token)) return;
+  // allSettled: a failed delegations call must not hide the shifts, and a failed shifts call must
+  // show an error, never the "no shifts" empty state.
+  const [shiftRes, delRes] = await Promise.allSettled([
+    api.get('/api/my-shifts', { params: { month: monthKey.value } }),
+    api.get('/api/my-delegations', { params: { month: monthKey.value } }),
+  ]);
+  if (!shiftsRequests.isCurrent(token)) return;
+
+  if (shiftRes.status === 'fulfilled') {
+    shifts.value = shiftRes.value.data;
+    shiftsError.value = '';
+  } else {
     shifts.value = {};
-    delegations.value = [];
-  } finally {
-    if (shiftsRequests.isCurrent(token)) loading.value = false;
+    const { message } = describeApiError(shiftRes.reason, 'Could not load your shifts');
+    shiftsError.value = message || 'Could not load your shifts.';
   }
+  if (delRes.status === 'fulfilled') {
+    delegations.value = delRes.value.data;
+    delegationsFailed.value = false;
+  } else {
+    delegations.value = [];
+    delegationsFailed.value = true;
+  }
+  loading.value = false;
 }
 
 function getDayDelegations(dateStr) {

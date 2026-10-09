@@ -8,12 +8,12 @@
           <p class="text-slate-400 mt-1">Browse, sort, and filter all submitted checklists.</p>
         </div>
         <div class="flex items-center gap-3">
-          <button @click="exportCSV" v-if="submissions.length"
-            class="px-4 py-2 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all flex items-center gap-2">
+          <button @click="exportCSV" v-if="total > 0" :disabled="exporting"
+            class="px-4 py-2 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all flex items-center gap-2 disabled:opacity-50">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            Export CSV
+            {{ exporting ? 'Exporting…' : 'Export CSV' }}
           </button>
         </div>
       </div>
@@ -115,8 +115,11 @@
 
       <!-- Results count -->
       <div class="flex items-center justify-between mb-3">
-        <p class="text-xs text-slate-500">
-          Showing <span class="text-slate-300 font-medium">{{ filteredSubmissions.length }}</span> of <span class="text-slate-300 font-medium">{{ submissions.length }}</span> results
+        <p class="text-xs text-slate-500" data-testid="results-count">
+          <template v-if="total > 0">
+            Showing <span class="text-slate-300 font-medium">{{ rangeStart }}–{{ rangeEnd }}</span> of <span class="text-slate-300 font-medium">{{ total }}</span> results
+          </template>
+          <template v-else>No results</template>
         </p>
         <div class="flex items-center gap-2 text-xs text-slate-500">
           <span>Per page:</span>
@@ -137,8 +140,15 @@
         </svg>
       </div>
 
+      <!-- Failed to load: say so, not "no submissions" -->
+      <div v-else-if="loadError" role="alert" class="text-center py-20">
+        <p class="text-red-300 text-sm mb-4">{{ loadError }}</p>
+        <button @click="fetchPage"
+          class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all">Retry</button>
+      </div>
+
       <!-- Empty -->
-      <div v-else-if="filteredSubmissions.length === 0" class="text-center py-20">
+      <div v-else-if="submissions.length === 0" class="text-center py-20">
         <svg class="w-16 h-16 text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
@@ -177,7 +187,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="sub in paginatedSubmissions" :key="sub.id"
+              <tr v-for="sub in submissions" :key="sub.id"
                 class="border-b border-white/5 hover:bg-white/[0.03] transition-colors cursor-pointer group"
                 @click="viewDetail(sub.id)">
                 <td class="px-5 py-3.5">
@@ -239,7 +249,7 @@
       </div>
 
       <!-- Pagination -->
-      <div v-if="totalPages > 1" class="flex items-center justify-between mt-4">
+      <nav v-if="totalPages > 1" aria-label="Pagination" class="flex items-center justify-between mt-4">
         <p class="text-xs text-slate-500">
           Page {{ currentPage }} of {{ totalPages }}
         </p>
@@ -253,7 +263,7 @@
             «
           </button>
           <template v-for="p in visiblePages" :key="p">
-            <button v-if="p !== '...'" @click="currentPage = p"
+            <button v-if="p !== '...'" @click="currentPage = p" :aria-label="`Page ${p}`" :aria-current="p === currentPage ? 'page' : undefined"
               :class="[
                 'w-8 h-8 rounded-lg text-xs font-medium transition-all',
                 p === currentPage ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25' : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
@@ -271,7 +281,7 @@
             »»
           </button>
         </div>
-      </div>
+      </nav>
 
       <!-- Detail Modal -->
       <Transition
@@ -449,21 +459,31 @@
         </div>
       </Transition>
     </main>
+    <AppToast />
   </AppLayout>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { describeApiError, readBlobErrorBody } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { useToast } from '../composables/useToast.js';
 import { todayStr } from '../dates.js';
 
-const router = useRouter();
+const { showToast } = useToast();
+
+// The archive is paginated, filtered, searched and sorted on the server: only the current page is
+// loaded, and the totals and status counts cover every matching handover (no 1000-row cap).
 const loading = ref(true);
+const loadError = ref('');
 const submissions = ref([]);
+const total = ref(0);
+const lastPage = ref(1);
+const statusCounts = ref({ completed: 0, pending_confirmation: 0, draft: 0 });
 const templates = ref([]);
 const employees = ref([]);
 const detailData = ref(null);
@@ -475,6 +495,7 @@ const perPage = ref(25);
 const currentPage = ref(1);
 const sortColumn = ref('date');
 const sortDirection = ref('desc');
+const exporting = ref(false);
 
 const filters = reactive({
   date_from: '',
@@ -483,6 +504,9 @@ const filters = reactive({
   template_id: '',
   user_id: '',
 });
+// What Apply last sent: editing the filter inputs changes nothing until Apply, and every page,
+// sort and export request carries these.
+const appliedFilters = ref({});
 
 // Column definitions
 const columns = [
@@ -496,100 +520,64 @@ const columns = [
   { key: 'actions', label: '', sortable: false, align: 'right' },
 ];
 
-// Stats
-const stats = computed(() => {
-  const all = submissions.value;
-  return {
-    total: all.length,
-    completed: all.filter((s) => s.status === 'completed').length,
-    pending: all.filter((s) => s.status === 'pending_confirmation').length,
-    draft: all.filter((s) => s.status === 'draft').length,
-  };
-});
-
-// Client-side filtering + sorting
-const filteredSubmissions = computed(() => {
-  let result = [...submissions.value];
-
-  // Search
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.toLowerCase();
-    result = result.filter(
-      (s) =>
-        (s.template?.name || '').toLowerCase().includes(q) ||
-        (s.outgoing_user?.name || '').toLowerCase().includes(q) ||
-        (s.incoming_user?.name || '').toLowerCase().includes(q),
-    );
-  }
-
-  // Sort
-  result.sort((a, b) => {
-    let aVal, bVal;
-    switch (sortColumn.value) {
-      case 'date':
-        aVal = a.date;
-        bVal = b.date;
-        break;
-      case 'template':
-        aVal = a.template?.name || '';
-        bVal = b.template?.name || '';
-        break;
-      case 'outgoing':
-        aVal = a.outgoing_user?.name || '';
-        bVal = b.outgoing_user?.name || '';
-        break;
-      case 'incoming':
-        aVal = a.incoming_user?.name || '';
-        bVal = b.incoming_user?.name || '';
-        break;
-      case 'status':
-        aVal = a.status;
-        bVal = b.status;
-        break;
-      case 'submitted_at':
-        aVal = a.submitted_at || '';
-        bVal = b.submitted_at || '';
-        break;
-      default:
-        return 0;
-    }
-    if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  return result;
-});
+// Stats (every matching handover, from the server)
+const stats = computed(() => ({
+  total: total.value,
+  completed: statusCounts.value.completed ?? 0,
+  pending: statusCounts.value.pending_confirmation ?? 0,
+  draft: statusCounts.value.draft ?? 0,
+}));
 
 // Pagination
-const totalPages = computed(() =>
-  Math.max(1, Math.ceil(filteredSubmissions.value.length / perPage.value)),
-);
-
-const paginatedSubmissions = computed(() => {
-  const start = (currentPage.value - 1) * perPage.value;
-  return filteredSubmissions.value.slice(start, start + perPage.value);
-});
+const totalPages = computed(() => Math.max(1, lastPage.value));
+const rangeStart = computed(() => (currentPage.value - 1) * perPage.value + 1);
+const rangeEnd = computed(() => rangeStart.value + submissions.value.length - 1);
 
 const visiblePages = computed(() => {
-  const total = totalPages.value;
+  const pageCount = totalPages.value;
   const current = currentPage.value;
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, i) => i + 1);
   const pages = [];
   pages.push(1);
   if (current > 3) pages.push('...');
-  for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
+  for (let i = Math.max(2, current - 1); i <= Math.min(pageCount - 1, current + 1); i++) {
     pages.push(i);
   }
-  if (current < total - 2) pages.push('...');
-  pages.push(total);
+  if (current < pageCount - 2) pages.push('...');
+  pages.push(pageCount);
   return pages;
 });
 
-// Reset page when filters/search change
-watch([searchQuery, perPage], () => {
-  currentPage.value = 1;
+/** Filters, search and sort as API params (empty values left out). */
+function queryParams() {
+  const params = { ...appliedFilters.value };
+  const search = searchQuery.value.trim();
+  if (search) params.search = search;
+  params.sort = sortColumn.value;
+  params.direction = sortDirection.value;
+  return params;
+}
+
+// Back to page 1 (and reload) when what is listed changes; a page change just loads that page.
+function reloadFromFirstPage() {
+  if (currentPage.value === 1) fetchPage();
+  else currentPage.value = 1;
+}
+
+watch(currentPage, () => fetchPage());
+watch(perPage, reloadFromFirstPage);
+
+let searchTimer = null;
+let skipSearchReload = false; // set by Reset, which reloads itself
+watch(searchQuery, () => {
+  clearTimeout(searchTimer);
+  if (skipSearchReload) {
+    skipSearchReload = false;
+    return;
+  }
+  searchTimer = setTimeout(reloadFromFirstPage, 300);
 });
+onUnmounted(() => clearTimeout(searchTimer));
 
 // Sorting
 function toggleSort(key) {
@@ -599,44 +587,58 @@ function toggleSort(key) {
     sortColumn.value = key;
     sortDirection.value = key === 'date' || key === 'submitted_at' ? 'desc' : 'asc';
   }
+  reloadFromFirstPage();
 }
 
-// Apply / Reset overlap fetches (and the unfiltered mount fetch can land after an early Apply).
-// Only the latest may apply its rows, clear them on error or clear `loading`.
+// Apply / Reset / paging overlap fetches (and the unfiltered mount fetch can land after an early
+// Apply). Only the latest may apply its rows, show its error or clear `loading`.
 const submissionsRequests = useLatestRequest();
 
-// Fetch data
-async function fetchData() {
+async function fetchPage() {
   const token = submissionsRequests.begin();
   loading.value = true;
   try {
-    const params = { per_page: 1000 };
-    if (filters.date_from) params.date_from = filters.date_from;
-    if (filters.date_to) params.date_to = filters.date_to;
-    if (filters.status) params.status = filters.status;
-    if (filters.template_id) params.template_id = filters.template_id;
-    if (filters.user_id) params.user_id = filters.user_id;
-
-    const [subRes, tplRes, empRes] = await Promise.all([
-      api.get('/api/checklist-submissions', { params }),
-      // History filters also offer archived templates and deactivated users.
-      api.get('/api/checklist-templates', { params: { include_archived: 1 } }),
-      api.get('/api/employees', { params: { include_deactivated: 1 } }),
-    ]);
+    const res = await api.get('/api/checklist-submissions', {
+      params: { ...queryParams(), page: currentPage.value, per_page: perPage.value },
+    });
     if (!submissionsRequests.isCurrent(token)) return;
-    submissions.value = subRes.data.data || subRes.data || [];
-    templates.value = tplRes.data || [];
-    employees.value = empRes.data || [];
-  } catch {
-    if (submissionsRequests.isCurrent(token)) submissions.value = [];
+    submissions.value = res.data.data ?? [];
+    total.value = res.data.total ?? 0;
+    lastPage.value = res.data.last_page ?? 1;
+    statusCounts.value = res.data.status_counts ?? {};
+    loadError.value = '';
+    // The list shrank under us (e.g. on the last page): show its new last page.
+    if (currentPage.value > lastPage.value) currentPage.value = lastPage.value;
+  } catch (err) {
+    if (!submissionsRequests.isCurrent(token)) return;
+    submissions.value = [];
+    loadError.value = describeApiError(err, 'Could not load the archive').message;
   } finally {
     if (submissionsRequests.isCurrent(token)) loading.value = false;
   }
 }
 
+// The filter dropdowns' options, once.
+async function fetchFilterOptions() {
+  try {
+    const [tplRes, empRes] = await Promise.all([
+      // History filters also offer archived templates and deactivated users.
+      api.get('/api/checklist-templates', { params: { include_archived: 1 } }),
+      api.get('/api/employees', { params: { include_deactivated: 1 } }),
+    ]);
+    templates.value = tplRes.data || [];
+    employees.value = empRes.data || [];
+  } catch (err) {
+    const e = describeApiError(err, 'Could not load the filter options');
+    if (!e.silent) showToast(e.message, 'error', 6000);
+  }
+}
+
 function applyFilters() {
-  currentPage.value = 1;
-  fetchData();
+  appliedFilters.value = Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== '' && value !== null),
+  );
+  reloadFromFirstPage();
 }
 
 function resetFilters() {
@@ -645,9 +647,13 @@ function resetFilters() {
   filters.status = '';
   filters.template_id = '';
   filters.user_id = '';
-  searchQuery.value = '';
-  currentPage.value = 1;
-  fetchData();
+  appliedFilters.value = {};
+  clearTimeout(searchTimer);
+  if (searchQuery.value !== '') {
+    skipSearchReload = true;
+    searchQuery.value = '';
+  }
+  reloadFromFirstPage();
 }
 
 // Detail: clicking a second row before the first detail arrives must show the second.
@@ -741,34 +747,36 @@ function getDetailGroupComment(group) {
   return getDetailResponse(group.items[0])?.group_comment || null;
 }
 
-// CSV Export
-function exportCSV() {
-  const rows = [
-    ['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Submitted At'],
-  ];
-  for (const s of filteredSubmissions.value) {
-    rows.push([
-      s.date,
-      s.template?.name || '',
-      s.outgoing_user?.name || '',
-      s.incoming_user?.name || '',
-      statusLabel(s.status),
-      s.submitted_at || '',
-    ]);
+// CSV export: built by the server from every handover matching the current filters, search and
+// sort (not just the loaded page), with the same visibility rules as the list.
+async function exportCSV() {
+  if (exporting.value) return;
+  exporting.value = true;
+  try {
+    const res = await api.get('/api/checklist-submissions/export', {
+      params: queryParams(),
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `checklist-archive-${todayStr()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    // The error body came back as a Blob too; read it so the server's message can show.
+    await readBlobErrorBody(err);
+    const e = describeApiError(err, 'Could not export the archive');
+    if (!e.silent) showToast(e.message, 'error', 6000);
+  } finally {
+    exporting.value = false;
   }
-  const csv = rows
-    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `checklist-archive-${todayStr()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
-onMounted(fetchData);
+onMounted(() => {
+  fetchFilterOptions();
+  fetchPage();
+});
 
 // Opening another procedure before the previous preview arrived supersedes it; a stale failure
 // must not close the preview the user is now looking at.

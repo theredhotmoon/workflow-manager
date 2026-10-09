@@ -173,4 +173,92 @@ test.describe('Checklist archive', () => {
       0,
     );
   });
+
+  // Dates in 2096-12 (older than every other archive row, so they never push another spec's rows
+  // off the first page) are reserved for the two tests below.
+  test('the archive is paginated on the server: page 2 shows the rest', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    const template = await createChecklistTemplate(context, { name: 'Hist Paging' });
+    for (let day = 1; day <= 27; day++) {
+      await createChecklistSubmission(context, {
+        template,
+        date: `2096-12-${String(day).padStart(2, '0')}`,
+        outgoingUserId: adminId,
+      });
+    }
+
+    await adminPage.goto('/checklist/history');
+    await adminPage
+      .locator('select')
+      .filter({ has: adminPage.locator('option', { hasText: 'All templates' }) })
+      .selectOption({ label: 'Hist Paging' });
+    await adminPage.getByRole('button', { name: 'Apply' }).click();
+
+    const count = adminPage.getByTestId('results-count');
+    await expect(count).toHaveText('Showing 1–25 of 27 results');
+    await expect(adminPage.getByRole('cell', { name: 'Hist Paging' })).toHaveCount(25);
+
+    const page2 = adminPage.waitForRequest(
+      (r) =>
+        new URL(r.url()).pathname === '/api/checklist-submissions' &&
+        new URL(r.url()).searchParams.get('page') === '2' &&
+        new URL(r.url()).searchParams.get('template_id') === String(template.id),
+    );
+    await adminPage.getByRole('button', { name: 'Page 2' }).click();
+    await page2;
+
+    await expect(count).toHaveText('Showing 26–27 of 27 results');
+    await expect(adminPage.getByRole('cell', { name: 'Hist Paging' })).toHaveCount(2);
+    // Newest first: page 2 holds the two oldest days.
+    await expect(adminPage.getByRole('cell', { name: /^02 Dec 2096/ })).toBeVisible();
+    await expect(adminPage.getByRole('cell', { name: /^01 Dec 2096/ })).toBeVisible();
+  });
+
+  test('Export CSV downloads every handover matching the filters', async ({ adminPage }) => {
+    const context = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(context, 'admin@shiftchanger.com');
+    const template = await createChecklistTemplate(context, { name: 'Hist Export, "CSV"' });
+    for (const date of ['2096-12-28', '2096-12-29', '2096-12-30']) {
+      await createChecklistSubmission(context, { template, date, outgoingUserId: adminId });
+    }
+
+    await adminPage.goto('/checklist/history');
+    await adminPage
+      .locator('select')
+      .filter({ has: adminPage.locator('option', { hasText: 'All templates' }) })
+      .selectOption({ label: 'Hist Export, "CSV"' });
+    await adminPage.getByRole('button', { name: 'Apply' }).click();
+    await expect(adminPage.getByTestId('results-count')).toHaveText('Showing 1–3 of 3 results');
+
+    const downloadEvent = adminPage.waitForEvent('download');
+    await adminPage.getByRole('button', { name: 'Export CSV' }).click();
+    const download = await downloadEvent;
+    expect(download.suggestedFilename()).toMatch(/^checklist-archive-\d{4}-\d{2}-\d{2}\.csv$/);
+
+    const fs = await import('node:fs/promises');
+    const lines = (await fs.readFile(await download.path(), 'utf8')).trimEnd().split('\n');
+    // Starts with a UTF-8 BOM, so Excel reads Polish names right (trim() would drop it: trimEnd).
+    expect(lines[0]).toBe(
+      '﻿Date,Template,"Outgoing Employee","Incoming Employee",Status,Timing,"Submitted At"',
+    );
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toMatch(/^2096-12-30,"Hist Export, ""CSV""",/);
+    expect(lines[3]).toMatch(/^2096-12-28,/);
+  });
+
+  test("a refused export shows the server's reason", async ({ adminPage }) => {
+    await adminPage.route('**/api/checklist-submissions/export**', (route) =>
+      route.fulfill({
+        status: 422,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'The selected sort is invalid.', errors: {} }),
+      }),
+    );
+
+    await adminPage.goto('/checklist/history');
+    await adminPage.getByRole('button', { name: 'Export CSV' }).click();
+
+    await expect(adminPage.getByText('The selected sort is invalid.')).toBeVisible();
+  });
 });

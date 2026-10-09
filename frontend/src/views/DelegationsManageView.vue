@@ -50,17 +50,17 @@
                   class="p-2 text-slate-500 hover:text-indigo-400 hover:bg-white/5 rounded-lg transition-all" title="Edit">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 </button>
-                <button @click.stop="toggleRegistration(del)"
-                  :class="['p-2 rounded-lg transition-all', del.registration_open ? 'text-emerald-400 hover:bg-emerald-500/10' : 'text-red-400 hover:bg-red-500/10']"
+                <button @click.stop="toggleRegistration(del)" :disabled="busy.has(`toggle-${del.id}`)"
+                  :class="['p-2 rounded-lg transition-all disabled:opacity-40', del.registration_open ? 'text-emerald-400 hover:bg-emerald-500/10' : 'text-red-400 hover:bg-red-500/10']"
                   :title="del.registration_open ? 'Close registration' : 'Open registration'">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                 </button>
-                <button @click.stop="deleteDelegation(del)"
-                  class="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-all" title="Delete">
+                <button @click.stop="deleteDelegation(del)" :disabled="busy.has(`delete-${del.id}`)"
+                  class="p-2 disabled:opacity-40 text-slate-500 hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-all" title="Delete">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 </button>
-                <button @click.stop="archiveDelegation(del)"
-                  class="p-2 text-slate-500 hover:text-orange-400 hover:bg-orange-500/5 rounded-lg transition-all" title="Move to archive">
+                <button @click.stop="archiveDelegation(del)" :disabled="busy.has(`archive-${del.id}`)"
+                  class="p-2 disabled:opacity-40 text-slate-500 hover:text-orange-400 hover:bg-orange-500/5 rounded-lg transition-all" title="Move to archive">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
                 </button>
                 <svg :class="['w-4 h-4 text-slate-500 transition-transform', expandedIds.has(del.id) ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -95,7 +95,7 @@
                   <option value="" disabled>Select employee to add…</option>
                   <option v-for="u in availableUsers(del)" :key="u.id" :value="u.id">{{ u.name }}</option>
                 </select>
-                <button @click="addPerson(del)" :disabled="!addUserForm[del.id]"
+                <button @click="addPerson(del)" :disabled="!addUserForm[del.id] || busy.has(`add-${del.id}`)"
                   class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
                   + Add
                 </button>
@@ -135,31 +135,31 @@
                         </span>
                       </td>
                       <td class="px-4 py-2.5">
-                        <input type="date" :value="user.pivot?.custom_start || ''"
+                        <input type="date" :value="user.pivot?.custom_start || ''" :disabled="isUserBusy(del, user)" :aria-label="`Custom start for ${user.name}`"
                           @change="updateDates(del, user, 'custom_start', $event.target.value)"
                           class="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32" />
                       </td>
                       <td class="px-4 py-2.5">
-                        <input type="date" :value="user.pivot?.custom_end || ''"
+                        <input type="date" :value="user.pivot?.custom_end || ''" :disabled="isUserBusy(del, user)" :aria-label="`Custom end for ${user.name}`"
                           @change="updateDates(del, user, 'custom_end', $event.target.value)"
                           class="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32" />
                       </td>
                       <td class="px-4 py-2.5 text-center">
                         <div class="flex items-center justify-center gap-1">
-                          <button v-if="user.pivot?.status === 'pending'" @click="approveUser(del, user)"
-                            class="px-2 py-1 text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/25 transition-all" title="Approve">
+                          <button v-if="user.pivot?.status === 'pending'" @click="approveUser(del, user)" :disabled="isUserBusy(del, user)"
+                            class="disabled:opacity-40 px-2 py-1 text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/25 transition-all" title="Approve">
                             ✓ Approve
                           </button>
-                          <button v-if="user.pivot?.status === 'pending'" @click="rejectUser(del, user)"
-                            class="px-2 py-1 text-[10px] font-bold uppercase bg-red-500/15 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/25 transition-all" title="Reject">
+                          <button v-if="user.pivot?.status === 'pending'" @click="rejectUser(del, user)" :disabled="isUserBusy(del, user)"
+                            class="disabled:opacity-40 px-2 py-1 text-[10px] font-bold uppercase bg-red-500/15 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/25 transition-all" title="Reject">
                             ✕ Reject
                           </button>
-                          <button v-if="user.pivot?.status === 'rejected'" @click="approveUser(del, user)"
-                            class="px-2 py-1 text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/25 transition-all" title="Approve">
+                          <button v-if="user.pivot?.status === 'rejected'" @click="approveUser(del, user)" :disabled="isUserBusy(del, user)"
+                            class="disabled:opacity-40 px-2 py-1 text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/25 transition-all" title="Approve">
                             ✓ Approve
                           </button>
-                          <button @click="removePerson(del, user)"
-                            class="p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all" title="Remove">
+                          <button @click="removePerson(del, user)" :disabled="isUserBusy(del, user)"
+                            class="disabled:opacity-40 p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-all" title="Remove">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                           </button>
                         </div>
@@ -212,73 +212,36 @@
             <div class="p-6 pb-3 border-b border-white/10">
               <h3 class="text-lg font-bold text-white">{{ editingId ? 'Edit Delegation' : 'New Delegation' }}</h3>
             </div>
-            <form @submit.prevent="saveModal" class="p-6 space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Name <span class="text-red-400 ml-0.5">*</span></label>
-                <input v-model="form.name" type="text" required
-                  @blur="touched.name = true"
-                  :class="['w-full px-3 py-2.5 bg-white/5 border rounded-xl text-white text-sm focus:outline-none focus:ring-2 placeholder-slate-500',
-                    formErrors.name ? 'border-red-500/40 focus:ring-red-500/30' : 'border-white/10 focus:ring-indigo-500/50']"
-                  placeholder="e.g. Warsaw Training" />
-                <p v-if="formErrors.name" class="mt-1 text-xs text-red-400">{{ formErrors.name }}</p>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Destination <span class="text-red-400 ml-0.5">*</span></label>
-                <input v-model="form.destination" type="text" required
-                  @blur="touched.destination = true"
-                  :class="['w-full px-3 py-2.5 bg-white/5 border rounded-xl text-white text-sm focus:outline-none focus:ring-2 placeholder-slate-500',
-                    formErrors.destination ? 'border-red-500/40 focus:ring-red-500/30' : 'border-white/10 focus:ring-indigo-500/50']"
-                  placeholder="e.g. Warsaw, Poland" />
-                <p v-if="formErrors.destination" class="mt-1 text-xs text-red-400">{{ formErrors.destination }}</p>
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Start Date <span class="text-red-400 ml-0.5">*</span></label>
-                  <input v-model="form.start_datetime" type="date" required
-                    @blur="touched.start_datetime = true"
-                    :class="['w-full px-3 py-2.5 bg-white/5 border rounded-xl text-white text-sm focus:outline-none focus:ring-2',
-                      formErrors.start_datetime ? 'border-red-500/40 focus:ring-red-500/30' : 'border-white/10 focus:ring-indigo-500/50']" />
-                  <p v-if="formErrors.start_datetime" class="mt-1 text-xs text-red-400">{{ formErrors.start_datetime }}</p>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">End Date <span class="text-red-400 ml-0.5">*</span></label>
-                  <input v-model="form.end_datetime" type="date" required
-                    @blur="touched.end_datetime = true"
-                    :class="['w-full px-3 py-2.5 bg-white/5 border rounded-xl text-white text-sm focus:outline-none focus:ring-2',
-                      formErrors.end_datetime ? 'border-red-500/40 focus:ring-red-500/30' : 'border-white/10 focus:ring-indigo-500/50']" />
-                  <p v-if="formErrors.end_datetime" class="mt-1 text-xs text-red-400">{{ formErrors.end_datetime }}</p>
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Description</label>
-                <textarea v-model="form.description" rows="3"
-                  class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500 resize-none" placeholder="Optional details…"></textarea>
-              </div>
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" v-model="form.registration_open" class="accent-emerald-500 w-4 h-4 rounded" />
-                <span class="text-sm text-slate-300">Registration open (employees can request to join)</span>
-              </label>
-              <div class="flex items-center justify-end gap-3 pt-2">
-                <button type="button" @click="showModal = false"
-                  class="px-5 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
-                <button type="submit" :disabled="saving"
-                  class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50">
-                  {{ saving ? 'Saving…' : (editingId ? 'Update' : 'Create') }}
-                </button>
-              </div>
-            </form>
+            <div class="p-6">
+              <DelegationForm
+                :initial="modalInitial"
+                :saving="saving"
+                :server-errors="modalFieldErrors"
+                :submit-label="editingId ? 'Update' : 'Create'"
+                @submit="saveModal"
+                @cancel="showModal = false" />
+            </div>
           </div>
         </div>
       </Transition>
     </main>
+    <AppToast />
   </AppLayout>
 </template>
 
+
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
-import { confirm } from '../composables/useConfirm.js';
+import { onMounted, reactive, ref } from 'vue';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
+import DelegationForm from '../components/DelegationForm.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
+import { isDelegationCompleted } from '../delegationStatus.js';
+
+const { showToast } = useToast();
 
 const delegations = ref([]);
 const allUsers = ref([]);
@@ -286,43 +249,16 @@ const loading = ref(true);
 const saving = ref(false);
 const showModal = ref(false);
 const editingId = ref(null);
+const modalInitial = ref({});
+const modalFieldErrors = ref({});
 const expandedIds = reactive(new Set());
 const addUserForm = reactive({});
 const subTabs = reactive({});
 const logsData = reactive({});
 const logsLoading = reactive({});
-
-const form = ref({
-  name: '',
-  destination: '',
-  description: '',
-  start_datetime: '',
-  end_datetime: '',
-  registration_open: true,
-});
-
-const touched = reactive({
-  name: false,
-  destination: false,
-  start_datetime: false,
-  end_datetime: false,
-});
-
-const formErrors = computed(() => ({
-  name: touched.name && !form.value.name.trim() ? 'Name is required.' : '',
-  destination:
-    touched.destination && !form.value.destination.trim() ? 'Destination is required.' : '',
-  start_datetime:
-    touched.start_datetime && !form.value.start_datetime ? 'Start date is required.' : '',
-  end_datetime:
-    touched.end_datetime && !form.value.end_datetime
-      ? 'End date is required.'
-      : touched.end_datetime &&
-          form.value.start_datetime &&
-          form.value.end_datetime < form.value.start_datetime
-        ? 'End date must be on or after start date.'
-        : '',
-}));
+// Keys of the actions in flight ("user-3-12", "toggle-3"...): their buttons are disabled, and a
+// second click while one runs does nothing.
+const busy = reactive(new Set());
 
 function getInitials(name) {
   return (name || '')
@@ -392,68 +328,78 @@ function availableUsers(del) {
   return allUsers.value.filter((u) => !assignedIds.has(u.id));
 }
 
+function isUserBusy(del, user) {
+  return busy.has(`user-${del.id}-${user.id}`);
+}
+
+/** Shows what the server said went wrong (nothing for 401/419: sessionExpiry handles those). */
+function showError(err, fallback) {
+  const e = describeApiError(err, fallback);
+  if (!e.silent) showToast(e.message, 'error', 6000);
+  return e;
+}
+
+/**
+ * Runs one action under `key` (ignored while the same key is in flight), then reloads the list.
+ * Returns true on success; on failure the server's message is shown.
+ */
+async function runAction(key, request, fallback, { delegationId } = {}) {
+  if (busy.has(key)) return false;
+  busy.add(key);
+  try {
+    await request();
+  } catch (err) {
+    showError(err, fallback);
+    return false;
+  } finally {
+    busy.delete(key);
+  }
+  await fetchData();
+  if (delegationId) refreshLogs(delegationId);
+  return true;
+}
+
 function openCreateModal() {
   editingId.value = null;
-  form.value = {
-    name: '',
-    destination: '',
-    description: '',
-    start_datetime: '',
-    end_datetime: '',
-    registration_open: true,
-  };
-  Object.assign(touched, {
-    name: false,
-    destination: false,
-    start_datetime: false,
-    end_datetime: false,
-  });
+  modalInitial.value = { registration_open: true };
+  modalFieldErrors.value = {};
   showModal.value = true;
 }
 
 function editDelegation(del) {
   editingId.value = del.id;
-  form.value = {
-    name: del.name,
-    destination: del.destination,
-    description: del.description || '',
-    start_datetime: del.start_datetime?.substring(0, 10) || '',
-    end_datetime: del.end_datetime?.substring(0, 10) || '',
-    registration_open: del.registration_open,
-  };
-  Object.assign(touched, {
-    name: false,
-    destination: false,
-    start_datetime: false,
-    end_datetime: false,
-  });
+  modalInitial.value = { ...del };
+  modalFieldErrors.value = {};
   showModal.value = true;
 }
 
-async function saveModal() {
+async function saveModal(payload) {
+  if (saving.value) return;
   saving.value = true;
+  modalFieldErrors.value = {};
   try {
     if (editingId.value) {
-      await api.put(`/api/delegations/${editingId.value}`, form.value);
+      await api.put(`/api/delegations/${editingId.value}`, payload);
     } else {
-      await api.post('/api/delegations', form.value);
+      await api.post('/api/delegations', payload);
     }
     showModal.value = false;
-    await fetchData();
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    modalFieldErrors.value = showError(err, 'Could not save the delegation').fieldErrors;
+    return;
   } finally {
     saving.value = false;
   }
+  await fetchData();
 }
 
-async function toggleRegistration(del) {
-  try {
-    await api.put(`/api/delegations/${del.id}`, { registration_open: !del.registration_open });
-    await fetchData();
-  } catch (e) {
-    console.error(e);
-  }
+function toggleRegistration(del) {
+  return runAction(
+    `toggle-${del.id}`,
+    () => api.put(`/api/delegations/${del.id}`, { registration_open: !del.registration_open }),
+    'Could not change registration',
+    { delegationId: del.id },
+  );
 }
 
 async function deleteDelegation(del) {
@@ -464,19 +410,14 @@ async function deleteDelegation(del) {
     danger: true,
   });
   if (!ok) return;
-  try {
-    await api.delete(`/api/delegations/${del.id}`);
-    await fetchData();
-  } catch (e) {
-    console.error(e);
-  }
+  await runAction(
+    `delete-${del.id}`,
+    () => api.delete(`/api/delegations/${del.id}`),
+    'Could not delete the delegation',
+  );
 }
 
 async function archiveDelegation(del) {
-  const now = new Date();
-  const endDate = new Date(del.end_datetime);
-  const isPast = endDate < now;
-
   const ok = await confirm({
     title: 'Archive Delegation',
     message: `Move delegation "${del.name}" to archive?`,
@@ -485,7 +426,8 @@ async function archiveDelegation(del) {
   });
   if (!ok) return;
 
-  if (!isPast) {
+  // Its last day counts: a delegation ending today is still under way.
+  if (!isDelegationCompleted(del)) {
     const ok2 = await confirm({
       title: 'Delegation Still Active',
       message: 'This delegation has not ended yet. Archive it anyway?',
@@ -495,69 +437,66 @@ async function archiveDelegation(del) {
     if (!ok2) return;
   }
 
-  try {
-    await api.post(`/api/delegations/${del.id}/archive`);
-    await fetchData();
-  } catch (e) {
-    console.error(e);
-  }
+  await runAction(
+    `archive-${del.id}`,
+    () => api.post(`/api/delegations/${del.id}/archive`),
+    'Could not archive the delegation',
+  );
 }
 
 async function addPerson(del) {
   const userId = addUserForm[del.id];
   if (!userId) return;
-  try {
-    await api.post(`/api/delegations/${del.id}/add-user`, { user_id: userId });
-    addUserForm[del.id] = '';
-    await fetchData();
-    refreshLogs(del.id);
-  } catch (e) {
-    console.error(e);
-  }
+  const added = await runAction(
+    `add-${del.id}`,
+    () => api.post(`/api/delegations/${del.id}/add-user`, { user_id: userId }),
+    'Could not add the person',
+    { delegationId: del.id },
+  );
+  if (added) addUserForm[del.id] = '';
 }
 
-async function removePerson(del, user) {
-  try {
-    await api.post(`/api/delegations/${del.id}/remove-user`, { user_id: user.id });
-    await fetchData();
-    refreshLogs(del.id);
-  } catch (e) {
-    console.error(e);
-  }
+function removePerson(del, user) {
+  return runAction(
+    `user-${del.id}-${user.id}`,
+    () => api.post(`/api/delegations/${del.id}/remove-user`, { user_id: user.id }),
+    `Could not remove ${user.name}`,
+    { delegationId: del.id },
+  );
 }
 
-async function approveUser(del, user) {
-  try {
-    await api.post(`/api/delegations/${del.id}/approve-user`, { user_id: user.id });
-    await fetchData();
-    refreshLogs(del.id);
-  } catch (e) {
-    console.error(e);
-  }
+function approveUser(del, user) {
+  return runAction(
+    `user-${del.id}-${user.id}`,
+    () => api.post(`/api/delegations/${del.id}/approve-user`, { user_id: user.id }),
+    `Could not approve ${user.name}`,
+    { delegationId: del.id },
+  );
 }
 
-async function rejectUser(del, user) {
-  try {
-    await api.post(`/api/delegations/${del.id}/reject-user`, { user_id: user.id });
-    await fetchData();
-    refreshLogs(del.id);
-  } catch (e) {
-    console.error(e);
-  }
+function rejectUser(del, user) {
+  return runAction(
+    `user-${del.id}-${user.id}`,
+    () => api.post(`/api/delegations/${del.id}/reject-user`, { user_id: user.id }),
+    `Could not reject ${user.name}`,
+    { delegationId: del.id },
+  );
 }
 
 async function updateDates(del, user, field, value) {
-  try {
-    await api.put(`/api/delegations/${del.id}/user-dates`, {
-      user_id: user.id,
-      custom_start: field === 'custom_start' ? value || null : user.pivot?.custom_start || null,
-      custom_end: field === 'custom_end' ? value || null : user.pivot?.custom_end || null,
-    });
-    await fetchData();
-    refreshLogs(del.id);
-  } catch (e) {
-    console.error(e);
-  }
+  const saved = await runAction(
+    `user-${del.id}-${user.id}`,
+    () =>
+      api.put(`/api/delegations/${del.id}/user-dates`, {
+        user_id: user.id,
+        custom_start: field === 'custom_start' ? value || null : user.pivot?.custom_start || null,
+        custom_end: field === 'custom_end' ? value || null : user.pivot?.custom_end || null,
+      }),
+    `Could not save the dates for ${user.name}`,
+    { delegationId: del.id },
+  );
+  // Put the inputs back to what is saved.
+  if (!saved) await fetchData();
 }
 
 async function fetchLogs(delId) {
@@ -565,8 +504,8 @@ async function fetchLogs(delId) {
   try {
     const res = await api.get(`/api/delegations/${delId}/logs`);
     logsData[delId] = res.data;
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    showError(err, 'Could not load the history');
   } finally {
     logsLoading[delId] = false;
   }
@@ -585,8 +524,8 @@ async function fetchData() {
     ]);
     delegations.value = delRes.data;
     allUsers.value = usersRes.data;
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    showError(err, 'Could not load delegations');
   } finally {
     loading.value = false;
   }

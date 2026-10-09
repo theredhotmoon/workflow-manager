@@ -180,12 +180,14 @@
 
 <script setup>
 import { reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppToast from '../components/AppToast.vue';
 import { useToast } from '../composables/useToast.js';
+import { safeRedirect } from '../sessionExpiry.js';
 
 const router = useRouter();
+const route = useRoute();
 const { showToast } = useToast();
 
 // 'idle' | 'loading' | 'success' | 'error'
@@ -216,8 +218,10 @@ async function login() {
     state.value = 'success';
     showToast('Signed in successfully. Redirecting…', 'success');
 
+    // Back to where the session ran out (sessionExpiry.js / the router guard pass `redirect`).
+    const target = safeRedirect(route.query.redirect) ?? { name: 'dashboard' };
     // Brief pause so the success state is visible before navigating
-    setTimeout(() => router.push({ name: 'dashboard' }), 800);
+    setTimeout(() => router.push(target), 800);
   } catch (err) {
     state.value = 'error';
     const message = err.response?.data?.message || 'Invalid credentials. Please try again.';

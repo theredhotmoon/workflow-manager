@@ -81,26 +81,9 @@
         </div>
       </div>
 
-      <!-- Stats Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div v-for="stat in stats" :key="stat.label"
-          class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/8 transition-all duration-300 group"
-        >
-          <div class="flex items-center justify-between mb-4">
-            <div :class="stat.iconBg" class="w-10 h-10 rounded-xl flex items-center justify-center">
-              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="stat.icon" />
-              </svg>
-            </div>
-            <span :class="stat.changeColor" class="text-xs font-medium px-2 py-1 rounded-full bg-white/5">{{ stat.change }}</span>
-          </div>
-          <p class="text-2xl font-bold text-white mb-1">{{ stat.value }}</p>
-          <p class="text-sm text-slate-400">{{ stat.label }}</p>
-        </div>
-      </div>
-
       <!-- Crew + Today's Schedule Row -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 items-start">
+      <!-- Two columns only when there is a live crew to show next to the schedule. -->
+      <div :class="['grid grid-cols-1 gap-6 mb-8 items-start', activeShift ? 'lg:grid-cols-2' : '']">
       <!-- Current Crew on Shift -->
       <div v-if="activeShift" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
         <div class="flex items-center gap-3 mb-4">
@@ -219,11 +202,11 @@
       </div>
       </div>
 
-      <!-- Quick Actions -->
-      <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+      <!-- Quick Actions (admin only: there is nothing here for other roles) -->
+      <div v-if="isAdmin(currentUser)" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
         <h2 class="text-lg font-semibold text-white mb-4">Quick Actions</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <router-link v-if="isAdmin(currentUser)" to="/schedule" class="flex items-center gap-3 px-5 py-4 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl transition-all duration-200 text-left group">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <router-link to="/schedule" class="flex items-center gap-3 px-5 py-4 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl transition-all duration-200 text-left group">
             <div class="w-10 h-10 rounded-xl bg-indigo-500/20 group-hover:bg-indigo-500/30 flex items-center justify-center transition-colors">
               <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -234,7 +217,7 @@
               <p class="text-slate-400 text-xs">Plan monthly work shifts</p>
             </div>
           </router-link>
-          <router-link v-if="isAdmin(currentUser)" to="/users" class="flex items-center gap-3 px-5 py-4 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 rounded-xl transition-all duration-200 text-left group">
+          <router-link to="/users" class="flex items-center gap-3 px-5 py-4 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 rounded-xl transition-all duration-200 text-left group">
             <div class="w-10 h-10 rounded-xl bg-violet-500/20 group-hover:bg-violet-500/30 flex items-center justify-center transition-colors">
               <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -245,17 +228,6 @@
               <p class="text-slate-400 text-xs">Add, edit, or remove users</p>
             </div>
           </router-link>
-          <button class="flex items-center gap-3 px-5 py-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl transition-all duration-200 text-left group">
-            <div class="w-10 h-10 rounded-xl bg-emerald-500/20 group-hover:bg-emerald-500/30 flex items-center justify-center transition-colors">
-              <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div>
-              <p class="text-white font-medium text-sm">Reports</p>
-              <p class="text-slate-400 text-xs">View shift analytics</p>
-            </div>
-          </button>
         </div>
       </div>
     </main>
@@ -318,41 +290,6 @@ function formatAlertDate(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
-
-const stats = ref([
-  {
-    label: 'Active Shifts',
-    value: '12',
-    change: '+3 today',
-    changeColor: 'text-emerald-400',
-    icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
-    iconBg: 'bg-indigo-500/20',
-  },
-  {
-    label: 'Employees',
-    value: '24',
-    change: '2 on leave',
-    changeColor: 'text-amber-400',
-    icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
-    iconBg: 'bg-violet-500/20',
-  },
-  {
-    label: 'Hours This Week',
-    value: '168',
-    change: '+12%',
-    changeColor: 'text-emerald-400',
-    icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z',
-    iconBg: 'bg-emerald-500/20',
-  },
-  {
-    label: 'Pending Swaps',
-    value: '3',
-    change: '1 urgent',
-    changeColor: 'text-red-400',
-    icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4',
-    iconBg: 'bg-amber-500/20',
-  },
-]);
 
 onMounted(async () => {
   try {

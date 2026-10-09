@@ -73,7 +73,9 @@ class ChecklistAlertController extends Controller
             $submittedKeys[$s->shift_id . '-' . $s->checklist_template_id] = true;
         }
 
-        // Also find submissions by date+template (for when shift_id was null)
+        // Also find submissions by date+template (for when shift_id was null). Known gap: a
+        // submission whose slot was later removed (shift_id set null) also matches here, so it can
+        // cover another slot of that day with the same template for this user.
         $submissionsByDate = ChecklistSubmission::whereNull('shift_id')
             ->where(function ($q) use ($user) {
                 $q->where('outgoing_user_id', $user->id)

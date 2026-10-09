@@ -73,6 +73,26 @@ it('rejects a callback that overlaps another callback of the same person, touchi
     expect(OnCallCallback::count())->toBe(2);
 });
 
+it('rejects a callback overlapping one logged on another on-call period of the same person', function () {
+    // Back-to-back periods; the first one's callback runs past the hand-over at 08:00.
+    $first = ocoAssignment($this, '2026-09-15 08:00:00', '2026-09-16 08:00:00');
+    $second = ocoAssignment($this, '2026-09-16 08:00:00', '2026-09-17 08:00:00');
+    $this->actingAs($this->maintainer)->postJson("/api/on-call-assignments/{$first->id}/callbacks", [
+        'starts_at' => '2026-09-16 07:00:00', 'ends_at' => '2026-09-16 09:00:00',
+    ])->assertCreated();
+
+    $res = $this->actingAs($this->maintainer)->postJson("/api/on-call-assignments/{$second->id}/callbacks", [
+        'starts_at' => '2026-09-16 08:30:00', 'ends_at' => '2026-09-16 09:30:00',
+    ])->assertStatus(422)->assertJsonValidationErrors(['starts_at']);
+    expect($res->json('message'))->toBe('This overlaps a callback already logged from 2026-09-16 07:00 to 2026-09-16 09:00.');
+
+    // Touching the first one's end is fine.
+    $this->actingAs($this->maintainer)->postJson("/api/on-call-assignments/{$second->id}/callbacks", [
+        'starts_at' => '2026-09-16 09:00:00', 'ends_at' => '2026-09-16 09:30:00',
+    ])->assertCreated();
+    expect(OnCallCallback::count())->toBe(2);
+});
+
 it('counts overlapping callbacks already in the database once in the settlement report', function () {
     Carbon::setTestNow('2026-09-15 12:00:00');
     // Two overlapping on-call periods, inserted directly as legacy data, each with a callback:

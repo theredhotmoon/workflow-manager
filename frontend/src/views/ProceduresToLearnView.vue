@@ -89,15 +89,12 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { currentUser } from '../router/index.js';
 
-const route = useRoute();
-const router = useRouter();
 const procedures = ref([]);
 const loading = ref(true);
 const showModal = ref(false);

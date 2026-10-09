@@ -328,17 +328,6 @@ function formatFullDate(dateStr) {
   });
 }
 
-function formatTime(isoStr) {
-  if (!isoStr) return '';
-  const d = new Date(isoStr);
-  return d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 // Switching months while a load is in flight overlaps fetches. Only the latest one may apply its
 // result — otherwise a slower load of the previous month shows its shifts under the new month's
 // heading. Both requests belong to one load, so one token covers the Promise.all.

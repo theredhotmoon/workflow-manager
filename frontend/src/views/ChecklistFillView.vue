@@ -525,7 +525,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
@@ -536,7 +536,6 @@ import { todayStr } from '../dates.js';
 import { isAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
-const router = useRouter();
 const route = useRoute();
 
 // State
@@ -835,7 +834,7 @@ function validateNumberRange(item) {
     return;
   }
   const val = parseFloat(raw);
-  if (isNaN(val)) {
+  if (Number.isNaN(val)) {
     delete rangeErrors.value[item.id];
     return;
   }
@@ -950,7 +949,7 @@ function getResponseId(itemId) {
 function getGroupComment(groupId) {
   // Find first item in this group
   const group = confirmSubmission.value?.template?.groups?.find((g) => g.id === groupId);
-  if (!group || !group.items.length) return null;
+  if (!group?.items.length) return null;
   const r = getResponseForItem(group.items[0].id);
   return r?.group_comment || null;
 }

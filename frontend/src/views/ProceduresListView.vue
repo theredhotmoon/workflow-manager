@@ -439,24 +439,6 @@ function goToPage(page) {
   fetchProcedures();
 }
 
-// For tree sidebar — still need all procedure IDs (lightweight fetch)
-function collectIds(nodes, targetId) {
-  for (const n of nodes) {
-    if (n.id === targetId) {
-      const ids = [];
-      const gather = (node) => {
-        ids.push(node.id);
-        (node.children || []).forEach(gather);
-      };
-      gather(n);
-      return ids;
-    }
-    const result = collectIds(n.children || [], targetId);
-    if (result) return result;
-  }
-  return null;
-}
-
 function toggleTag(id) {
   const idx = selectedTags.value.indexOf(id);
   idx >= 0 ? selectedTags.value.splice(idx, 1) : selectedTags.value.push(id);

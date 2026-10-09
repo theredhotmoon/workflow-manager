@@ -282,7 +282,6 @@ import Underline from '@tiptap/extension-underline';
 import StarterKit from '@tiptap/starter-kit';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue';
-import { useRouter } from 'vue-router';
 import { describeApiError, fieldError } from '../../apiErrors.js';
 import api from '../../axios.js';
 import { confirm } from '../../composables/useConfirm.js';
@@ -299,7 +298,6 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved']);
 
-const router = useRouter();
 const { showToast } = useToast();
 const isEdit = computed(() => !!props.procedureId);
 const saving = ref(false);
@@ -434,7 +432,7 @@ const editor = useEditor({
   content: '',
   editorProps: {
     attributes: { class: 'tiptap-editor-content' },
-    handlePaste(view, event) {
+    handlePaste(_view, event) {
       const items = event.clipboardData?.items;
       if (items) {
         for (const item of items) {

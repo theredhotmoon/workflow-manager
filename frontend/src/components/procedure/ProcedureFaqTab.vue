@@ -99,7 +99,7 @@ const replying = reactive({});
 // Outdated toggles in flight (a double click would toggle twice and end where it started).
 const toggling = reactive({});
 
-function canManage(item) {
+function canManage(_item) {
   return props.isAdmin || props.userId === props.ownerId;
 }
 

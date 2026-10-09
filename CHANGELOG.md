@@ -15,7 +15,7 @@ All notable changes to the Shift Changer application are documented here.
 | What | Details |
 |------|---------|
 | Changed | `GET /api/schedule` and `PUT /api/schedule/day-shifts` build shifts with one shared builder: both include `work_mode` (default `office`) and the assignment's `has_change_request`, `change_request_reason`, `change_request_id`, `change_request_date` |
-| Added | `POST /api/schedule/assign` takes optional `move_from_assignment_id` (the same user's assignment, not on the target shift; 422 otherwise). The source is removed (pending day-off requests acknowledged, rest policies cleaned up, as for unassign) and the new assignment created in one transaction; a 409/422 rolls everything back. The 201 body adds `moved_from_assignment_id` |
+| Added | `POST /api/schedule/assign` takes optional `move_from_assignment_id` (the same user's assignment, not on the target shift; 422 otherwise). The source is removed exactly as by unassign (rest policies cleaned up; its day-off requests are deleted with it by the existing foreign-key cascade) and the new assignment created in one transaction; a 409/422 rolls everything back. The 201 body adds `moved_from_assignment_id` |
 | Changed | Moved to the `admin:schedule` group (admins and schedule maintainers): `GET /api/delegations/month`, `GET /api/newbie-periods/month`, `GET /api/office-closures`, `GET /api/office-closures/conflicts`, `GET /api/checklist-templates`. `GET /api/shift-colors` is open to every signed-in user. All writes stay admin-only |
 
 ### Frontend

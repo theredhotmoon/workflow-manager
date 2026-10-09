@@ -285,8 +285,9 @@ class ScheduleController extends Controller
             }
             // Group access is not per group: whoever may manage the schedule manages every group.
             // Checked here too so the move path doesn't rely on the route middleware alone.
+            // Defence in depth: the route's admin:schedule middleware already answers 403 first.
             if (!$request->user()?->canManageSchedule()) {
-                throw ValidationException::withMessages(['move_from_assignment_id' => 'You may not move assignments in this group.']);
+                abort(403, 'You may not move assignments in this group.');
             }
             if ((int) $source->shift_id === (int) $request->input('shift_id')) {
                 throw ValidationException::withMessages(['move_from_assignment_id' => 'The assignment is already on this shift.']);

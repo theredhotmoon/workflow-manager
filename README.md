@@ -104,7 +104,7 @@ The frontend Nginx sends a `Content-Security-Policy` with every page: only the a
 run (`script-src 'self'`, no inline script), styles may be inline (Vue, the editor), images may come
 from `data:` or any `https:` host (procedures embed them), and the API is same-origin. If you put
 the SPA behind another host, or load scripts, fonts or API calls from elsewhere, extend the header in
-`frontend/docker/nginx.conf`. It applies only to the Docker frontend: the Vite dev server (hybrid
+`frontend/docker/security-headers.conf` (included by `nginx.conf` everywhere, static assets too). It applies only to the Docker frontend: the Vite dev server (hybrid
 mode, e2e) sends no CSP.
 
 Procedure content is HTML from the editor, rendered as HTML. The backend sanitises it on every save

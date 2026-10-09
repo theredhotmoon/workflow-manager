@@ -75,18 +75,24 @@ class ChecklistSubmissionController extends Controller
         $request->validate([
             // An archived template can't start a new handover.
             'checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')->whereNull('archived_at')],
-            'shift_id' => ['nullable', 'exists:shifts,id'],
-            'date' => ['required', 'date'],
+            // `integer` first: a failed rule skips the exists query (no bigint cast error, 422 not 500).
+            'shift_id' => ['nullable', 'integer', 'exists:shifts,id'],
+            // A calendar day, as the form and alert links send it; compared with the shift's date.
+            'date' => ['required', 'date_format:Y-m-d'],
             'outgoing_user_id' => ['required', 'integer', User::activeExistsRule()],
             'incoming_user_id' => ['nullable', 'integer', 'different:outgoing_user_id', User::activeExistsRule()],
             'general_comments' => ['nullable', 'string'],
             'responses' => ['required', 'array'],
-            // Only items of the submitted template, each answered once. (`integer` first: a failed
-            // rule skips the exists query, so a non-numeric id never reaches the database.)
+            // Only current items (not retired, nor in a retired group) of the submitted template, each
+            // answered once: the fill form only offers those. Past handovers keep their answers to
+            // items retired since. (`integer` first: a failed rule skips the exists query, so a
+            // non-numeric id never reaches the database.)
             'responses.*.checklist_item_id' => [
                 'required', 'integer', 'distinct',
-                Rule::exists('checklist_items', 'id')->whereIn('checklist_group_id',
-                    ChecklistGroup::select('id')->where('checklist_template_id', (int) $request->input('checklist_template_id'))),
+                Rule::exists('checklist_items', 'id')->whereNull('archived_at')->whereIn('checklist_group_id',
+                    ChecklistGroup::select('id')
+                        ->where('checklist_template_id', (int) $request->input('checklist_template_id'))
+                        ->whereNull('archived_at')),
             ],
             'responses.*.value' => ['nullable'],
             'responses.*.group_comment' => ['nullable', 'string'],
@@ -95,7 +101,7 @@ class ChecklistSubmissionController extends Controller
             'outgoing_user_id.exists' => 'The outgoing user has been deactivated. Pick someone else.',
             'incoming_user_id.exists' => 'The incoming user has been deactivated. Pick someone else.',
             'incoming_user_id.different' => 'The incoming employee must be someone other than the outgoing one.',
-            'responses.*.checklist_item_id.exists' => 'This item does not belong to the chosen checklist template.',
+            'responses.*.checklist_item_id.exists' => 'This item is not (or no longer) part of the chosen checklist template.',
             'responses.*.checklist_item_id.distinct' => 'Each checklist item can be answered only once.',
         ]);
         // `different` compares strictly ("5" vs 5 passes it), so the checks below compare integers.

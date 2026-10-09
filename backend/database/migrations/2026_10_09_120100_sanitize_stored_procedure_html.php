@@ -26,7 +26,8 @@ return new class extends Migration {
     private function clean(ProcedureHtmlSanitizer $sanitizer, string $table, array $columns): void
     {
         DB::table($table)->select(array_merge(['id'], $columns))->orderBy('id')
-            ->chunkById(100, function ($rows) use ($sanitizer, $table, $columns) {
+            // Small chunks: version snapshots can carry multi-MB pasted images inline.
+            ->chunkById(10, function ($rows) use ($sanitizer, $table, $columns) {
                 foreach ($rows as $row) {
                     $changes = [];
                     foreach ($columns as $column) {

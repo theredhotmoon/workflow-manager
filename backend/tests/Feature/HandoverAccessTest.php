@@ -8,6 +8,8 @@ use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\User;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 
 // M1 / M2: who may file a handover, with what, and who may read it back.
 // (A non-admin filing as someone else is covered in PrivilegeGapsTest, "files a handover only as
@@ -94,6 +96,17 @@ it('records who filed a handover, including an admin filing on behalf of someone
     expect(ChecklistSubmission::find($own)->submitted_by_user_id)->toBe($b->id);
 });
 
+it('keeps the filer on record: a user who filed a handover cannot be hard-deleted', function () {
+    $admin = havUser('admin');
+    $b = havUser();
+    $id = havFile($admin, havItems(), ['outgoing_user_id' => $b->id])->assertCreated()->json('id');
+
+    // In a savepoint, so the refused delete doesn't abort the test's transaction (pgsql).
+    expect(fn () => DB::transaction(fn () => DB::table('users')->where('id', $admin->id)->delete()))
+        ->toThrow(QueryException::class);
+    expect(ChecklistSubmission::find($id)->submitted_by_user_id)->toBe($admin->id);
+});
+
 it('refuses a response for an item of another template', function () {
     $a = havUser();
     $mine = havItems(1, 'Mine');
@@ -146,6 +159,39 @@ it('ties a handover shift to its date and to the outgoing user', function () {
     havFile($admin, $items, ['outgoing_user_id' => $a->id, 'shift_id' => $mine->id])->assertCreated();
     // No shift at all stays allowed.
     havFile($a, $items)->assertCreated()->assertJsonPath('shift_id', null);
+});
+
+it('answers 422, not a server error, to a malformed shift id or date', function () {
+    $a = havUser();
+    $items = havItems();
+
+    foreach (['abc', '1.5', ['x']] as $bad) {
+        havFile($a, $items, ['shift_id' => $bad])->assertStatus(422)->assertJsonValidationErrors('shift_id');
+    }
+    // The handover date is a calendar date as the form sends it, nothing Carbon would guess at.
+    foreach (['tomorrow', '2026-10-09 23:00:00', '09.10.2026'] as $bad) {
+        havFile($a, $items, ['date' => $bad])->assertStatus(422)->assertJsonValidationErrors('date');
+    }
+    expect(ChecklistSubmission::count())->toBe(0);
+});
+
+it('refuses retired items and items of retired groups on a new handover', function () {
+    $a = havUser();
+    [$live, $retired] = havItems(2);
+    $retired->forceFill(['archived_at' => now()])->save();
+
+    havFile($a, [$live, $retired])->assertStatus(422)->assertJsonValidationErrors('responses.1.checklist_item_id');
+
+    // A live item in a group that was retired as a whole.
+    $template = ChecklistTemplate::find($live->group->checklist_template_id);
+    $oldGroup = ChecklistGroup::create(['checklist_template_id' => $template->id, 'name' => 'Old', 'sort_order' => 1]);
+    $orphan = ChecklistItem::create(['checklist_group_id' => $oldGroup->id, 'label' => 'Old item', 'type' => 'checkbox', 'sort_order' => 0]);
+    $oldGroup->forceFill(['archived_at' => now()])->save();
+
+    havFile($a, [$live, $orphan])->assertStatus(422)->assertJsonValidationErrors('responses.1.checklist_item_id');
+    expect(ChecklistSubmission::count())->toBe(0);
+
+    havFile($a, [$live])->assertCreated();
 });
 
 // ── M2: reading handovers back ────────────────────────────────────────────────

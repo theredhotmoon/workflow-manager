@@ -3,7 +3,10 @@ import { getXsrfHeader } from './auth.js';
 
 // The API throttles per user (API_RATE_LIMIT, 60/min by default, 1000 in the dev stack); on a 429,
 // wait out Retry-After and retry once.
-async function send(context, method, url, options) {
+async function send(context, method, url, options = {}) {
+  // Ask for JSON: without it Laravel answers a failed validation with a redirect that the request
+  // follows to a 200, so a rejected setup call (422) would look like success.
+  options = { ...options, headers: { Accept: 'application/json', ...options.headers } };
   let res = await context.request[method](url, options);
   if (res.status() === 429) {
     const wait = Math.min(Number(res.headers()['retry-after']) || 60, 65);

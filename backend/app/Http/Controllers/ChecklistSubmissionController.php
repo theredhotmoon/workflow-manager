@@ -11,6 +11,7 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftChecklist;
 use App\Models\User;
 use App\Support\BusinessDate;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -19,38 +20,131 @@ use Illuminate\Validation\ValidationException;
 
 class ChecklistSubmissionController extends Controller
 {
+    /** Columns the archive can be sorted by. */
+    private const SORTS = ['date', 'template', 'outgoing', 'incoming', 'status', 'timing', 'submitted_at'];
+
+    private const STATUS_LABELS = ['draft' => 'Draft', 'pending_confirmation' => 'Pending', 'completed' => 'Completed'];
+
     /**
-     * List submissions with filters. Admins see every handover; anyone else only their own (as
-     * outgoing, incoming or filer), and the filters below narrow that, never widen it.
+     * List submissions with filters, one page at a time (per_page up to 100), plus how many of the
+     * matching handovers are in each status. Admins see every handover; anyone else only their own
+     * (as outgoing, incoming or filer), and the filters below narrow that, never widen it.
      */
     public function index(Request $request)
     {
-        $query = ChecklistSubmission::with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name'])
-            ->visibleTo($request->user())
-            ->orderBy('date', 'desc')
-            ->orderBy('created_at', 'desc');
+        $query = $this->archiveQuery($request);
 
-        if ($request->has('template_id')) {
+        $statusCounts = array_fill_keys(['completed', 'pending_confirmation', 'draft'], 0);
+        $counts = $query->clone()->reorder()->toBase()
+            ->selectRaw('status, count(*) as aggregate')->groupBy('status')->pluck('aggregate', 'status');
+        foreach ($counts as $status => $n) {
+            $statusCounts[$status] = (int) $n;
+        }
+
+        $perPage = max(1, min((int) $request->input('per_page', 20), 100));
+        $page = $query->with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name'])->paginate($perPage);
+
+        return response()->json(array_merge($page->toArray(), ['status_counts' => $statusCounts]));
+    }
+
+    /**
+     * Every handover the archive list would show for the same filters and sort, as a CSV download.
+     * Streamed in chunks, so there is no row cap and the whole archive is never held in memory.
+     */
+    public function export(Request $request)
+    {
+        $query = $this->archiveQuery($request)->with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name']);
+        $filename = 'checklist-archive-' . BusinessDate::todayString() . '.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            self::csvRow($out, ['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Timing', 'Submitted At']);
+            foreach ($query->lazy(500) as $submission) {
+                self::csvRow($out, [
+                    $submission->date?->format('Y-m-d') ?? '',
+                    $submission->template?->name ?? '',
+                    $submission->outgoingUser?->name ?? '',
+                    $submission->incomingUser?->name ?? '',
+                    self::STATUS_LABELS[$submission->status] ?? $submission->status,
+                    match ($submission->submitted_on_time) { true => 'On time', false => 'Late', default => '' },
+                    $submission->submitted_at?->copy()->setTimezone(BusinessDate::timezone())->format('Y-m-d H:i') ?? '',
+                ]);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * The archive's filtered, scoped and sorted query, shared by index() and export() so the two
+     * can never disagree on which handovers a user may see or which ones match.
+     */
+    private function archiveQuery(Request $request): Builder
+    {
+        $request->validate([
+            'template_id' => ['sometimes', 'nullable', 'integer'],
+            'user_id' => ['sometimes', 'nullable', 'integer'],
+            'date_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'date_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'status' => ['sometimes', 'nullable', 'string'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'sort' => ['sometimes', 'nullable', Rule::in(self::SORTS)],
+            'direction' => ['sometimes', 'nullable', Rule::in(['asc', 'desc'])],
+        ]);
+
+        $query = ChecklistSubmission::query()->visibleTo($request->user());
+
+        if ($request->filled('template_id')) {
             $query->where('checklist_template_id', $request->template_id);
         }
-        if ($request->has('date_from')) {
+        if ($request->filled('date_from')) {
             $query->where('date', '>=', $request->date_from);
         }
-        if ($request->has('date_to')) {
+        if ($request->filled('date_to')) {
             $query->where('date', '<=', $request->date_to);
         }
-        if ($request->has('user_id')) {
+        if ($request->filled('user_id')) {
             $query->where(function ($q) use ($request) {
                 $q->where('outgoing_user_id', $request->user_id)
                     ->orWhere('incoming_user_id', $request->user_id);
             });
         }
-        if ($request->has('status')) {
+        if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
+        if ($request->filled('search')) {
+            // Template or either person's name, case-insensitively; % and _ are matched literally.
+            $like = '%' . addcslashes(mb_strtolower($request->search), '\\%_') . '%';
+            $nameMatches = fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]);
+            $query->where(fn ($q) => $q->whereHas('template', $nameMatches)
+                ->orWhereHas('outgoingUser', $nameMatches)
+                ->orWhereHas('incomingUser', $nameMatches));
+        }
 
-        $perPage = min((int) $request->input('per_page', 20), 1000);
-        return response()->json($query->paginate($perPage));
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
+        $nameOf = fn (string $table, string $column) => DB::table($table)->select('name')
+            ->whereColumn("{$table}.id", "checklist_submissions.{$column}")->limit(1);
+        match ($request->input('sort') ?? 'date') {
+            'template' => $query->orderBy($nameOf('checklist_templates', 'checklist_template_id'), $direction),
+            'outgoing' => $query->orderBy($nameOf('users', 'outgoing_user_id'), $direction),
+            'incoming' => $query->orderBy($nameOf('users', 'incoming_user_id'), $direction),
+            'status' => $query->orderBy('status', $direction),
+            'timing' => $query->orderBy('submitted_on_time', $direction),
+            'submitted_at' => $query->orderBy('submitted_at', $direction),
+            default => $query->orderBy('date', $direction),
+        };
+
+        // Newest first within equal keys, then by id so pages never overlap or skip a row.
+        return $query->orderBy('date', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+    }
+
+    /** One CSV line; a cell a spreadsheet would run as a formula gets a leading quote. */
+    private static function csvRow($handle, array $cells): void
+    {
+        $safe = array_map(
+            fn ($cell) => preg_match('/^[=+\-@\t\r]/', (string) $cell) === 1 ? "'" . $cell : (string) $cell,
+            $cells,
+        );
+        fputcsv($handle, $safe, ',', '"', '');
     }
 
     /**

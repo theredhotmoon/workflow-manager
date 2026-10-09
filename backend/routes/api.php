@@ -44,8 +44,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Checklist submissions (any authenticated user)
     Route::get('/checklist-submissions', [ChecklistSubmissionController::class, 'index']);
     Route::post('/checklist-submissions', [ChecklistSubmissionController::class, 'store']);
-    // Before {checklistSubmission}, which would otherwise take "pending-confirmations" as an id.
+    // Before {checklistSubmission}, which would otherwise take "pending-confirmations"/"export" as an id.
     Route::get('/checklist-submissions/pending-confirmations', [ChecklistSubmissionController::class, 'pendingConfirmations']);
+    Route::get('/checklist-submissions/export', [ChecklistSubmissionController::class, 'export']);
     Route::get('/checklist-submissions/{checklistSubmission}', [ChecklistSubmissionController::class, 'show']);
     Route::put('/checklist-submissions/{checklistSubmission}/confirm', [ChecklistSubmissionController::class, 'confirm']);
 

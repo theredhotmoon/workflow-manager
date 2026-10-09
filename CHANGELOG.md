@@ -4,6 +4,47 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🔐 Access and XSS: handovers are filed and read by the right people, procedure HTML is sanitised, every route's permissions are tested
+
+> **Deploy notes**
+> - Two migrations: `submitted_by_user_id` on `checklist_submissions`, and a one-off clean-up that sanitises the HTML already stored in procedures, drafts and version snapshots (idempotent; it only rewrites rows that change). The backend container runs `migrate` on start; otherwise run `php artisan migrate --force`.
+> - New PHP dependency `ezyang/htmlpurifier`, new npm dependency `dompurify`: rebuild both images.
+> - The frontend Nginx now sends a `Content-Security-Policy` (see README, "Content Security Policy and procedure HTML"). If the SPA loads anything from another origin, extend it.
+>
+> **Behaviour changes**
+> - **The checklist history API shows employees and schedule maintainers only their own handovers** (as outgoing or incoming user, or as the one who filed it); opening someone else's answers 403. Admins see everything. The history screen was already admin-only; no schedule screen reads handovers.
+> - **A handover's shift must be the outgoing employee's shift on the handover date** (also when an admin files on their behalf). The fill form warns when the chosen shift isn't theirs. Leaving the shift empty is still allowed.
+> - **A handover only accepts answers for items of its own template, each once.**
+> - **Procedure content keeps only what the editor produces** (headings, paragraphs, lists, quotes, code, links, images, bold/italic/underline/strike). Scripts, event handlers, inline styles, classes, `javascript:` links and non-image `data:` URLs are removed on save. An image without alt text is stored with `alt=""`.
+> - **A user without the role for an admin route now always gets 403**, also for an id that doesn't exist (it used to get 404, which told them whether the record existed).
+
+- **Handovers could be filed with items from other templates and pinned on other people's shifts, and didn't say who filed them.** Each answer's item must belong to the submitted template (and appear once), a given shift must be on the handover date with the outgoing user assigned to it, and every new handover records who filed it (`submitted_by_user_id`), shown in the history detail as "Submitted by …" when an admin filed for someone. Only admins may file for someone else (since H1/#25, unchanged). (M1)
+- **Any logged-in user could read every handover of every user** through `GET /api/checklist-submissions` (and `/{id}`), including with a `user_id` filter. Non-admins now get only their own; the filters narrow that list and never widen it. (M2)
+- **Stored XSS: procedure HTML was saved as sent and rendered with `v-html`, with no CSP.** It is now sanitised on every write (HTMLPurifier allowlist matching the TipTap editor; new-tab links get `rel="noopener noreferrer"`; images only http(s) or base64 png/jpeg/gif/webp), sanitised again in the browser with DOMPurify before rendering, existing rows are cleaned by a migration, and the frontend Nginx sends a CSP that blocks inline and foreign scripts. (M3)
+- **Route permissions weren't tested systematically.** A new test walks every `/api` route from the router: a reviewed per-group list (public, any logged-in user, admin, admin-or-schedule-maintainer) fails on any added, removed or moved route; guests get 401 everywhere but login; every admin route answers 403 to employees and schedule maintainers, every schedule route 403 to employees, and allowed roles get through. (M24)
+
+### Backend
+| What | Details |
+|------|---------|
+| Added | Migration `add_submitted_by_user_id_to_checklist_submissions_table` (nullable FK to users, `nullOnDelete`); `ChecklistSubmission::submittedBy()`, `scopeVisibleTo(User)`, `isVisibleTo(User)` |
+| Changed | `POST /api/checklist-submissions`: `responses.*.checklist_item_id` is `integer`, `distinct` and must exist in a group of `checklist_template_id` (422 otherwise); `shift_id` must be dated `date` and assigned to `outgoing_user_id` (422 on `shift_id`); stores `submitted_by_user_id` = caller; the response includes `submitted_by` |
+| Changed | `GET /api/checklist-submissions`: `visibleTo(caller)` before the filters; `GET /api/checklist-submissions/{id}`: 403 unless visible, includes `submitted_by {id, name}` |
+| Added | `App\Services\ProcedureHtmlSanitizer` (HTMLPurifier, HTML 4.01 output, definition cache off) with `ProcedureHtml\CodeLanguageClass` (only `class="language-*"` on `<code>`) and `ProcedureHtml\ImageDataUriScheme` (adds webp); bound as a singleton |
+| Changed | `Procedure` (`content`, `draft_content`) and `ProcedureVersion` (`content`) sanitise in a set mutator, so every write path is covered; `ProcedureController::update()` compares the sanitised content, so equivalent HTML doesn't publish a version |
+| Added | Migration `sanitize_stored_procedure_html`: cleans `procedures.content`, `procedures.draft_content`, `procedure_versions.content` in chunks, writing only changed rows |
+| Changed | `App\Http\Kernel`: `EnsureUserIsActive` and `EnsureUserIsAdmin` run before `SubstituteBindings` |
+| Tests | New: `HandoverAccessTest` (M1/M2), `ProcedureSanitizingTest` (M3, incl. a round trip of the editor's real output and the data migration), `RoutePermissionMatrixTest` (M24) |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Added | `src/procedureHtmlSanitizer.js` (DOMPurify config + hooks, same allowlist as the backend) and `src/procedureHtml.js` (`sanitizeProcedureHtml`); unit test `procedureHtmlSanitizer.test.js` runs DOMPurify in a browser page |
+| Changed | `ProcedureContent.vue` renders `sanitizeProcedureHtml(procedure.content)` |
+| Changed | `ChecklistFillView.vue`: a warning under the shift picker when the outgoing employee isn't assigned to the chosen shift. `ChecklistHistoryView.vue`: "Submitted by X" in the detail when it differs from the outgoing user |
+| Changed | `docker/nginx.conf`: `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'` |
+
+---
+
 ## 2026-10-09 — 🧮 Data fixes: archived delegations keep their history dates, 24-hour shifts, staffed slots and overlapping on-call
 
 > **Behaviour changes**

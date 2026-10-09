@@ -31,7 +31,7 @@
           </div>
           <div>
             <h3 id="confirm-modal-title" class="text-white font-bold text-base leading-tight">{{ title }}</h3>
-            <p v-if="message" class="text-slate-400 text-sm mt-1 leading-relaxed">{{ message }}</p>
+            <p v-if="message" class="text-slate-400 text-sm mt-1 leading-relaxed whitespace-pre-line">{{ message }}</p>
           </div>
         </div>
 

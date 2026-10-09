@@ -46,13 +46,16 @@ class SettlementPeriodCalculator
 
     public function shiftTiming(Shift $shift): array
     {
+        // Wall-clock times in the business timezone, rolled over by the same rule as
+        // BusinessDate::shiftEnd(), so the duration is elapsed time: a 00:00-00:00 shift is 24 h,
+        // or 25 h / 23 h on a DST change day. Missing times fall back to a 06:00-14:00 day.
         $dateStr = $shift->date->format('Y-m-d');
-        $startTime = $shift->start_time ? Carbon::parse($dateStr . ' ' . $shift->start_time) : Carbon::parse($dateStr . ' 06:00');
-        $endTime = $shift->end_time ? Carbon::parse($dateStr . ' ' . $shift->end_time) : Carbon::parse($dateStr . ' 14:00');
+        $start = $shift->start_time ?: '06:00';
+        $end = $shift->end_time ?: '14:00';
+        $endDate = BusinessDate::endsNextDay($start, $end) ? $shift->date->copy()->addDay()->format('Y-m-d') : $dateStr;
 
-        if ($endTime->lte($startTime)) {
-            $endTime->addDay();
-        }
+        $startTime = BusinessDate::localInstant($dateStr, $start);
+        $endTime = BusinessDate::localInstant($endDate, $end);
 
         // Whole minutes (Carbon 3 returns a float), then hours with the fraction kept: 7:30 is 7.5.
         $durationMinutes = (int) $startTime->diffInMinutes($endTime, true);

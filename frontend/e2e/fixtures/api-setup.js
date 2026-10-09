@@ -62,6 +62,16 @@ export async function assignShift(context, { shiftId, userId }) {
   return await res.json();
 }
 
+export async function setDayShiftCount(context, { date, count, shiftGroupId }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'put', '/api/schedule/day-shifts', {
+    data: { date, count, shift_group_id: shiftGroupId },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`set day shift count failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
 export async function getEmployeeIdByEmail(context, email) {
   const headers = await getXsrfHeader(context);
   const res = await send(context, 'get', '/api/employees', { headers });

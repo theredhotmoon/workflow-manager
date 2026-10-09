@@ -65,8 +65,10 @@ class DelegationArchiveController extends Controller
     public function archive(Request $request, Delegation $delegation)
     {
         return DB::transaction(function () use ($request, $delegation) {
-            // Create archived copy
-            $archived = ArchivedDelegation::create([
+            // Create archived copy. forceFill (not create) so created_at /
+            // updated_at are copied verbatim: they are not mass-assignable, and
+            // Eloquent only stamps "now" on timestamp columns that are not dirty.
+            $archived = (new ArchivedDelegation())->forceFill([
                 'original_id' => $delegation->id,
                 'name' => $delegation->name,
                 'destination' => $delegation->destination,
@@ -76,30 +78,22 @@ class DelegationArchiveController extends Controller
                 'registration_open' => $delegation->registration_open,
                 'created_by' => $delegation->created_by,
                 'archived_by' => $request->user()->id,
-                'created_at' => $delegation->created_at,
-                'updated_at' => $delegation->updated_at,
+                'created_at' => $delegation->getRawOriginal('created_at'),
+                'updated_at' => $delegation->getRawOriginal('updated_at'),
             ]);
+            $archived->save();
 
-            // Copy users with pivot data
+            // Copy users with pivot data (pivot timestamps included)
             foreach ($delegation->users as $user) {
-                $archived->users()->attach($user->id, [
-                    'custom_start' => $user->pivot->custom_start,
-                    'custom_end' => $user->pivot->custom_end,
-                    'status' => $user->pivot->status,
-                ]);
+                $archived->users()->attach($user->id, self::pivotCopy($user->pivot));
             }
 
-            // Copy logs
-            $logs = DelegationLog::where('delegation_id', $delegation->id)->get();
-            foreach ($logs as $log) {
-                ArchivedDelegationLog::create([
-                    'archived_delegation_id' => $archived->id,
-                    'performed_by' => $log->performed_by,
-                    'action' => $log->action,
-                    'details' => $log->details,
-                    'created_at' => $log->created_at,
-                ]);
-            }
+            // Copy logs with their original created_at
+            $this->copyLogs(
+                DelegationLog::where('delegation_id', $delegation->id)->orderBy('id')->get(),
+                ArchivedDelegationLog::class,
+                ['archived_delegation_id' => $archived->id],
+            );
 
             // Add archive log entry
             ArchivedDelegationLog::create([
@@ -123,8 +117,8 @@ class DelegationArchiveController extends Controller
     public function unarchive(Request $request, ArchivedDelegation $archivedDelegation)
     {
         return DB::transaction(function () use ($request, $archivedDelegation) {
-            // Create active delegation
-            $delegation = Delegation::create([
+            // Create active delegation, keeping its original timestamps (see archive()).
+            $delegation = (new Delegation())->forceFill([
                 'name' => $archivedDelegation->name,
                 'destination' => $archivedDelegation->destination,
                 'description' => $archivedDelegation->description,
@@ -132,28 +126,22 @@ class DelegationArchiveController extends Controller
                 'end_datetime' => $archivedDelegation->end_datetime,
                 'registration_open' => $archivedDelegation->registration_open,
                 'created_by' => $archivedDelegation->created_by,
+                'created_at' => $archivedDelegation->getRawOriginal('created_at'),
+                'updated_at' => $archivedDelegation->getRawOriginal('updated_at'),
             ]);
+            $delegation->save();
 
             // Copy users
             foreach ($archivedDelegation->users as $user) {
-                $delegation->users()->attach($user->id, [
-                    'custom_start' => $user->pivot->custom_start,
-                    'custom_end' => $user->pivot->custom_end,
-                    'status' => $user->pivot->status,
-                ]);
+                $delegation->users()->attach($user->id, self::pivotCopy($user->pivot));
             }
 
-            // Copy logs back
-            $logs = ArchivedDelegationLog::where('archived_delegation_id', $archivedDelegation->id)->get();
-            foreach ($logs as $log) {
-                DelegationLog::create([
-                    'delegation_id' => $delegation->id,
-                    'performed_by' => $log->performed_by,
-                    'action' => $log->action,
-                    'details' => $log->details,
-                    'created_at' => $log->created_at,
-                ]);
-            }
+            // Copy logs back with their original created_at
+            $this->copyLogs(
+                ArchivedDelegationLog::where('archived_delegation_id', $archivedDelegation->id)->orderBy('id')->get(),
+                DelegationLog::class,
+                ['delegation_id' => $delegation->id],
+            );
 
             // Add unarchive log
             DelegationLog::create([
@@ -169,6 +157,47 @@ class DelegationArchiveController extends Controller
             $delegation->load(['users:id,name,email', 'creator:id,name']);
             return response()->json($delegation);
         });
+    }
+
+    /**
+     * Copy log rows into the other log table with one bulk insert. A raw insert
+     * (rather than Model::create) writes created_at verbatim: the log models
+     * have no Eloquent timestamps and created_at is not fillable, so create()
+     * silently dropped it and the column default stamped "now" on every row.
+     *
+     * @param  \Illuminate\Support\Collection<int, \Illuminate\Database\Eloquent\Model>  $logs
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $targetModel
+     * @param  array<string, int>  $parentKey
+     */
+    private function copyLogs($logs, string $targetModel, array $parentKey): void
+    {
+        if ($logs->isEmpty()) {
+            return;
+        }
+
+        $targetModel::query()->insert($logs->map(fn ($log) => $parentKey + [
+            'performed_by' => $log->performed_by,
+            'action' => $log->action,
+            'details' => $log->details,
+            'created_at' => $log->getRawOriginal('created_at'),
+        ])->all());
+    }
+
+    /**
+     * Pivot columns to carry over between delegation_user and
+     * archived_delegation_user, including the pivot's own timestamps.
+     *
+     * @return array<string, mixed>
+     */
+    private static function pivotCopy($pivot): array
+    {
+        return [
+            'custom_start' => $pivot->custom_start,
+            'custom_end' => $pivot->custom_end,
+            'status' => $pivot->status,
+            'created_at' => $pivot->getRawOriginal('created_at'),
+            'updated_at' => $pivot->getRawOriginal('updated_at'),
+        ];
     }
 
     /**

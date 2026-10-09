@@ -130,13 +130,15 @@ it('removing every streak rule clears every policy in the group, and only in tha
 
 it('removing a day\'s slot clears the policy of a shift it takes out of rest', function () {
     // The streak's second night is slot 2 of 01-02; dropping that day to one slot deletes it.
+    // Slot 1 is staffed too, so the reduction must take the staffed slot 2 (M12: with confirmation).
     sfuAssign($this, '2029-01-01');
-    sfuShift($this, '2029-01-02', 'day', 1);
+    $day = sfuShift($this, '2029-01-02', 'day', 1);
+    ShiftAssignment::create(['shift_id' => $day->id, 'user_id' => User::factory()->create()->id]);
     sfuAssign($this, '2029-01-02', 'night', null, 2);
     $stamped = sfuAssign($this, '2029-01-03', 'day', StreakTimeline::NOT_COUNTED, 2);
 
     $this->actingAs($this->maintainer)->putJson('/api/schedule/day-shifts', [
-        'date' => '2029-01-02', 'count' => 1, 'shift_group_id' => $this->group->id,
+        'date' => '2029-01-02', 'count' => 1, 'shift_group_id' => $this->group->id, 'confirm_remove_staffed' => true,
     ])->assertOk();
 
     expect($stamped->fresh()->rest_policy)->toBeNull();

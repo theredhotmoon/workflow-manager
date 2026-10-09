@@ -168,8 +168,8 @@
 
                   <!-- Logout -->
                   <div class="border-t border-white/10 py-1">
-                    <button @click="logout"
-                      class="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/5 transition-all">
+                    <button @click="logout" :disabled="loggingOut"
+                      class="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/5 transition-all disabled:opacity-50">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                       </svg>
@@ -183,6 +183,13 @@
         </div>
       </div>
     </nav>
+
+    <!-- Logout failed: the user is still signed in, and must know it. -->
+    <div v-if="logoutError" role="alert"
+      class="fixed top-20 right-6 z-[70] max-w-sm flex items-start gap-3 px-4 py-3 bg-red-950/90 backdrop-blur-xl border border-red-500/30 rounded-xl shadow-2xl text-sm text-red-200">
+      <span class="flex-1">{{ logoutError }}</span>
+      <button @click="logoutError = ''" aria-label="Dismiss" class="text-red-300 hover:text-white">✕</button>
+    </div>
 
     <!-- Click-away overlay for user menu -->
     <div v-if="userMenuOpen" class="fixed inset-0 z-40" @click="userMenuOpen = false"></div>
@@ -277,10 +284,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
+import { isLoggedOut } from '../fetchCurrentUser.js';
+import { logoutWithRetry } from '../logout.js';
 import { canManageSchedule as userCanManageSchedule, isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -288,6 +298,8 @@ const router = useRouter();
 const userMenuOpen = ref(false);
 const sidebarOpen = ref(false);
 const showPasswordModal = ref(false);
+const loggingOut = ref(false);
+const logoutError = ref('');
 const pwSaving = ref(false);
 const pwError = ref('');
 const pwSuccess = ref('');
@@ -306,6 +318,11 @@ const latestAlarms = ref([]);
 const unreadAlarmCount = ref(0);
 let alarmPollTimer = null;
 
+function stopAlarmPoll() {
+  if (alarmPollTimer) clearInterval(alarmPollTimer);
+  alarmPollTimer = null;
+}
+
 async function fetchAlarms() {
   try {
     const [latestRes, countRes] = await Promise.all([
@@ -314,8 +331,16 @@ async function fetchAlarms() {
     ]);
     latestAlarms.value = latestRes.data;
     unreadAlarmCount.value = countRes.data.count;
-  } catch {}
+  } catch (error) {
+    // Signed out (sessionExpiry.js takes them to the login page): stop polling a dead session.
+    if (isLoggedOut(error)) stopAlarmPoll();
+  }
 }
+
+// However the session ends (logout, expiry seen by any request), the poll stops with it.
+watch(currentUser, (user) => {
+  if (!user) stopAlarmPoll();
+});
 
 async function markAlarmRead(alarm) {
   if (!alarm.read_at) {
@@ -445,11 +470,22 @@ const sidebarLinks = [
 ];
 
 async function logout() {
+  if (loggingOut.value) return;
   userMenuOpen.value = false;
+  loggingOut.value = true;
+  logoutError.value = '';
   try {
-    await api.post('/api/logout');
-  } catch {}
-  router.push({ name: 'login' });
+    await logoutWithRetry(api);
+  } catch (error) {
+    // Still signed in on the server: say so rather than show the login page over a live session.
+    logoutError.value = `${describeApiError(error, 'Could not log out').message} You are still signed in.`;
+    loggingOut.value = false;
+    return;
+  }
+  stopAlarmPoll();
+  currentUser.value = null;
+  await router.push({ name: 'login' });
+  loggingOut.value = false;
 }
 
 function closePasswordModal() {
@@ -494,7 +530,5 @@ onMounted(() => {
   alarmPollTimer = setInterval(fetchAlarms, 60000);
 });
 
-onUnmounted(() => {
-  if (alarmPollTimer) clearInterval(alarmPollTimer);
-});
+onUnmounted(stopAlarmPoll);
 </script>

@@ -75,7 +75,7 @@ test.describe('Users: deactivate instead of delete', () => {
 
       // An in-page API call (not a navigation) answers 401: the SPA signs them out with the reason.
       await page.getByRole('button', { name: 'Next month' }).click();
-      await expect(page).toHaveURL(/\/login$/);
+      await expect(page).toHaveURL(/\/login\?redirect=\/my-shifts$/);
       await expect(page.getByText('This account is deactivated.')).toBeVisible();
     } finally {
       await userContext.close();

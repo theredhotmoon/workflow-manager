@@ -193,7 +193,8 @@ router.beforeEach(async (to, from, next) => {
     } catch (error) {
       if (isLoggedOut(error)) {
         currentUser.value = null;
-        next({ name: 'login' });
+        // Signing in again comes back here.
+        next({ name: 'login', query: { redirect: to.fullPath } });
       } else if (currentUser.value) {
         // Throttled or failing API, but we already know who this is: keep the session as is.
         next();

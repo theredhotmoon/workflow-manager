@@ -232,9 +232,9 @@
 <script setup>
 import { ref } from 'vue';
 import api from '../axios.js';
-import ShiftCountInputs from './ShiftCountInputs.vue';
-import PlayerSelectionPanel from './PlayerSelectionPanel.vue';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
+import PlayerSelectionPanel from './PlayerSelectionPanel.vue';
+import ShiftCountInputs from './ShiftCountInputs.vue';
 
 const props = defineProps({
   monthKey: { type: String, required: true },

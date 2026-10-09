@@ -92,12 +92,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { confirm } from '../composables/useConfirm.js';
-import { useToast } from '../composables/useToast.js';
+import { onMounted, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import { confirm } from '../composables/useConfirm.js';
+import { useToast } from '../composables/useToast.js';
 
 const colors = ref([]);
 const loading = ref(true);

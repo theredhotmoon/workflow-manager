@@ -6,9 +6,11 @@ use App\Models\ChecklistSubmission;
 use App\Models\ChecklistResponse;
 use App\Models\ChecklistTemplate;
 use App\Models\ShiftChecklist;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ChecklistSubmissionController extends Controller
 {
@@ -50,11 +52,12 @@ class ChecklistSubmissionController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'checklist_template_id' => ['required', 'exists:checklist_templates,id'],
+            // An archived template can't start a new handover.
+            'checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')->whereNull('archived_at')],
             'shift_id' => ['nullable', 'exists:shifts,id'],
             'date' => ['required', 'date'],
-            'outgoing_user_id' => ['required', 'exists:users,id'],
-            'incoming_user_id' => ['nullable', 'exists:users,id'],
+            'outgoing_user_id' => ['required', User::activeExistsRule()],
+            'incoming_user_id' => ['nullable', User::activeExistsRule()],
             'general_comments' => ['nullable', 'string'],
             'responses' => ['required', 'array'],
             'responses.*.checklist_item_id' => ['required', 'exists:checklist_items,id'],
@@ -127,11 +130,28 @@ class ChecklistSubmissionController extends Controller
     public function show(ChecklistSubmission $checklistSubmission)
     {
         $checklistSubmission->load([
-            'template.groups.items.procedure:id,identifier,title,version',
+            'template',
             'outgoingUser:id,name',
             'incomingUser:id,name',
             'responses',
         ]);
+
+        // The template as this submission saw it: current groups/items plus any retired since that
+        // this submission answered, so history keeps showing them with their labels.
+        $template = $checklistSubmission->template;
+        if ($template) {
+            $answered = $checklistSubmission->responses->pluck('checklist_item_id')->all();
+            $shown = fn ($q) => $q->where(fn ($w) => $w->whereNull('archived_at')->orWhereIn('id', $answered));
+            $groups = $template->allGroups()
+                ->where(fn ($w) => $w->whereNull('archived_at')
+                    ->orWhereHas('allItems', fn ($i) => $i->whereIn('id', $answered)))
+                ->with(['allItems' => $shown, 'allItems.procedure:id,identifier,title,version'])
+                ->get();
+            foreach ($groups as $group) {
+                $group->setRelation('items', $group->allItems)->unsetRelation('allItems');
+            }
+            $template->setRelation('groups', $groups);
+        }
 
         return response()->json($checklistSubmission);
     }

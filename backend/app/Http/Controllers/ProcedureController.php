@@ -7,7 +7,9 @@ use App\Models\ProcedureAccessLog;
 use App\Models\ProcedureOwnerChange;
 use App\Models\ProcedureUserRead;
 use App\Models\ProcedureVersion;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProcedureController extends Controller
 {
@@ -103,7 +105,7 @@ class ProcedureController extends Controller
             'purpose' => ['sometimes', 'nullable', 'string'],
             'requirements' => ['sometimes', 'nullable', 'string'],
             'content' => ['sometimes', 'nullable', 'string'],
-            'owner_id' => ['required', 'exists:users,id'],
+            'owner_id' => ['required', User::activeExistsRule()],
             'tag_ids' => ['sometimes', 'array'],
             'tag_ids.*' => ['exists:procedure_tags,id'],
         ]);
@@ -192,7 +194,9 @@ class ProcedureController extends Controller
             'purpose' => ['sometimes', 'nullable', 'string'],
             'requirements' => ['sometimes', 'nullable', 'string'],
             'content' => ['sometimes', 'nullable', 'string'],
-            'owner_id' => ['sometimes', 'exists:users,id'],
+            // A deactivated owner can stay (the editor sends the current owner back), not be newly chosen.
+            'owner_id' => ['sometimes', Rule::exists('users', 'id')
+                ->where(fn ($q) => $q->whereNull('deactivated_at')->orWhere('id', $procedure->owner_id))],
             'tag_ids' => ['sometimes', 'array'],
             'tag_ids.*' => ['exists:procedure_tags,id'],
         ]);
@@ -467,7 +471,7 @@ class ProcedureController extends Controller
     public function changeOwner(Request $request, Procedure $procedure)
     {
         $validated = $request->validate([
-            'new_owner_id' => ['required', 'exists:users,id'],
+            'new_owner_id' => ['required', User::activeExistsRule()],
             'reason' => ['required', 'string', 'max:5000'],
         ]);
 

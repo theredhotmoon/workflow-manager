@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OnCallAssignment;
 use App\Models\OnCallCallback;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Support\Month;
@@ -37,7 +38,7 @@ class OnCallController extends Controller
     {
         $validated = $request->validate([
             'shift_group_id' => ['required', 'integer', 'exists:shift_groups,id'],
-            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'user_id' => ['required', 'integer', User::activeExistsRule()],
             'starts_at' => ['required', 'date'],
             'ends_at' => ['required', 'date', 'after:starts_at'],
         ]);

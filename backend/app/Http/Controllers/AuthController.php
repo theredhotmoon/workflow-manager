@@ -15,6 +15,13 @@ class AuthController extends Controller
         ]);
 
         if (Auth::attempt($credentials)) {
+            // Only said after the password checked out, so it doesn't reveal which accounts exist.
+            if (Auth::user()->isDeactivated()) {
+                Auth::guard('web')->logout();
+
+                return response()->json(['message' => 'This account is deactivated.'], 403);
+            }
+
             if ($request->hasSession()) {
                 $request->session()->regenerate();
             }

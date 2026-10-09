@@ -12,6 +12,7 @@ class ChecklistItem extends Model
         'requires_confirmation' => 'boolean',
         'min_value' => 'float',
         'max_value' => 'float',
+        'archived_at' => 'datetime',
     ];
 
     public function group()

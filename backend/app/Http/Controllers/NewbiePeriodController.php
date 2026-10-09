@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\NewbiePeriod;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use App\Support\Month;
@@ -54,7 +55,7 @@ class NewbiePeriodController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'user_id' => ['required', 'exists:users,id'],
+            'user_id' => ['required', User::activeExistsRule()],
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
         ]);

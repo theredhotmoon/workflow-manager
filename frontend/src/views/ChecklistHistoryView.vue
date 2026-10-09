@@ -613,8 +613,9 @@ async function fetchData() {
 
     const [subRes, tplRes, empRes] = await Promise.all([
       api.get('/api/checklist-submissions', { params }),
-      api.get('/api/checklist-templates'),
-      api.get('/api/employees'),
+      // History filters also offer archived templates and deactivated users.
+      api.get('/api/checklist-templates', { params: { include_archived: 1 } }),
+      api.get('/api/employees', { params: { include_deactivated: 1 } }),
     ]);
     if (!submissionsRequests.isCurrent(token)) return;
     submissions.value = subRes.data.data || subRes.data || [];

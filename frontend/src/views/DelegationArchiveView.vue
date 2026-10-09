@@ -300,7 +300,8 @@ async function fetchData() {
     const [archRes, destRes, usersRes] = await Promise.all([
       api.get('/api/delegation-archive', { params }),
       api.get('/api/delegation-archive/destinations'),
-      api.get('/api/users'),
+      // The archive filter also offers deactivated users (their past delegations stay).
+      api.get('/api/users', { params: { include_deactivated: 1 } }),
     ]);
     if (!archiveRequests.isCurrent(token)) return;
     archived.value = archRes.data;

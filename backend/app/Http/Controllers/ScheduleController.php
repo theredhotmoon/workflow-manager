@@ -17,6 +17,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use App\Support\Month;
 
 class ScheduleController extends Controller
@@ -111,8 +112,8 @@ class ScheduleController extends Controller
             $schedule[$dateKey][] = $shiftData;
         }
 
-        // Get all non-admin employees for the pool
-        $employees = User::orderBy('name')
+        // Employees for the pool (deactivated users still show by name on their past assignments)
+        $employees = User::active()->orderBy('name')
             ->get(['id', 'name', 'email', 'is_admin']);
 
         return response()->json([
@@ -137,7 +138,7 @@ class ScheduleController extends Controller
             'shift_times.*.end_time' => ['required_with:shift_times', 'date_format:H:i'],
             'shift_times.*.shift_type' => ['sometimes', 'nullable', 'string', 'max:50'],
             'shift_times.*.checklists' => ['sometimes', 'array'],
-            'shift_times.*.checklists.*.checklist_template_id' => ['required', 'exists:checklist_templates,id'],
+            'shift_times.*.checklists.*.checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')->whereNull('archived_at')],
             'shift_times.*.checklists.*.is_required' => ['required', 'boolean'],
             'shift_times.*.checklists.*.deadline_minutes' => ['nullable', 'integer', 'min:1'],
             'shift_times.*.checklists.*.deadline_reference' => ['nullable', 'in:shift_start,shift_end'],
@@ -311,7 +312,7 @@ class ScheduleController extends Controller
     {
         $request->validate([
             'shift_id' => ['required', 'exists:shifts,id'],
-            'user_id' => ['required', 'exists:users,id'],
+            'user_id' => ['required', User::activeExistsRule()],
             'rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
             'later_rest_policy' => ['nullable', 'in:'.implode(',', StreakTimeline::POLICIES)],
             'expected_affected_ids' => ['nullable', 'array'],
@@ -488,9 +489,12 @@ class ScheduleController extends Controller
      */
     public function updateShiftChecklist(Request $request, Shift $shift)
     {
+        // An archived template can't be newly required; one already on this shift may stay when it's re-saved.
+        $attachedIds = $shift->shiftChecklists()->pluck('checklist_template_id')->all();
         $request->validate([
             'checklists' => ['present', 'array'],
-            'checklists.*.checklist_template_id' => ['required', 'exists:checklist_templates,id'],
+            'checklists.*.checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')
+                ->where(fn ($q) => $q->whereNull('archived_at')->orWhereIn('id', $attachedIds))],
             'checklists.*.is_required' => ['required', 'boolean'],
             'checklists.*.deadline_minutes' => ['nullable', 'integer', 'min:1'],
             'checklists.*.deadline_reference' => ['nullable', 'in:shift_start,shift_end'],

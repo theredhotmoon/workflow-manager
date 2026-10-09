@@ -4,6 +4,50 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🛡️ Editing or deleting a checklist template, or deleting a user, no longer wipes history
+
+Three data-loss bugs are fixed:
+
+- **Editing a checklist template deleted every past handover response.** Saving a template recreated all its groups and items, and the responses cascaded away with the old items. Now groups and items are updated in place. A removed item (or group) is *retired*: it is no longer offered for new handovers, but past handovers still show it with its answer.
+- **Deleting a template deleted its whole handover history.** "Delete" is now **Archive**: the template disappears from the builder, from filling and from the shift checklist pickers, and shifts from today on stop requiring it. Its submitted handovers stay in the history under its name. Past shifts keep the checklist they had, but an archived template no longer raises overdue alerts.
+- **Deleting a user deleted everything they created or owned** (procedures, delegations, office closures, handovers, audit logs …). Users are now **deactivated** instead of deleted. A deactivated user can't log in (*"This account is deactivated."*), and a session that is already open is signed out on its next request. They no longer appear in the schedule's employee pool, in auto-fill or in the pickers, but their name stays wherever history shows it. The confirm dialog shows how many shifts the user has from today on and offers to remove them from those shifts (on by default). Deactivated users are hidden on the Users screen unless **Show deactivated** is on, and can be **reactivated**.
+
+Also fixed: saving a deactivated (inactive) template no longer re-activates it.
+
+> **Deploy note:** take a database backup before deploying. These migrations change foreign-key delete behaviour: hard-deleting a template, group, item or a user with history now fails instead of cascading. `DELETE /api/users/{id}` is gone (405). Use `POST /api/users/{id}/deactivate` / `reactivate` instead.
+
+### Backend
+| What | Details |
+|------|---------|
+| Added | Nullable `archived_at` on `checklist_templates`, `checklist_groups`, `checklist_items`; nullable `deactivated_at` on `users` |
+| Changed | `PUT /api/checklist-templates/{id}` updates groups/items by `id` (ids must belong to the template, 422 otherwise), adds rows without an id, and sets `archived_at` on rows left out instead of deleting them. `is_active` only changes when sent. Editing an archived template answers 422 |
+| Changed | `DELETE /api/checklist-templates/{id}` archives the template (`"Template archived."`) and deletes its `shift_checklists` rows for shifts dated today or later |
+| Changed | `ChecklistTemplate::groups()` / `ChecklistGroup::items()` return current rows only; `allGroups()` / `allItems()` include retired ones. `GET /api/checklist-templates` leaves out archived templates unless `include_archived=1`; `/active` leaves them out |
+| Changed | `GET /api/checklist-submissions/{id}` serves the template's current groups/items plus retired ones that this submission answered |
+| Changed | New handovers, `POST /api/schedule/generate` and `PUT /api/schedule/shifts/{id}/checklist` reject archived templates (re-saving a shift that already has one keeps it). `/api/my-checklist-alerts` skips archived templates |
+| Added | `POST /api/users/{id}/deactivate` (`remove_future_assignments`: removes the user's assignments from today on in the same transaction, settles their pending change requests and runs `RestPolicyJanitor`; an admin can't deactivate themselves) and `POST /api/users/{id}/reactivate`. `GET /api/users/{id}` returns `future_assignments_count` |
+| Removed | `DELETE /api/users/{id}` (405) |
+| Added | `active` middleware on the `auth:sanctum` group: a deactivated user gets 401 *"This account is deactivated."* and their session is invalidated. Login answers 403 with the same message (only after the password matched) |
+| Changed | Deactivated users are left out of the schedule's employee pool, the three auto-fill modes, `GET /api/employees` and `GET /api/users` (both accept `include_deactivated=1`), and admin/maintainer alarms. Assigning shifts, on-call, delegations, newbie periods, procedure owners and handover users reject them (a procedure's current deactivated owner is still accepted when it is edited) |
+| Changed | FKs moved from cascade to **restrict**: `checklist_responses.checklist_item_id`, `checklist_items.checklist_group_id`, `checklist_groups.checklist_template_id`, `checklist_submissions.checklist_template_id`. On `users.id`: `procedures.owner_id`, `delegations.created_by`, `archived_delegations.created_by`/`archived_by`, `delegation_logs.performed_by`, `archived_delegation_logs.performed_by`, `office_closures.created_by`, `newbie_periods.created_by`, `checklist_submissions.outgoing_user_id`, `procedure_faq_items.created_by`, `procedure_faq_replies.created_by`, `procedure_owner_changes.new_owner_id`/`changed_by_id`, `procedure_feedbacks.user_id`, `shift_assignments.user_id`, `on_call_assignments.user_id`, `delegation_user.user_id`, `archived_delegation_user.user_id`, `procedure_access_logs.user_id`. `down()` restores the cascades |
+| Unchanged | Per-user personal data still cascades with a (hard-deleted) user: `alarms`, `procedure_user_reads`, `user_availabilities`, `user_group_user`, `shift_change_requests`, `newbie_periods.user_id`. The set-null references (`checklist_submissions.incoming_user_id`, `procedure_owner_changes.old_owner_id`, `procedure_versions.published_by`) are as before |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Changed | Checklist builder sends group/item ids when saving an edit; **Delete** became **Archive** with a confirm explaining that handovers are kept |
+| Changed | Users screen: **Delete** became **Deactivate** (dialog with the future-shift count and an "Also remove them from these N future shifts" checkbox, on by default). Deactivated users are hidden unless **Show deactivated** is on, show a "Deactivated" badge and a **Reactivate** button. The group member picker lists active users only |
+| Changed | Checklist history filters list archived templates and deactivated users; the delegation archive filter lists deactivated users |
+
+### Tests
+| What | Details |
+|------|---------|
+| Added | `tests/Feature/ChecklistTemplateHistoryTest.php` covers: an edit keeps every response; removed items/groups are retired, missing from filling and present in the submission detail; foreign ids are rejected; L16; archiving keeps submissions, hides the template and drops future shift requirements; no alerts or new handovers for archived templates; restrict FKs on item/group/template |
+| Added | `tests/Feature/UserDeactivationTest.php` covers: deactivation keeps authored history; `remove_future_assignments` true/false; DELETE gives 405; an admin can't deactivate themselves; login refused; an open session gets 401; hidden from the pool, pickers and assign; left out of auto-fill (random, rotating, polish-law); reactivation; restrict FK on a procedure owner |
+| Added | `e2e/checklists/template-history.spec.js` (removing an item keeps it in the past handover; archiving hides the template and keeps its handover) and `e2e/users/deactivate.spec.js` (deactivate, show deactivated, reactivate on a throwaway user); `createUser` fixture and `itemLabels` option for `createChecklistTemplate` |
+
+---
+
 ## 2026-10-09 — 🧪 E2E suite can run on another port
 
 The e2e suite used to require port 5173, so it couldn't run while another project's dev server held it (it would talk to that app instead). `E2E_PORT` now picks the suite's dev-server port.

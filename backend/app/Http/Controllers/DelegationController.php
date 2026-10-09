@@ -55,7 +55,7 @@ class DelegationController extends Controller
             'end_datetime' => ['required', 'date', 'after:start_datetime'],
             'registration_open' => ['sometimes', 'boolean'],
             'user_ids' => ['sometimes', 'array'],
-            'user_ids.*' => ['integer', 'exists:users,id'],
+            'user_ids.*' => ['integer', User::activeExistsRule()],
         ]);
 
         $delegation = Delegation::create([
@@ -128,7 +128,7 @@ class DelegationController extends Controller
     public function addUser(Request $request, Delegation $delegation)
     {
         $request->validate([
-            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'user_id' => ['required', 'integer', User::activeExistsRule()],
             'custom_start' => ['sometimes', 'nullable', 'date'],
             'custom_end' => ['sometimes', 'nullable', 'date'],
         ]);

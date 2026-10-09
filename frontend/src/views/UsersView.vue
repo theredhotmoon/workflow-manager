@@ -47,6 +47,11 @@
 
       <!-- ── USERS TAB ── -->
       <div v-if="currentTab === 'users'">
+        <label class="flex items-center gap-2 mb-3 text-sm text-slate-400 w-fit cursor-pointer select-none">
+          <input v-model="showDeactivated" type="checkbox"
+            class="w-4 h-4 rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/40" />
+          Show deactivated
+        </label>
         <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
           <!-- Loading -->
           <div v-if="loading" class="p-12 text-center">
@@ -68,7 +73,8 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-white/5">
-              <tr v-for="user in users" :key="user.id" class="hover:bg-white/5 transition-colors duration-150">
+              <tr v-for="user in visibleUsers" :key="user.id" class="hover:bg-white/5 transition-colors duration-150"
+                :class="{ 'opacity-60': user.deactivated_at }">
                 <td class="px-6 py-4">
                   <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-semibold text-xs shrink-0">
@@ -80,6 +86,7 @@
                         <span v-if="isCurrentNewbie(user.id)" class="text-yellow-400 text-xs shrink-0" title="Active Newbie">⭐</span>
                         <span v-else-if="hasAnyNewbiePeriod(user.id)" class="text-gray-500 text-xs shrink-0" title="Former Newbie (expired)">⭐</span>
                         <span v-if="user.is_admin" class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full shrink-0">Admin</span>
+                        <span v-if="user.deactivated_at" class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-slate-500/15 text-slate-300 border border-slate-500/30 rounded-full shrink-0">Deactivated</span>
                       </div>
                       <div v-if="user.groups?.length" class="flex items-center gap-1 mt-1 flex-wrap">
                         <span v-for="group in user.groups" :key="group.id"
@@ -119,16 +126,21 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                       </svg>
                     </button>
-                    <button @click="confirmDelete(user)" title="Delete"
+                    <button v-if="user.deactivated_at" @click="reactivateUser(user)" :disabled="reactivatingId === user.id"
+                      title="Reactivate"
+                      class="px-2.5 py-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-all duration-200 disabled:opacity-50">
+                      Reactivate
+                    </button>
+                    <button v-else @click="confirmDeactivate(user)" title="Deactivate" aria-label="Deactivate"
                       class="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all duration-200">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                       </svg>
                     </button>
                   </div>
                 </td>
               </tr>
-              <tr v-if="users.length === 0">
+              <tr v-if="visibleUsers.length === 0">
                 <td colspan="4" class="px-6 py-12 text-center text-slate-500 text-sm">No users found.</td>
               </tr>
             </tbody>
@@ -424,8 +436,9 @@
       </div>
     </div>
 
-    <!-- Delete User Modal -->
-    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDeleteModal">
+    <!-- Deactivate User Modal -->
+    <div v-if="showDeactivateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDeactivateModal"
+      role="dialog" aria-modal="true" aria-labelledby="deactivate-modal-title">
       <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
       <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
         <div class="text-center mb-6">
@@ -434,26 +447,34 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h2 class="text-lg font-semibold text-white mb-2">Delete User</h2>
-          <p class="text-slate-400 text-sm">Are you sure you want to delete <span class="text-white font-medium">{{ deleteUser?.name }}</span>? This action cannot be undone.</p>
+          <h2 id="deactivate-modal-title" class="text-lg font-semibold text-white mb-2">Deactivate User</h2>
+          <p class="text-slate-400 text-sm">Deactivate <span class="text-white font-medium">{{ deactivateTarget?.name }}</span>? They will no longer be able to log in or be picked for shifts. Their history (shifts worked, handovers, procedures they own) is kept, and they can be reactivated later.</p>
         </div>
 
-        <div v-if="deleteError" class="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-          <span class="text-red-300 text-sm">{{ deleteError }}</span>
+        <div v-if="futureAssignmentsCount === null" class="mb-4 text-center text-slate-500 text-sm">Checking upcoming shifts…</div>
+        <label v-else-if="futureAssignmentsCount > 0" class="mb-4 flex items-start gap-2 text-sm text-slate-300 cursor-pointer select-none">
+          <input v-model="removeFutureAssignments" type="checkbox"
+            class="mt-0.5 w-4 h-4 rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/40" />
+          <span>Also remove them from these {{ futureAssignmentsCount }} future shift{{ futureAssignmentsCount === 1 ? '' : 's' }}</span>
+        </label>
+        <p v-else class="mb-4 text-center text-slate-500 text-sm">They have no shifts from today on.</p>
+
+        <div v-if="deactivateError" class="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+          <span class="text-red-300 text-sm">{{ deactivateError }}</span>
         </div>
 
         <div class="flex items-center gap-3">
-          <button @click="closeDeleteModal"
+          <button @click="closeDeactivateModal"
             class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
             Cancel
           </button>
-          <button @click="deleteUserConfirmed" :disabled="deleting"
+          <button @click="deactivateUserConfirmed" :disabled="deactivating || futureAssignmentsCount === null"
             class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
-            <svg v-if="deleting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <svg v-if="deactivating" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
-            {{ deleting ? 'Deleting...' : 'Delete' }}
+            {{ deactivating ? 'Deactivating...' : 'Deactivate' }}
           </button>
         </div>
       </div>
@@ -737,10 +758,20 @@ const savingPassword = ref(false);
 const passwordError = ref('');
 const passwordForm = reactive({ password: '', password_confirmation: '' });
 
-const showDeleteModal = ref(false);
-const deleteUser = ref(null);
-const deleting = ref(false);
-const deleteError = ref('');
+// Users are deactivated, never deleted; deactivated ones are hidden unless asked for.
+const showDeactivated = ref(false);
+const visibleUsers = computed(() =>
+  showDeactivated.value ? users.value : users.value.filter((u) => !u.deactivated_at),
+);
+const activeUsers = computed(() => users.value.filter((u) => !u.deactivated_at));
+
+const showDeactivateModal = ref(false);
+const deactivateTarget = ref(null);
+const deactivating = ref(false);
+const deactivateError = ref('');
+const futureAssignmentsCount = ref(null); // null while loading
+const removeFutureAssignments = ref(true);
+const reactivatingId = ref(null);
 
 // ── Groups ────────────────────────────────────────────
 const groups = ref([]);
@@ -783,10 +814,10 @@ const filteredGroupUsers = computed(() => {
   const q = memberSearch.value.toLowerCase();
   const memberIds = new Set(selectedGroup.value.users?.map((u) => u.id) ?? []);
   const list = q
-    ? users.value.filter(
+    ? activeUsers.value.filter(
         (u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
       )
-    : users.value;
+    : activeUsers.value;
   return [...list]
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((u) => ({ ...u, _isMember: memberIds.has(u.id) }));
@@ -796,7 +827,7 @@ const filteredGroupUsers = computed(() => {
 async function fetchUsers() {
   loading.value = true;
   try {
-    const res = await api.get('/api/users');
+    const res = await api.get('/api/users', { params: { include_deactivated: 1 } });
     users.value = res.data;
   } catch {
     showToast('Failed to load users. Please refresh.', 'error');
@@ -976,29 +1007,61 @@ async function changePassword() {
   }
 }
 
-function confirmDelete(user) {
-  deleteUser.value = user;
-  deleteError.value = '';
-  showDeleteModal.value = true;
-}
+// Opening the dialog for another user before the count arrived supersedes the earlier load.
+const futureCountRequests = useLatestRequest();
 
-function closeDeleteModal() {
-  showDeleteModal.value = false;
-  deleteUser.value = null;
-}
-
-async function deleteUserConfirmed() {
-  deleting.value = true;
-  deleteError.value = '';
+async function confirmDeactivate(user) {
+  const token = futureCountRequests.begin();
+  deactivateTarget.value = user;
+  deactivateError.value = '';
+  futureAssignmentsCount.value = null;
+  removeFutureAssignments.value = true;
+  showDeactivateModal.value = true;
   try {
-    await api.delete(`/api/users/${deleteUser.value.id}`);
-    showToast(`User "${deleteUser.value.name}" deleted successfully.`);
-    closeDeleteModal();
+    const res = await api.get(`/api/users/${user.id}`);
+    if (futureCountRequests.isCurrent(token)) {
+      futureAssignmentsCount.value = res.data.future_assignments_count;
+    }
+  } catch {
+    if (!futureCountRequests.isCurrent(token)) return;
+    futureAssignmentsCount.value = 0;
+    deactivateError.value = 'Could not check their upcoming shifts; none will be removed.';
+  }
+}
+
+function closeDeactivateModal() {
+  futureCountRequests.invalidate();
+  showDeactivateModal.value = false;
+  deactivateTarget.value = null;
+}
+
+async function deactivateUserConfirmed() {
+  deactivating.value = true;
+  deactivateError.value = '';
+  try {
+    await api.post(`/api/users/${deactivateTarget.value.id}/deactivate`, {
+      remove_future_assignments: futureAssignmentsCount.value > 0 && removeFutureAssignments.value,
+    });
+    showToast(`User "${deactivateTarget.value.name}" deactivated.`);
+    closeDeactivateModal();
     await fetchUsers();
   } catch (err) {
-    deleteError.value = err.response?.data?.message || 'An error occurred.';
+    deactivateError.value = err.response?.data?.message || 'An error occurred.';
   } finally {
-    deleting.value = false;
+    deactivating.value = false;
+  }
+}
+
+async function reactivateUser(user) {
+  reactivatingId.value = user.id;
+  try {
+    await api.post(`/api/users/${user.id}/reactivate`);
+    showToast(`User "${user.name}" reactivated.`);
+    await fetchUsers();
+  } catch (err) {
+    showToast(err.response?.data?.message || 'Failed to reactivate user.', 'error');
+  } finally {
+    reactivatingId.value = null;
   }
 }
 

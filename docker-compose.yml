@@ -8,7 +8,8 @@ services:
     environment:
       POSTGRES_DB:       ${DB_DATABASE:-shift_changer}
       POSTGRES_USER:     ${DB_USERNAME:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+      # No defaults for secrets: compose refuses to start until .env sets them (see .env.example).
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
     volumes:
       - db_data:/var/lib/postgresql/data
     networks:
@@ -30,7 +31,7 @@ services:
       APP_NAME:    "Shift Changer"
       APP_ENV:     production
       APP_DEBUG:   "false"
-      APP_KEY:     ${APP_KEY}
+      APP_KEY:     ${APP_KEY:?set APP_KEY in .env}
       APP_URL:     ${APP_URL:-http://localhost}
 
       DB_CONNECTION: pgsql
@@ -38,16 +39,22 @@ services:
       DB_PORT:       5432
       DB_DATABASE:   ${DB_DATABASE:-shift_changer}
       DB_USERNAME:   ${DB_USERNAME:-postgres}
-      DB_PASSWORD:   ${DB_PASSWORD:-secret}
+      DB_PASSWORD:   ${DB_PASSWORD:?set DB_PASSWORD in .env}
 
       # Max API requests per minute, per user (HTTP 429 beyond that)
       API_RATE_LIMIT: ${API_RATE_LIMIT:-60}
+      # Failed logins per minute for one email from one client IP (HTTP 429 beyond that)
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-5}
+      # Proxies whose X-Forwarded-For is believed; empty = the private ranges (this compose network)
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
 
       LOG_CHANNEL: stderr
       LOG_LEVEL:   warning
 
       CACHE_DRIVER:      file
       SESSION_DRIVER:    file
+      # true = session cookie only over HTTPS. Set it once TLS is in front of the stack (README).
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
       QUEUE_CONNECTION:  sync
 
       # Allow the frontend container (same-origin via Nginx proxy) as stateful domain

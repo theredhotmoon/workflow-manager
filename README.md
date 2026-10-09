@@ -172,7 +172,11 @@ tests that drive real Chromium against the real Dockerized backend (no API mocks
 **Prerequisites**
 
 ```bash
-# from the repo root: start the database and backend the e2e suite talks to (:8090)
+# from the repo root, once: a root .env with APP_KEY and DB_PASSWORD set (compose needs both;
+# see "Create the environment file" above)
+cp .env.example .env
+
+# start the database and backend the e2e suite talks to (127.0.0.1:8090)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
 
 cd frontend

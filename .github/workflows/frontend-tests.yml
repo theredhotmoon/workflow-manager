@@ -23,9 +23,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate ephemeral APP_KEY
-        # Throwaway key for CI-only containers; never committed.
-        run: echo "APP_KEY=base64:$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+      - name: Generate ephemeral APP_KEY and DB_PASSWORD
+        # Throwaway secrets for CI-only containers; never committed. The root .env is not in git,
+        # and docker-compose.yml refuses to start without both.
+        run: |
+          echo "APP_KEY=base64:$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+          echo "DB_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
 
       - name: Start backend + database
         # docker-compose.dev.yml maps the backend to localhost:8090, which

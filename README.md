@@ -90,6 +90,10 @@ real_ip_header    X-Forwarded-For;
 real_ip_recursive on;
 ```
 
+If the TLS proxy runs on the same host, it reaches Nginx from the Docker bridge gateway, so also
+bind the frontend port to `127.0.0.1` in `docker-compose.yml`. Otherwise anything else that arrives
+from the gateway (e.g. IPv6 clients) could set its own `X-Forwarded-For` again.
+
 and, in the same file, forward the proxy's scheme so Laravel knows the request was HTTPS:
 `proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;` instead of `$scheme`. Do neither
 without a proxy in front: a client could then forge both headers.

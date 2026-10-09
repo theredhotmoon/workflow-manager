@@ -19,7 +19,8 @@ export default mergeConfig(
   dockerConfig,
   defineConfig({
     server: {
-      port: 5173,
+      // VITE_PORT lets the e2e suite (E2E_PORT) run beside another dev server on 5173.
+      port: Number(process.env.VITE_PORT || 5173),
       strictPort: true,
       proxy: {
         '/api': { target: backend, changeOrigin: true },

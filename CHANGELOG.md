@@ -4,6 +4,19 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🧪 E2E suite can run on another port
+
+The e2e suite used to require port 5173, so it couldn't run while another project's dev server held it (it would talk to that app instead). `E2E_PORT` now picks the suite's dev-server port.
+
+### Tooling
+| What | Details |
+|------|---------|
+| Added | `E2E_PORT` (default 5173) in `playwright.config.js`; passed to Vite as `VITE_PORT` (`vite.config.hybrid.js`) and to the e2e login fixture as the `Origin` header |
+| Changed | `docker-compose.dev.yml` accepts session cookies from any `localhost` port (`localhost:*`); dev only — production keeps its explicit list. Recreate the backend container to apply |
+| Docs | README e2e notes: `E2E_PORT=5183 npm run test:e2e` |
+
+---
+
 ## 2026-10-08 — 🧹 Tree editor: the always-empty "Unassigned Procedures" panel is gone
 
 Every procedure belongs to the procedure tree (one without a parent is a top-level node), so the "Unassigned Procedures" panel in the tree editor could never list anything. It is removed; "All Assigned" now takes the right-hand column, and the page no longer loads the full procedures list just to compute an empty panel.

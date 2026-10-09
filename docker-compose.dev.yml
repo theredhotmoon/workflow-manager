@@ -22,8 +22,11 @@ services:
       LOG_LEVEL: debug
       # Local dev and the e2e suite share one user, so don't throttle them at the production 60/min.
       API_RATE_LIMIT: ${API_RATE_LIMIT:-1000}
-      # Always append the Vite dev server origin, so Sanctum's SPA cookie auth
-      # accepts it regardless of whatever SANCTUM_STATEFUL_DOMAINS is set to
-      # in the root .env (which may not include it).
-      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost},localhost:5173
+      # Always append the Vite dev server origins, so Sanctum's SPA cookie auth
+      # accepts them regardless of whatever SANCTUM_STATEFUL_DOMAINS is set to
+      # in the root .env (which may not include them). Any localhost port is
+      # accepted (Sanctum matches with wildcards), so the e2e suite can run its
+      # dev server on another port (E2E_PORT) next to one already using 5173.
+      # Dev compose only — production keeps an explicit list.
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost},localhost:5173,localhost:*
       SESSION_DOMAIN: ${SESSION_DOMAIN:-localhost}

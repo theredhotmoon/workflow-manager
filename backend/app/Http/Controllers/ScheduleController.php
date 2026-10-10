@@ -32,7 +32,8 @@ class ScheduleController extends Controller
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
-            'shift_group_id' => ['sometimes'],
+            // A group id, or "all" for every group that isn't archived.
+            'shift_group_id' => ['sometimes', 'nullable', 'regex:/^(all|\d+)$/'],
         ]);
 
         $start = Month::start($request->month);

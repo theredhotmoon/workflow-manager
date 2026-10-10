@@ -13,6 +13,13 @@ class AlarmController extends Controller
      */
     public function index(Request $request)
     {
+        $request->validate([
+            'type' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'status' => ['sometimes', 'nullable', 'in:read,unread'],
+            'date_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'date_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+        ]);
+
         $query = Alarm::where('user_id', auth()->id())
             ->orderBy('created_at', 'desc');
 

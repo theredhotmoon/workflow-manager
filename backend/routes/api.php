@@ -76,12 +76,15 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
     // Shifts for a specific date (for checklist setup)
     Route::get('/shifts-by-date', function (Request $request) {
-        $request->validate(['date' => ['required', 'date']]);
+        $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'shift_group_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
         $query = \App\Models\Shift::where('date', $request->date)
             ->with(['assignments.user:id,name', 'shiftChecklists.template:id,name'])
             ->orderBy('shift_number');
 
-        if ($request->has('shift_group_id')) {
+        if ($request->filled('shift_group_id')) {
             $query->where('shift_group_id', $request->shift_group_id);
         }
 

@@ -16,6 +16,15 @@ class DelegationArchiveController extends Controller
      */
     public function index(Request $request)
     {
+        $request->validate([
+            'start_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'start_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'end_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'end_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'destination' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'employee_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
+
         $query = ArchivedDelegation::with(['users:id,name,email', 'creator:id,name', 'archivedByUser:id,name']);
 
         // Filter by date range (start)

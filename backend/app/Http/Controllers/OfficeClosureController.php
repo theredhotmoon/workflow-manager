@@ -14,9 +14,10 @@ class OfficeClosureController extends Controller
      */
     public function index(Request $request)
     {
+        $request->validate(['month' => ['sometimes', 'nullable', 'date_format:Y-m']]);
         $query = OfficeClosure::with('creator:id,name')->orderBy('date');
 
-        if ($request->has('month')) {
+        if ($request->filled('month')) {
             $start = Month::start($request->month);
             $end = $start->copy()->endOfMonth();
             $query->whereBetween('date', [$start->toDateString(), $end->toDateString()]);

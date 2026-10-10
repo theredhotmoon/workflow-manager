@@ -12,6 +12,10 @@ class ProcedureFeedbackController extends Controller
 {
     public function index(Request $request)
     {
+        $request->validate([
+            'status' => ['sometimes', 'nullable', 'in:open,reviewed,resolved'],
+        ]);
+
         $query = ProcedureFeedback::with(['procedure:id,identifier,title', 'user:id,name'])
             ->orderByDesc('created_at');
 

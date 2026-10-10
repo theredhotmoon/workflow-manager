@@ -72,8 +72,10 @@ class ChecklistTemplateController extends Controller
             'groups.*.items.*.requires_confirmation' => ['sometimes', 'boolean'],
             'groups.*.items.*.procedure_id' => ['sometimes', 'nullable', 'exists:procedures,id'],
             'groups.*.items.*.min_value' => ['sometimes', 'nullable', 'numeric'],
-            'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric', 'gte:groups.*.items.*.min_value'],
+            // max >= min only when both are filled (ensureRangesOrdered): a max-only range is valid.
+            'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric'],
         ]);
+        $this->ensureRangesOrdered($request);
         $this->refuseNewArchivedLinks($request, []);
 
         $template = DB::transaction(function () use ($request) {
@@ -139,8 +141,9 @@ class ChecklistTemplateController extends Controller
             'groups.*.items.*.requires_confirmation' => ['sometimes', 'boolean'],
             'groups.*.items.*.procedure_id' => ['sometimes', 'nullable', 'exists:procedures,id'],
             'groups.*.items.*.min_value' => ['sometimes', 'nullable', 'numeric'],
-            'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric', 'gte:groups.*.items.*.min_value'],
+            'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric'],
         ]);
+        $this->ensureRangesOrdered($request);
         // An item that already links an archived procedure may keep that link; nothing may newly link one.
         $this->refuseNewArchivedLinks($request, ChecklistItem::whereIn('id', $itemIds)->pluck('procedure_id', 'id')->all());
 
@@ -222,6 +225,28 @@ class ChecklistTemplateController extends Controller
         });
 
         return response()->json(['message' => 'Template archived.']);
+    }
+
+    /**
+     * A number item's range may be open at either end; when both ends are filled the maximum is
+     * at least the minimum (422 on that item's max_value). The `gte` rule can't express this: it
+     * fails against an empty minimum.
+     */
+    private function ensureRangesOrdered(Request $request): void
+    {
+        $errors = [];
+        foreach ($request->input('groups', []) as $gi => $group) {
+            foreach ($group['items'] ?? [] as $ii => $item) {
+                $min = $item['min_value'] ?? null;
+                $max = $item['max_value'] ?? null;
+                if (is_numeric($min) && is_numeric($max) && (float) $max < (float) $min) {
+                    $errors["groups.{$gi}.items.{$ii}.max_value"] = 'The maximum must be greater than or equal to the minimum.';
+                }
+            }
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**

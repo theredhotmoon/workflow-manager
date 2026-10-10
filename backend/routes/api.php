@@ -108,6 +108,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
             ->whereHas('shift', fn($q) => $q->whereBetween('date', [$start->toDateString(), $end->toDateString()]))
             ->with([
                 'shift' => fn($q) => $q->with([
+                    'shiftGroup:id,name',
                     'shiftChecklists.template:id,name',
                     'submissions' => fn($sq) => $sq->where(function ($w) use ($user) {
                         $w->where('outgoing_user_id', $user->id)->orWhere('incoming_user_id', $user->id);

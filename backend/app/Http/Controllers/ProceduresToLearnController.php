@@ -13,8 +13,9 @@ class ProceduresToLearnController extends Controller
         $userId = $request->user()->id;
 
         // Get all procedures where user hasn't read the latest version
+        // Only the listed columns: never every unread procedure's full content.
         $procedures = Procedure::with('owner:id,name')
-            ->select('procedures.*')
+            ->select('procedures.id', 'procedures.identifier', 'procedures.title', 'procedures.version', 'procedures.owner_id', 'procedures.updated_at')
             ->leftJoin('procedure_user_reads', function ($join) use ($userId) {
                 $join->on('procedures.id', '=', 'procedure_user_reads.procedure_id')
                     ->where('procedure_user_reads.user_id', '=', $userId);

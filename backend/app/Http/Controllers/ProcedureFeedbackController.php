@@ -14,6 +14,7 @@ class ProcedureFeedbackController extends Controller
     {
         $request->validate([
             'status' => ['sometimes', 'nullable', 'in:open,reviewed,resolved'],
+            'per_page' => ['sometimes', 'nullable', 'integer'],
         ]);
 
         $query = ProcedureFeedback::with(['procedure:id,identifier,title', 'user:id,name'])
@@ -23,7 +24,10 @@ class ProcedureFeedbackController extends Controller
             $query->where('status', $status);
         }
 
-        return response()->json($query->get());
+        // One page at a time (newest first, per_page 1..100): the list grows with every report.
+        $perPage = max(1, min((int) $request->input('per_page', 50), 100));
+
+        return response()->json($query->orderByDesc('id')->paginate($perPage));
     }
 
     public function store(Request $request, Procedure $procedure)

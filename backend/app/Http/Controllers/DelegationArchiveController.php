@@ -24,6 +24,7 @@ class DelegationArchiveController extends Controller
             'end_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'destination' => ['sometimes', 'nullable', 'string', 'max:255'],
             'employee_id' => ['sometimes', 'nullable', 'integer'],
+            'per_page' => ['sometimes', 'nullable', 'integer'],
         ]);
 
         $query = ArchivedDelegation::with(['users:id,name,email', 'creator:id,name', 'archivedByUser:id,name']);
@@ -56,8 +57,10 @@ class DelegationArchiveController extends Controller
             });
         }
 
-        $delegations = $query->orderByDesc('archived_at')->get();
-        return response()->json($delegations);
+        // One page at a time (per_page 1..100); the archive screen pages through it with fetchAllPages.
+        $perPage = max(1, min((int) $request->input('per_page', 20), 100));
+
+        return response()->json($query->orderByDesc('archived_at')->orderByDesc('id')->paginate($perPage));
     }
 
     /**

@@ -48,7 +48,14 @@ class ProcedureController extends Controller
             abort(403, 'Only admins can list archived procedures.');
         }
         $query = Procedure::with(['owner:id,name', 'tags:id,name,color'])
-            ->when($archived, fn ($q) => $q->whereNotNull('archived_at'), fn ($q) => $q->notArchived());
+            ->when($archived, fn ($q) => $q->whereNotNull('archived_at'), fn ($q) => $q->notArchived())
+            // The viewer's last access, in the same query (one subquery, not one query per row).
+            ->addSelect(['last_accessed' => ProcedureAccessLog::select('accessed_at')
+                ->whereColumn('procedure_access_logs.procedure_id', 'procedures.id')
+                ->where('procedure_access_logs.user_id', $request->user()->id)
+                ->orderByDesc('accessed_at')
+                ->limit(1)])
+            ->withCasts(['last_accessed' => 'datetime']);
 
         if ($search = $request->input('search')) {
             // Case-insensitive; % and _ in the search are matched literally.
@@ -108,16 +115,7 @@ class ProcedureController extends Controller
         // Pagination
         $perPage = (int) $request->input('per_page', 30);
         $perPage = min(max($perPage, 1), 100);
-        $paginated = $query->paginate($perPage);
-
-        // Attach last access for current user
-        $userId = $request->user()->id;
-        foreach ($paginated->items() as $proc) {
-            $last = $proc->accessLogs()->where('user_id', $userId)->orderByDesc('accessed_at')->first();
-            $proc->last_accessed = $last?->accessed_at;
-        }
-
-        return response()->json($paginated);
+        return response()->json($query->paginate($perPage));
     }
 
     /**

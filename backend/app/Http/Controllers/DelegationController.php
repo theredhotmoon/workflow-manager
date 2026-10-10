@@ -362,19 +362,25 @@ class DelegationController extends Controller
      */
     public function myDelegations(Request $request)
     {
-        $delegations = Delegation::with(['creator:id,name'])
-            ->whereHas('users', function ($q) use ($request) {
-                $q->where('user_id', $request->user()->id);
+        $userId = $request->user()->id;
+        // The viewer's own membership row is eager loaded (one query, not one per delegation).
+        $delegations = Delegation::with([
+            'creator:id,name',
+            'users' => fn ($q) => $q->select('users.id')->where('users.id', $userId),
+        ])
+            ->whereHas('users', function ($q) use ($userId) {
+                $q->where('user_id', $userId);
             })
             ->orderByDesc('start_datetime')
             ->get();
 
-        $userId = $request->user()->id;
-        $delegations->each(function ($del) use ($userId) {
-            $pivot = $del->users()->where('user_id', $userId)->first()?->pivot;
+        $delegations->each(function ($del) {
+            $pivot = $del->users->first()?->pivot;
             $del->my_status = $pivot?->status;
             $del->my_custom_start = $pivot?->custom_start;
             $del->my_custom_end = $pivot?->custom_end;
+            // Only the my_* fields go out, as before: not the membership list.
+            $del->unsetRelation('users');
         });
 
         return response()->json($delegations);

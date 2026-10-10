@@ -329,6 +329,10 @@ class DelegationController extends Controller
         if (!$delegation->registration_open) {
             return response()->json(['message' => 'Registration for this delegation is closed.'], 403);
         }
+        // Open through its last day (business date), as the open list shows it.
+        if ($delegation->end_datetime->format('Y-m-d') < BusinessDate::todayString()) {
+            return response()->json(['message' => 'This delegation has ended; registration is closed.'], 422);
+        }
 
         // Check if already in the list
         $existing = $delegation->users()->where('user_id', $request->user()->id)->first();

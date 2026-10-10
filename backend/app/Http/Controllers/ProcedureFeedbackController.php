@@ -79,8 +79,9 @@ class ProcedureFeedbackController extends Controller
         $feedback->update($validated);
         $feedback->load(['user:id,name', 'procedure:id,title']);
 
-        // Notify feedback author when issue is resolved
-        if (isset($validated['status']) && $validated['status'] === 'resolved' && $feedback->user_id) {
+        // Notify the author when the feedback becomes resolved: not again on later saves of a
+        // resolved one (a comment, a resolution).
+        if ($feedback->wasChanged('status') && $feedback->status === 'resolved' && $feedback->user_id) {
             (new AlarmService())->notifyUser(
                 Alarm::TYPE_PROCEDURE_ISSUE_SORTED,
                 $feedback->user_id,

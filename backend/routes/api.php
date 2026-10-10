@@ -92,7 +92,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/user-availabilities', [UserAvailabilityController::class, 'index']);
     Route::post('/user-availabilities', [UserAvailabilityController::class, 'store']);
     Route::delete('/user-availabilities/{userAvailability}', [UserAvailabilityController::class, 'destroy']);
-    Route::get('/user-availabilities/{userId}/month', [UserAvailabilityController::class, 'forMonth']);
+    Route::get('/user-availabilities/{userId}/month', [UserAvailabilityController::class, 'forMonth'])->whereNumber('userId');
 
     // My shifts (any authenticated user)
     Route::get('/my-shifts', function (Request $request) {
@@ -298,7 +298,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         // Newbie periods
         Route::get('/newbie-periods/all', [NewbiePeriodController::class, 'all']);
-        Route::get('/newbie-periods/user/{userId}', [NewbiePeriodController::class, 'forUser']);
+        Route::get('/newbie-periods/user/{userId}', [NewbiePeriodController::class, 'forUser'])->whereNumber('userId');
         Route::post('/newbie-periods', [NewbiePeriodController::class, 'store']);
         Route::put('/newbie-periods/{newbiePeriod}', [NewbiePeriodController::class, 'update']);
         Route::delete('/newbie-periods/{newbiePeriod}', [NewbiePeriodController::class, 'destroy']);

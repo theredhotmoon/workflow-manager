@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Services\ProcedureHtmlSanitizer;
+use App\Support\AdvisoryLock;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Facades\DB;
 
 class Procedure extends Model
 {
@@ -152,14 +154,24 @@ class Procedure extends Model
         return $this->userReads()->where('user_id', $userId)->value('version_read');
     }
 
+    /** Advisory lock name that serialises identifier generation (see nextIdentifier()). */
+    public const IDENTIFIER_LOCK = 'procedures.identifier';
+
     /**
-     * Generate the next PROC-XX identifier.
+     * The next PROC-XX identifier: one past the highest PROC number of every procedure, archived
+     * ones included (procedures are never deleted, so a number is never handed out twice).
+     * Call it inside the transaction that inserts the procedure: it takes an advisory lock held
+     * until that commits, so a concurrent create waits and then sees this one's number.
      */
     public static function nextIdentifier(): string
     {
-        $last = static::orderByDesc('id')->value('identifier');
-        $num = $last ? ((int) str_replace('PROC-', '', $last)) + 1 : 1;
-        return 'PROC-' . str_pad($num, 2, '0', STR_PAD_LEFT);
+        AdvisoryLock::forTransaction(self::IDENTIFIER_LOCK);
+
+        $highest = (int) static::query()
+            ->whereRaw("identifier ~ '^PROC-[0-9]+$'")
+            ->max(DB::raw("CAST(SUBSTRING(identifier FROM 6) AS BIGINT)"));
+
+        return 'PROC-' . str_pad((string) ($highest + 1), 2, '0', STR_PAD_LEFT);
     }
 
     public function ownerChanges()

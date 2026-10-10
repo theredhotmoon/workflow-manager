@@ -41,8 +41,10 @@ class ScheduleController extends Controller
         $isAllGroups = $request->input('shift_group_id') === 'all';
 
         if ($isAllGroups) {
-            // Fetch shifts from ALL groups with group info
+            // Fetch shifts from all groups that aren't archived, with group info
             $shifts = Shift::with(array_merge($this->shiftPayloadRelations(), ['shiftGroup:id,name,color']))
+                ->where(fn ($q) => $q->whereNull('shift_group_id')
+                    ->orWhereIn('shift_group_id', ShiftGroup::notArchived()->select('id')))
                 ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
                 ->orderBy('date')
                 ->orderBy('shift_group_id')
@@ -99,7 +101,7 @@ class ScheduleController extends Controller
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
-            'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
+            'shift_group_id' => ['sometimes', 'integer', ShiftGroup::activeExistsRule()],
             'shifts_per_day' => ['sometimes', 'integer', 'min:1', 'max:10'],
             'shift_times' => ['sometimes', 'array'],
             'shift_times.*.start_time' => ['required_with:shift_times', 'date_format:H:i'],
@@ -178,6 +180,7 @@ class ScheduleController extends Controller
      */
     public function updateShiftWorkMode(Request $request, Shift $shift)
     {
+        $this->refuseArchivedGroup($shift);
         $request->validate([
             'work_mode' => ['required', 'string', 'in:office,remote'],
         ]);
@@ -194,16 +197,18 @@ class ScheduleController extends Controller
      * only when there are not enough empty slots are staffed ones removed, and then only with
      * confirm_remove_staffed: otherwise the answer is 409 staffed_shifts_removal listing them
      * (with expected_remove_ids from that list, a changed list asks again). The remaining slots
-     * are renumbered 1..n in their order. Removing a slot deletes its assignments, their change
-     * requests and the slot's checklist settings; handover submissions keep their date and
-     * template (shift_id is set null). Everything runs in one transaction.
+     * are renumbered 1..n in their order. Removing a slot deletes its assignments and the slot's
+     * checklist settings; change requests stay (pending ones acknowledged, as an unassign does),
+     * with their shift and assignment links nulled but the date and slot kept; handover
+     * submissions keep their date and template (shift_id is set null). Everything runs in one
+     * transaction.
      */
     public function updateDayShifts(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'date' => ['required', 'date'],
             'count' => ['required', 'integer', 'min:1', 'max:10'],
-            'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
+            'shift_group_id' => ['sometimes', 'integer', ShiftGroup::activeExistsRule()],
             'confirm_remove_staffed' => ['sometimes', 'boolean'],
             'expected_remove_ids' => ['sometimes', 'array'],
             'expected_remove_ids.*' => ['integer'],
@@ -270,6 +275,10 @@ class ScheduleController extends Controller
             }
 
             $userIds = $toRemove->flatMap(fn (Shift $shift) => $shift->assignments->pluck('user_id'))->unique()->values()->all();
+            // Removing the slot settles its pending change requests, which stay on record.
+            ShiftChangeRequest::whereIn('shift_id', $toRemove->pluck('id'))
+                ->where('status', 'pending')
+                ->update(['status' => 'acknowledged']);
             Shift::whereIn('id', $toRemove->pluck('id'))->delete(); // cascades to assignments
 
             // Close the gaps: the kept slots become 1..n in their order (moving down only, so
@@ -354,6 +363,7 @@ class ScheduleController extends Controller
                 throw ValidationException::withMessages(['move_from_assignment_id' => 'The assignment is already on this shift.']);
             }
 
+            $this->refuseArchivedGroup($source->shift);
             $this->removeAssignment($source, $janitor);
             $response = $this->placeAssignment($request, $streakReplay, $janitor);
             if ($response->getStatusCode() >= 400) {
@@ -385,6 +395,7 @@ class ScheduleController extends Controller
         }
 
         $shift = Shift::with('shiftGroup')->findOrFail($request->shift_id);
+        $this->refuseArchivedGroup($shift);
         $userId = (int) $request->user_id;
 
         // A rest day needs the manager's decision on how it counts (StreakTimeline policies).
@@ -578,11 +589,25 @@ class ScheduleController extends Controller
      */
     public function unassign(ShiftAssignment $assignment, RestPolicyJanitor $janitor)
     {
+        $this->refuseArchivedGroup($assignment->shift);
         $this->removeAssignment($assignment, $janitor);
 
         return response()->json([
             'message' => 'Assignment removed successfully.',
         ]);
+    }
+
+    /**
+     * An archived group's schedule is history: nobody is assigned, unassigned or re-timed in it
+     * until the group is restored (422).
+     */
+    private function refuseArchivedGroup(?Shift $shift): void
+    {
+        if ($shift?->shiftGroup?->isArchived()) {
+            throw new HttpResponseException(response()->json([
+                'message' => "This shift belongs to the archived shift group \"{$shift->shiftGroup->name}\". Restore the group to change its schedule.",
+            ], 422));
+        }
     }
 
     /**
@@ -592,7 +617,8 @@ class ScheduleController extends Controller
     {
         $group = $assignment->shift?->shiftGroup;
         DB::transaction(function () use ($assignment, $group, $janitor) {
-            // Auto-acknowledge any pending change requests for this assignment
+            // Pending change requests on this assignment are settled; they stay on record with
+            // their assignment link nulled (FK nullOnDelete).
             ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
                 ->where('status', 'pending')
                 ->update(['status' => 'acknowledged']);
@@ -611,6 +637,7 @@ class ScheduleController extends Controller
      */
     public function updateShiftChecklist(Request $request, Shift $shift)
     {
+        $this->refuseArchivedGroup($shift);
         // An archived template can't be newly required; one already on this shift may stay when it's re-saved.
         $attachedIds = $shift->shiftChecklists()->pluck('checklist_template_id')->all();
         $request->validate([
@@ -657,6 +684,7 @@ class ScheduleController extends Controller
      */
     public function updateShiftTimes(Request $request, Shift $shift)
     {
+        $this->refuseArchivedGroup($shift);
         $request->validate([
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i'],
@@ -679,6 +707,7 @@ class ScheduleController extends Controller
      */
     public function updateShiftColor(Request $request, Shift $shift)
     {
+        $this->refuseArchivedGroup($shift);
         $request->validate([
             'color' => ['sometimes', 'nullable', 'string', 'max:20'],
             'color_label' => ['sometimes', 'nullable', 'string', 'max:100'],
@@ -701,6 +730,7 @@ class ScheduleController extends Controller
      */
     public function updateShiftType(Request $request, Shift $shift, ShiftTypeChanger $changer)
     {
+        $this->refuseArchivedGroup($shift);
         $request->validate([
             'shift_type' => ['present', 'nullable', 'string', 'max:50'],
         ]);
@@ -721,7 +751,7 @@ class ScheduleController extends Controller
     public function updateSlotShiftTypes(Request $request, ShiftTypeChanger $changer)
     {
         $request->validate([
-            'shift_group_id' => ['required', 'integer', 'exists:shift_groups,id'],
+            'shift_group_id' => ['required', 'integer', ShiftGroup::activeExistsRule()],
             'month' => ['required', 'date_format:Y-m'],
             'shift_number' => ['required', 'integer', 'min:1'],
             'shift_type' => ['present', 'nullable', 'string', 'max:50'],

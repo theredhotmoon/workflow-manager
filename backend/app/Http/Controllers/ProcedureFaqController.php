@@ -57,6 +57,10 @@ class ProcedureFaqController extends Controller
         ]);
 
         $procedure = $item->procedure;
+        // An archived procedure is hidden from everyone but admins, its FAQ included.
+        if ($procedure->isArchived() && !$request->user()->isAdmin()) {
+            abort(404);
+        }
 
         $reply = $item->replies()->create([
             'body' => $validated['body'],

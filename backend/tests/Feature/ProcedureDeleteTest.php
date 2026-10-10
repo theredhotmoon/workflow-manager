@@ -46,7 +46,7 @@ function prdProcedureWithHistory(User $owner, User $reader): array
     return compact('procedure', 'child', 'tag', 'versions', 'faq', 'reply', 'responseTemplate', 'access', 'feedback', 'ownerChange', 'item');
 }
 
-it('refuses a procedure delete to anyone but an admin, including its owner', function (string $who) {
+it('refuses a procedure archive to anyone but an admin, including its owner', function (string $who) {
     $owner = User::factory()->create(['role' => 'employee']);
     $h = prdProcedureWithHistory($owner, User::factory()->create(['role' => 'employee']));
     $actor = $who === 'owner' ? $owner : User::factory()->create(['role' => $who]);
@@ -63,38 +63,161 @@ it('answers 404 for an unknown procedure', function () {
     $this->actingAs($admin)->deleteJson('/api/procedures/999999')->assertNotFound();
 });
 
-it('deletes a procedure with its versions, FAQ, feedback, reads and access log', function () {
-    // Current behaviour: cascades; see follow-up. A procedure delete is a hard delete: its version
-    // history, FAQ items and replies, response templates, feedback, read receipts, access log, owner
-    // changes and tag links all go with it. Child procedures move to the root and checklist items
-    // that linked it lose the link.
+it('refuses to archive a procedure that has sub-procedures, listing them', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $h = prdProcedureWithHistory(User::factory()->create(), User::factory()->create());
+
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$h['procedure']->id}")
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'has_children')
+        ->assertJsonPath('message', 'Move or archive its sub-procedures first: PRD-2 Sub-step.')
+        ->assertJsonPath('children.0.id', $h['child']->id);
+
+    expect($h['procedure']->fresh()->archived_at)->toBeNull();
+});
+
+it('archives a procedure keeping its versions, FAQ, feedback, reads, access log, owner changes and links', function () {
     $admin = User::factory()->create(['role' => 'admin']);
     $owner = User::factory()->create(['role' => 'employee']);
     $reader = User::factory()->create(['role' => 'employee']);
     $h = prdProcedureWithHistory($owner, $reader);
 
+    // Its sub-procedure goes first (an archived child doesn't block its parent).
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$h['child']->id}")->assertOk();
     $this->actingAs($admin)->deleteJson("/api/procedures/{$h['procedure']->id}")
         ->assertOk()
-        ->assertJsonPath('message', 'Procedure deleted.');
+        ->assertJsonPath('message', 'Procedure archived.');
 
     $id = $h['procedure']->id;
-    expect($h['procedure']->fresh())->toBeNull()
-        ->and(ProcedureVersion::where('procedure_id', $id)->count())->toBe(0)
-        ->and($h['faq']->fresh())->toBeNull()
-        ->and($h['reply']->fresh())->toBeNull()
-        ->and($h['responseTemplate']->fresh())->toBeNull()
-        ->and($h['access']->fresh())->toBeNull()
-        ->and($h['feedback']->fresh())->toBeNull()
-        ->and(ProcedureUserRead::where('procedure_id', $id)->count())->toBe(0)
-        ->and($h['ownerChange']->fresh())->toBeNull()
-        ->and(DB::table('procedure_tag')->where('procedure_id', $id)->count())->toBe(0);
+    expect($h['procedure']->fresh()->archived_at)->not->toBeNull()
+        ->and(ProcedureVersion::where('procedure_id', $id)->count())->toBe(2)
+        ->and($h['faq']->fresh())->not->toBeNull()
+        ->and($h['reply']->fresh())->not->toBeNull()
+        ->and($h['responseTemplate']->fresh())->not->toBeNull()
+        ->and($h['access']->fresh())->not->toBeNull()
+        ->and($h['feedback']->fresh())->not->toBeNull()
+        ->and(ProcedureUserRead::where('procedure_id', $id)->count())->toBe(1)
+        ->and($h['ownerChange']->fresh())->not->toBeNull()
+        ->and(DB::table('procedure_tag')->where('procedure_id', $id)->count())->toBe(1)
+        ->and($h['child']->fresh()->parent_id)->toBe($id)
+        ->and($h['item']->fresh()->procedure_id)->toBe($id);
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$id}")->assertStatus(422)
+        ->assertJsonPath('message', 'This procedure is already archived.');
+});
 
-    // Kept: the tag itself, the people, the child (now top-level) and the checklist item (unlinked).
-    expect($h['tag']->fresh())->not->toBeNull()
-        ->and($owner->fresh())->not->toBeNull()
-        ->and($reader->fresh())->not->toBeNull()
-        ->and($h['child']->fresh())->not->toBeNull()
-        ->and($h['child']->fresh()->parent_id)->toBeNull()
-        ->and($h['item']->fresh())->not->toBeNull()
-        ->and($h['item']->fresh()->procedure_id)->toBeNull();
+it('hides an archived procedure from the tree, lists, search, to-learn and unread checks', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $employee = User::factory()->create(['role' => 'employee']);
+    $kept = Procedure::create(['identifier' => 'PRD-8', 'title' => 'Alarm kept', 'owner_id' => $admin->id, 'version' => 1]);
+    $gone = Procedure::create(['identifier' => 'PRD-9', 'title' => 'Alarm gone', 'owner_id' => $admin->id, 'version' => 1]);
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$gone->id}")->assertOk();
+
+    $treeIds = collect($this->actingAs($employee)->getJson('/api/procedures-tree')->assertOk()->json())->pluck('id')->all();
+    $listIds = collect($this->actingAs($employee)->getJson('/api/procedures')->assertOk()->json('data'))->pluck('id')->all();
+    $searchIds = collect($this->actingAs($employee)->getJson('/api/procedures?search=Alarm')->assertOk()->json('data'))->pluck('id')->all();
+    $toLearnIds = collect($this->actingAs($employee)->getJson('/api/procedures-to-learn')->assertOk()->json())->pluck('id')->all();
+    $unreadIds = collect($this->actingAs($employee)->postJson('/api/procedures/check-read-status', [
+        'procedure_ids' => [$kept->id, $gone->id],
+    ])->assertOk()->json())->pluck('id')->all();
+
+    expect($treeIds)->toBe([$kept->id])
+        ->and($listIds)->toBe([$kept->id])
+        ->and($searchIds)->toBe([$kept->id])
+        ->and($toLearnIds)->toBe([$kept->id])
+        ->and($unreadIds)->toBe([$kept->id]);
+});
+
+it('answers 404 for an archived procedure to non-admins and shows it to admins as archived', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $owner = User::factory()->create(['role' => 'employee']);
+    $proc = Procedure::create(['identifier' => 'PRD-9', 'title' => 'Old', 'owner_id' => $owner->id, 'version' => 1]);
+    $faq = ProcedureFaqItem::create(['procedure_id' => $proc->id, 'question' => 'Who calls?', 'created_by' => $owner->id]);
+    $proc->forceFill(['archived_at' => now()])->save();
+
+    foreach ([$owner, User::factory()->create(['role' => 'schedule_maintainer'])] as $user) {
+        $this->actingAs($user)->postJson("/api/procedure-faq/{$faq->id}/replies", ['body' => 'Me.'])->assertNotFound();
+        $this->actingAs($user)->getJson("/api/procedures/{$proc->id}")->assertNotFound();
+        $this->actingAs($user)->getJson("/api/procedures/{$proc->id}/versions")->assertNotFound();
+        $this->actingAs($user)->postJson("/api/procedures/{$proc->id}/faq", ['question' => 'Still valid?'])->assertNotFound();
+    }
+
+    $this->actingAs($admin)->getJson("/api/procedures/{$proc->id}")
+        ->assertOk()
+        ->assertJsonPath('id', $proc->id)
+        ->assertJsonPath('can_edit', false);
+    expect($this->actingAs($admin)->getJson("/api/procedures/{$proc->id}")->json('archived_at'))->not->toBeNull();
+});
+
+it('lists archived procedures to admins only', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $kept = Procedure::create(['identifier' => 'PRD-8', 'title' => 'Kept', 'owner_id' => $admin->id]);
+    $gone = Procedure::create(['identifier' => 'PRD-9', 'title' => 'Gone', 'owner_id' => $admin->id]);
+    $gone->forceFill(['archived_at' => now()])->save();
+
+    $ids = collect($this->actingAs($admin)->getJson('/api/procedures?archived=1')->assertOk()->json('data'))->pluck('id')->all();
+    expect($ids)->toBe([$gone->id]);
+
+    $this->actingAs(User::factory()->create(['role' => 'employee']))
+        ->getJson('/api/procedures?archived=1')->assertForbidden();
+});
+
+it('refuses edits to an archived procedure until it is restored', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $proc = Procedure::create(['identifier' => 'PRD-9', 'title' => 'Old', 'owner_id' => $admin->id, 'version' => 1]);
+    $proc->forceFill(['archived_at' => now()])->save();
+
+    $this->actingAs($admin)->putJson("/api/procedures/{$proc->id}/draft", ['title' => 'New'])
+        ->assertStatus(409)
+        ->assertJsonPath('message', 'This procedure is archived. Restore it before changing it.');
+    $this->actingAs($admin)->putJson("/api/procedures/{$proc->id}/move", ['parent_id' => null])->assertStatus(409);
+
+    expect($proc->fresh()->has_draft)->toBeFalse();
+});
+
+it('does not move a procedure under an archived parent or link an archived one from a new checklist', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $proc = Procedure::create(['identifier' => 'PRD-8', 'title' => 'Live', 'owner_id' => $admin->id]);
+    $gone = Procedure::create(['identifier' => 'PRD-9', 'title' => 'Gone', 'owner_id' => $admin->id]);
+    $gone->forceFill(['archived_at' => now()])->save();
+
+    $this->actingAs($admin)->putJson("/api/procedures/{$proc->id}/move", ['parent_id' => $gone->id])
+        ->assertStatus(422)->assertJsonValidationErrors('parent_id');
+    $this->actingAs($admin)->postJson('/api/checklist-templates', [
+        'name' => 'Handover',
+        'groups' => [['name' => 'G', 'items' => [['label' => 'Read it', 'procedure_id' => $gone->id]]]],
+    ])->assertStatus(422)->assertJsonValidationErrors('groups.0.items.0.procedure_id');
+});
+
+it('restores a procedure to its old place in the tree', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $parent = Procedure::create(['identifier' => 'PRD-1', 'title' => 'Parent', 'owner_id' => $admin->id]);
+    $child = Procedure::create(['identifier' => 'PRD-2', 'title' => 'Child', 'owner_id' => $admin->id, 'parent_id' => $parent->id]);
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$child->id}")->assertOk();
+
+    $this->actingAs($admin)->postJson("/api/procedures/{$child->id}/restore")
+        ->assertOk()
+        ->assertJsonPath('message', 'Procedure restored.')
+        ->assertJsonPath('moved_to_root', false);
+
+    expect($child->fresh()->archived_at)->toBeNull()
+        ->and($child->fresh()->parent_id)->toBe($parent->id);
+    $tree = $this->actingAs($admin)->getJson('/api/procedures-tree')->json();
+    expect(collect($tree)->firstWhere('id', $parent->id)['children'][0]['id'])->toBe($child->id);
+    $this->actingAs($admin)->postJson("/api/procedures/{$child->id}/restore")->assertStatus(422);
+});
+
+it('restores a procedure at the top level when its old parent is archived', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $parent = Procedure::create(['identifier' => 'PRD-1', 'title' => 'Parent', 'owner_id' => $admin->id]);
+    $child = Procedure::create(['identifier' => 'PRD-2', 'title' => 'Child', 'owner_id' => $admin->id, 'parent_id' => $parent->id]);
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$child->id}")->assertOk();
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$parent->id}")->assertOk();
+
+    $this->actingAs($admin)->postJson("/api/procedures/{$child->id}/restore")
+        ->assertOk()
+        ->assertJsonPath('moved_to_root', true)
+        ->assertJsonPath('message', 'Procedure restored at the top level of the tree (its old parent is archived).');
+
+    expect($child->fresh()->parent_id)->toBeNull()
+        ->and(collect($this->actingAs($admin)->getJson('/api/procedures-tree')->json())->pluck('id')->all())->toBe([$child->id]);
 });

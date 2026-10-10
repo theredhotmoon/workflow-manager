@@ -27,7 +27,33 @@ class Procedure extends Model
 
     protected $casts = [
         'has_draft' => 'boolean',
+        'archived_at' => 'datetime',
     ];
+
+    /**
+     * Procedures people read and plan with. An archived one keeps its versions, FAQ, feedback, reads
+     * and access log, but is left out of the tree, search, lists, pickers and unread counts.
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    /**
+     * {procedure} in a route: an archived procedure is found for admins only (they see it with an
+     * Archived banner and can restore it); everyone else gets 404, as if it didn't exist.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        return $this->resolveRouteBindingQuery($this->newQuery(), $value, $field)
+            ->when(!request()->user()?->isAdmin(), fn ($query) => $query->whereNull('archived_at'))
+            ->first();
+    }
 
     public function owner()
     {

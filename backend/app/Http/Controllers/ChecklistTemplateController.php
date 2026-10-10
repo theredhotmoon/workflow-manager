@@ -34,7 +34,10 @@ class ChecklistTemplateController extends Controller
     {
         $templates = ChecklistTemplate::where('is_active', true)
             ->notArchived()
-            ->with(['groups.items.procedure:id,identifier,title'])
+            ->with([
+                // An archived procedure is no longer offered from the form (its link stays on the item).
+                'groups.items.procedure' => fn ($q) => $q->select('id', 'identifier', 'title')->whereNull('archived_at'),
+            ])
             ->orderBy('name')
             ->get();
 
@@ -46,7 +49,7 @@ class ChecklistTemplateController extends Controller
      */
     public function show(ChecklistTemplate $checklistTemplate)
     {
-        $checklistTemplate->load(['groups.items.procedure:id,identifier,title']);
+        $checklistTemplate->load(['groups.items.procedure:id,identifier,title,archived_at']);
         return response()->json($checklistTemplate);
     }
 
@@ -65,7 +68,7 @@ class ChecklistTemplateController extends Controller
             'groups.*.items.*.label' => ['required', 'string', 'max:500'],
             'groups.*.items.*.type' => ['sometimes', 'string', 'in:checkbox,text,number'],
             'groups.*.items.*.requires_confirmation' => ['sometimes', 'boolean'],
-            'groups.*.items.*.procedure_id' => ['sometimes', 'nullable', 'exists:procedures,id'],
+            'groups.*.items.*.procedure_id' => ['sometimes', 'nullable', Rule::exists('procedures', 'id')->whereNull('archived_at')],
             'groups.*.items.*.min_value' => ['sometimes', 'nullable', 'numeric'],
             'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric', 'gte:groups.*.items.*.min_value'],
         ]);
@@ -100,7 +103,7 @@ class ChecklistTemplateController extends Controller
             return $template;
         });
 
-        $template->load(['groups.items.procedure:id,identifier,title']);
+        $template->load(['groups.items.procedure:id,identifier,title,archived_at']);
         return response()->json($template, 201);
     }
 
@@ -117,6 +120,8 @@ class ChecklistTemplateController extends Controller
 
         $groupIds = $checklistTemplate->allGroups()->pluck('id')->all();
         $itemIds = ChecklistItem::whereIn('checklist_group_id', $groupIds)->pluck('id')->all();
+        // An archived procedure can't be newly linked; one an item already links may stay when re-saved.
+        $linkedProcedureIds = ChecklistItem::whereIn('id', $itemIds)->whereNotNull('procedure_id')->pluck('procedure_id')->all();
 
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -131,7 +136,8 @@ class ChecklistTemplateController extends Controller
             'groups.*.items.*.label' => ['required', 'string', 'max:500'],
             'groups.*.items.*.type' => ['sometimes', 'string', 'in:checkbox,text,number'],
             'groups.*.items.*.requires_confirmation' => ['sometimes', 'boolean'],
-            'groups.*.items.*.procedure_id' => ['sometimes', 'nullable', 'exists:procedures,id'],
+            'groups.*.items.*.procedure_id' => ['sometimes', 'nullable', Rule::exists('procedures', 'id')
+                ->where(fn ($q) => $q->whereNull('archived_at')->orWhereIn('id', $linkedProcedureIds))],
             'groups.*.items.*.min_value' => ['sometimes', 'nullable', 'numeric'],
             'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric', 'gte:groups.*.items.*.min_value'],
         ]);
@@ -191,7 +197,7 @@ class ChecklistTemplateController extends Controller
                 ->update(['archived_at' => $now]);
         });
 
-        $checklistTemplate->load(['groups.items.procedure:id,identifier,title']);
+        $checklistTemplate->load(['groups.items.procedure:id,identifier,title,archived_at']);
         return response()->json($checklistTemplate);
     }
 

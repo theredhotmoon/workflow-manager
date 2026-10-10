@@ -9,7 +9,7 @@
       <div class="flex items-center gap-3 mb-6">
         <select v-model.number="selectedGroupId" @change="fetchReport"
           class="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-          <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
+          <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}{{ group.archived_at ? ' (archived)' : '' }}</option>
         </select>
 
         <button aria-label="Previous period" @click="stepPeriod(-1)"
@@ -73,7 +73,8 @@ const loading = ref(true);
 
 async function fetchGroups() {
   try {
-    const res = await api.get('/api/shift-groups');
+    // Archived groups too: their past periods still count, so their reports stay available.
+    const res = await api.get('/api/shift-groups', { params: { include_archived: 1 } });
     groups.value = res.data;
     if (groups.value.length > 0) {
       selectedGroupId.value = groups.value.find((g) => g.is_default)?.id ?? groups.value[0].id;

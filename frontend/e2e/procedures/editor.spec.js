@@ -184,8 +184,8 @@ test.describe('Procedure editor: Escape and unsaved changes', () => {
     // stray Escape reaching it. Clean, a stray Escape closes it outright.
     const editor = await openEditor(adminPage, procedure);
 
-    await editor.getByRole('button', { name: 'Delete Procedure' }).click();
-    const confirmDialog = adminPage.getByRole('dialog', { name: 'Delete Procedure' });
+    await editor.getByRole('button', { name: 'Archive Procedure' }).click();
+    const confirmDialog = adminPage.getByRole('dialog', { name: 'Archive Procedure' });
     await expect(confirmDialog).toBeVisible();
     await adminPage.keyboard.press('Escape');
 
@@ -193,7 +193,7 @@ test.describe('Procedure editor: Escape and unsaved changes', () => {
     // Focus is back on the confirm's trigger inside the editor. Had the Escape also closed the
     // (clean) editor, the editor's own trap would have moved focus out to its Edit button. (A
     // visibility check alone can't tell: a closing editor stays in the DOM for its 200ms fade-out.)
-    await expect(editor.getByRole('button', { name: 'Delete Procedure' })).toBeFocused();
+    await expect(editor.getByRole('button', { name: 'Archive Procedure' })).toBeFocused();
     await expect(editor).toBeVisible();
     await expect(editor.getByPlaceholder(TITLE_PLACEHOLDER)).toHaveValue(procedure.title);
   });

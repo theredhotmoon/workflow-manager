@@ -310,10 +310,9 @@ it('keeps delegation memberships and the original deactivation time, and revokes
     expect($h['delegation']->users()->whereKey($user->id)->exists())->toBeTrue();
 });
 
-it('drops pending change requests of removed future shifts and keeps the ones on kept shifts', function () {
-    // Current behaviour: cascades; see follow-up. The request on the removed future assignment is
-    // acknowledged and then deleted with the assignment by the FK cascade; callbacks of a removed
-    // future on-call duty go with it too.
+it('settles and keeps change requests of removed future shifts, and leaves the ones on kept shifts pending', function () {
+    // The request on the removed future assignment is acknowledged and stays with its assignment
+    // link nulled; callbacks of a removed future on-call duty go with the duty.
     $admin = cdlUserAdmin();
     $user = cdlEmployee();
     $h = cdlUserWithHistory($user);
@@ -333,7 +332,12 @@ it('drops pending change requests of removed future shifts and keeps the ones on
         ->postJson("/api/users/{$user->id}/deactivate", ['remove_future_assignments' => true])
         ->assertOk();
 
-    expect($requests['future']->fresh())->toBeNull()
+    $future = $requests['future']->fresh();
+    expect($future)->not->toBeNull()
+        ->and($future->status)->toBe('acknowledged')
+        ->and($future->shift_assignment_id)->toBeNull()
+        ->and($future->shift_id)->toBe($h['assignments']['future']->shift_id)
         ->and($callback->fresh())->toBeNull()
-        ->and($requests['today']->fresh()->status)->toBe('pending');
+        ->and($requests['today']->fresh()->status)->toBe('pending')
+        ->and($requests['today']->fresh()->shift_assignment_id)->toBe($h['assignments']['today']->id);
 });

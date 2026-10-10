@@ -19,6 +19,7 @@ class ProceduresToLearnController extends Controller
                 $join->on('procedures.id', '=', 'procedure_user_reads.procedure_id')
                     ->where('procedure_user_reads.user_id', '=', $userId);
             })
+            ->whereNull('procedures.archived_at')
             ->where(function ($q) {
                 $q->whereNull('procedure_user_reads.version_read')
                     ->orWhereColumn('procedure_user_reads.version_read', '<', 'procedures.version');

@@ -4,6 +4,40 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-09 — 🗄️ Deletes keep history: shift groups and procedures are archived, delegations with members can't be deleted, change requests survive
+
+> **Deploy notes**
+> - Two migrations: `2026_10_10_100000_add_archived_at_to_shift_groups_and_procedures` (nullable `archived_at` on `shift_groups` and `procedures`) and `2026_10_10_100100_keep_shift_change_requests_when_work_is_removed` (adds `shift_date`/`shift_number` to `shift_change_requests`, backfilled from the shift; `shift_assignment_id` and `shift_id` become nullable with `ON DELETE SET NULL` instead of `CASCADE`). Both run on existing data; existing rows are unaffected. Rebuild backend and frontend.
+>
+> **Behaviour changes**
+> - **Deleting a shift group archives it.** It leaves the schedule tabs, the all-groups view, on-call and auto-fill pickers; its shifts, assignments, hours, change requests, checklists, streak rules, on-call duties and callbacks stay, and settlement reports still count them (the Settlement Periods picker lists archived groups as "(archived)"). While the group has assignments or on-call duties from tomorrow on, archiving answers 409 `future_work` listing them; confirming removes them the way user deactivation does (pending change requests acknowledged and kept, rest policies cleared). Today's and past work is never touched. Planning in an archived group (generate, day count, auto-fill, slot types, on-call, assign/unassign, shift edits) is refused until it is restored. Admins restore groups from Schedule → "Archived (n)". An archived group's name does not block a new group with the same name (names were never unique).
+> - **Deleting a procedure archives it.** It leaves the tree, lists, search, to-learn, unread checks and checklist pickers; versions, FAQ, feedback, reads, access log, owner changes and tags stay. A procedure with sub-procedures that aren't archived is refused (409 `has_children`, listing them). Its URL answers 404 to non-admins; admins see it with an "Archived" banner and Restore. Restored procedures return to their old parent, or to the top level if that parent is archived (the response says so). Procedures → "Archived" lists them for admins.
+> - **A delegation can be deleted only while nobody has joined it** (no member with status `approved`). Otherwise 409 "Archive it instead"; the Delete button is disabled with that hint.
+> - **Change requests are kept** when their assignment or shift is removed (unassign, move, deactivation, group archive, day-count reduction, clear month): pending ones are acknowledged, the link is nulled, and the request keeps its shift's date and slot. The month list and "mine" include them, flagged `assignment_removed` / `shift_removed`.
+
+- **Deletes wiped history.** The cascades pinned in M25 (`// Current behaviour: cascades`) are gone: groups and procedures archive, delegations with members are refused, change requests survive. The old `DELETE` routes still work (they archive); new admin-only `POST /api/shift-groups/{shiftGroup}/restore` and `POST /api/procedures/{procedure}/restore`.
+
+### Backend
+| What | Details |
+|------|---------|
+| New | Migrations above. `App\Services\FutureWorkRemover` (shared by user deactivation and group archive). `ShiftGroup::notArchived()`, `isArchived()`, `activeExistsRule()`; `Procedure::notArchived()`, `isArchived()`, and route binding that hides archived procedures from non-admins. `ShiftChangeRequest` fills `shift_date`/`shift_number` on create and appends `assignment_removed`/`shift_removed` |
+| Changed | `ShiftGroupController`: `index` hides archived unless `include_archived=1`; `destroy` archives (409 `future_work`, `remove_future_assignments`); new `restore`. Planning endpoints validate `shift_group_id` with `activeExistsRule()`; shift-level schedule writes refuse shifts of archived groups (422). The all-groups schedule leaves archived groups out |
+| Changed | `ProcedureController`: `index` hides archived (`archived=1` for admins lists them), `tree`, `checkReadStatus` and `ProceduresToLearnController` skip them; `destroy` archives (409 `has_children`); new `restore`; edits/move/owner change on an archived procedure answer 409; move refuses an archived parent. Checklist templates can't newly link an archived procedure; the fill form doesn't offer it; FAQ replies on an archived procedure answer 404 to non-admins |
+| Changed | `DelegationController::destroy`: 409 `has_members` when anyone is approved |
+| Changed | Change request month list filters on `shift_date`; day-count reduction and clear month acknowledge pending requests of the slots they remove |
+| Tests | The six `Current behaviour: cascades` pins rewritten to the new behaviour; new Pest tests for archive/restore, refusals with listed blockers, hidden from planning/listing, admin listings, settlement of an archived group's past period, delegation 409 vs allowed, change requests surviving unassign/shift deletion/day-count reduction/deactivation, and the migration's backfill. Route permission matrix includes the two restore routes |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Changed | Schedule: "Archive group" (confirm says what is kept; a second confirm when future work must be removed), "Archived (n)" list with Restore |
+| Changed | Procedure editor: "Archive Procedure"; detail page: Archived banner + Restore; procedures list: "Archived" dialog with Restore |
+| Changed | Delegations manage: Delete disabled with a hint when the delegation has members; the server's 409 is shown as a toast |
+| Changed | Settlement Periods lists archived groups; checklist builder shows an archived linked procedure as "(archived)" |
+| Tests | E2E: `schedule/shift-groups.spec.js` archives and restores a group; new `procedures/archive.spec.js`; `delegations/manage.spec.js` covers delete with a member |
+
+---
+
 ## 2026-10-09 — ♿ Dialogs you can use with a keyboard, announced toasts, a header that fits a phone
 
 > **Deploy notes**

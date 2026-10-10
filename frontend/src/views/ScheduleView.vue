@@ -90,12 +90,12 @@
 
             <span v-if="activeGroupId === group.id && group.is_default" class="text-[8px] text-indigo-400/60 uppercase tracking-wider">default</span>
 
-            <!-- Delete group button (admin only, non-default) -->
+            <!-- Archive group button (admin only, non-default) -->
             <button v-if="isAdmin(currentUser) && !group.is_default && activeGroupId === group.id"
-              @click.stop="deleteShiftGroup(group)"
-              class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-red-400 transition-colors ml-1"
-              title="Delete group">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              @click.stop="archiveShiftGroup(group)"
+              class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-amber-400 transition-colors ml-1"
+              title="Archive group">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
             </button>
 
             <!-- Group settlement settings (admin only: saving writes the group) -->
@@ -113,6 +113,29 @@
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
             New Group
           </button>
+
+          <!-- Archived groups (admin only) -->
+          <button v-if="isAdmin(currentUser) && archivedGroups.length > 0" @click="showArchivedGroups = !showArchivedGroups"
+            :aria-expanded="showArchivedGroups ? 'true' : 'false'"
+            class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all">
+            Archived ({{ archivedGroups.length }})
+          </button>
+        </div>
+
+        <!-- Archived groups list: their history stays; restoring brings the tab back -->
+        <div v-if="showArchivedGroups && isAdmin(currentUser) && archivedGroups.length > 0"
+          class="mt-3 p-3 bg-white/[0.03] border border-white/10 rounded-xl">
+          <p class="text-xs text-slate-500 mb-2">Archived groups keep their past shifts, hours and on-call duties. Restore one to plan in it again.</p>
+          <ul class="flex flex-col gap-1.5" aria-label="Archived shift groups">
+            <li v-for="group in archivedGroups" :key="group.id" class="flex items-center gap-2 text-sm text-slate-300">
+              <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ backgroundColor: group.color || '#64748b' }"></span>
+              <span>{{ group.name }}</span>
+              <button @click="restoreShiftGroup(group)" :disabled="restoringGroupId === group.id"
+                class="ml-auto px-2.5 py-1 text-xs font-medium text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition-all disabled:opacity-40">
+                Restore {{ group.name }}
+              </button>
+            </li>
+          </ul>
         </div>
 
         <!-- New group inline form -->
@@ -1387,6 +1410,9 @@ const deleting = ref(false);
 
 // Shift groups
 const shiftGroups = ref([]);
+const archivedGroups = ref([]);
+const showArchivedGroups = ref(false);
+const restoringGroupId = ref(null);
 const activeGroupId = ref(null);
 const showNewGroupInput = ref(false);
 const newGroupName = ref('');
@@ -1416,8 +1442,14 @@ function groupShiftsByGroup(shifts) {
 
 async function fetchShiftGroups() {
   try {
-    const res = await api.get('/api/shift-groups');
-    shiftGroups.value = res.data;
+    // Admins also get the archived groups (for the Archived list); they never become tabs.
+    const admin = isAdmin(currentUser.value);
+    const res = await api.get(
+      '/api/shift-groups',
+      admin ? { params: { include_archived: 1 } } : {},
+    );
+    shiftGroups.value = res.data.filter((g) => !g.archived_at);
+    archivedGroups.value = res.data.filter((g) => g.archived_at);
     // Set active group to first (default) if not set
     if (!activeGroupId.value && shiftGroups.value.length > 0) {
       const defaultGroup = shiftGroups.value.find((g) => g.is_default);
@@ -1454,24 +1486,76 @@ async function createShiftGroup() {
   }
 }
 
-async function deleteShiftGroup(group) {
+/** "1 shift assignment and 2 on-call duties" — the work a future_work 409 lists. */
+function describeFutureWork(data) {
+  const parts = [];
+  const shifts = data.assignments?.length ?? 0;
+  const duties = data.on_call?.length ?? 0;
+  if (shifts) parts.push(`${shifts} shift assignment${shifts === 1 ? '' : 's'}`);
+  if (duties) parts.push(`${duties} on-call ${duties === 1 ? 'duty' : 'duties'}`);
+  return parts.join(' and ');
+}
+
+async function archiveShiftGroup(group) {
   const ok = await confirm({
-    title: 'Delete Shift Group',
-    message: `Delete group "${group.name}"? This will remove all shifts and assignments in this group.`,
-    confirmLabel: 'Delete',
+    title: 'Archive Shift Group',
+    message:
+      `Archive group "${group.name}"? It leaves the schedule tabs, pickers and auto-fill.\n\n` +
+      'Kept: its past shifts, assignments, hours, change requests, checklists and on-call duties; settlement reports still count them. You can restore it later.',
+    confirmLabel: 'Archive',
     danger: true,
   });
   if (!ok) return;
   try {
-    await api.delete(`/api/shift-groups/${group.id}`);
-    shiftGroups.value = shiftGroups.value.filter((g) => g.id !== group.id);
-    // Switch to default group
-    const defaultGroup = shiftGroups.value.find((g) => g.is_default);
-    activeGroupId.value = defaultGroup?.id || shiftGroups.value[0]?.id;
-    fetchSchedule();
-    showToast(`Group "${group.name}" deleted.`);
+    await sendArchive(group, false);
   } catch (err) {
-    showToast(err.response?.data?.message || 'Failed to delete group.', 'error');
+    const data = err.response?.data;
+    if (err.response?.status !== 409 || data?.code !== 'future_work') {
+      showToast(data?.message || 'Failed to archive group.', 'error');
+      return;
+    }
+    const removeOk = await confirm({
+      title: 'Remove Future Work?',
+      message:
+        `"${group.name}" has ${describeFutureWork(data)} from tomorrow on.\n\n` +
+        "Archiving removes them (pending change requests are settled and kept). Today's and past work stays.",
+      confirmLabel: 'Remove and archive',
+      danger: true,
+    });
+    if (!removeOk) return;
+    try {
+      await sendArchive(group, true);
+    } catch (err2) {
+      showToast(err2.response?.data?.message || 'Failed to archive group.', 'error');
+    }
+  }
+}
+
+async function sendArchive(group, removeFutureAssignments) {
+  const res = await api.delete(`/api/shift-groups/${group.id}`, {
+    data: removeFutureAssignments ? { remove_future_assignments: true } : {},
+  });
+  shiftGroups.value = shiftGroups.value.filter((g) => g.id !== group.id);
+  archivedGroups.value = [...archivedGroups.value, res.data.group];
+  // Switch to default group
+  const defaultGroup = shiftGroups.value.find((g) => g.is_default);
+  activeGroupId.value = defaultGroup?.id || shiftGroups.value[0]?.id;
+  fetchSchedule();
+  showToast(res.data.message || `Group "${group.name}" archived.`);
+}
+
+async function restoreShiftGroup(group) {
+  restoringGroupId.value = group.id;
+  try {
+    const res = await api.post(`/api/shift-groups/${group.id}/restore`);
+    archivedGroups.value = archivedGroups.value.filter((g) => g.id !== group.id);
+    if (archivedGroups.value.length === 0) showArchivedGroups.value = false;
+    await fetchShiftGroups();
+    showToast(res.data.message || `Group "${group.name}" restored.`);
+  } catch (err) {
+    showToast(err.response?.data?.message || 'Failed to restore group.', 'error');
+  } finally {
+    restoringGroupId.value = null;
   }
 }
 

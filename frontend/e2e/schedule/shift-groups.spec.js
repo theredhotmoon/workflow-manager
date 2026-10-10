@@ -4,7 +4,7 @@ import { expect, test } from '../fixtures/auth.js';
 
 const MONTH = '2027-10';
 
-test.describe('Shift group rename and delete', () => {
+test.describe('Shift group rename, archive and restore', () => {
   test('renames a group inline (double-click) and the new name survives a reload', async ({
     adminPage,
   }) => {
@@ -41,32 +41,40 @@ test.describe('Shift group rename and delete', () => {
     await expect(adminPage.getByRole('button', { name: /Rename Me Team/ })).toHaveCount(0);
   });
 
-  test('deletes a group after confirming and it stays gone after a reload', async ({
+  test('archives a group (gone from the tabs) and restores it (back again)', async ({
     adminPage,
   }) => {
     const context = adminPage.context();
     const groupId = await createShiftGroupWithStreakRule(context, {
-      group: { name: 'Delete Me Team' },
+      group: { name: 'Archive Me Team' },
     });
     await createShiftGroupWithStreakRule(context, { group: { name: 'Keep Me Team' } });
 
     await adminPage.goto(`/schedule/${MONTH}`);
-    await adminPage.getByRole('button', { name: /Delete Me Team/ }).click();
-    await adminPage.getByTitle('Delete group').click();
+    await adminPage.getByRole('button', { name: /Archive Me Team/ }).click();
+    await adminPage.getByTitle('Archive group').click();
 
     const dialog = adminPage.getByRole('dialog');
-    await expect(dialog).toContainText('Delete group "Delete Me Team"?');
-    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
-    await expect(adminPage.getByText('Group "Delete Me Team" deleted.')).toBeVisible();
+    await expect(dialog).toContainText('Archive group "Archive Me Team"?');
+    await expect(dialog).toContainText('Kept: its past shifts');
+    await dialog.getByRole('button', { name: 'Archive', exact: true }).click();
+    await expect(adminPage.getByText('Shift group "Archive Me Team" archived.')).toBeVisible();
+    await expect(adminPage.getByRole('button', { name: /Archive Me Team/ })).toHaveCount(0);
 
-    // Server side: only the targeted group was removed.
+    // Server side: archived, not deleted; the other group is untouched.
     const groups = await listShiftGroups(context);
     expect(groups.some((g) => g.id === groupId)).toBe(false);
     expect(groups.some((g) => g.name === 'Keep Me Team')).toBe(true);
 
     await adminPage.reload();
-    // Positive guard before the absence check.
     await expect(adminPage.getByRole('button', { name: /Keep Me Team/ })).toBeVisible();
-    await expect(adminPage.getByRole('button', { name: /Delete Me Team/ })).toHaveCount(0);
+    await expect(adminPage.getByRole('button', { name: /^Archive Me Team/ })).toHaveCount(0);
+
+    // Restore from the Archived list: the tab comes back.
+    await adminPage.getByRole('button', { name: /^Archived \(\d+\)$/ }).click();
+    await adminPage.getByRole('button', { name: 'Restore Archive Me Team' }).click();
+    await expect(adminPage.getByText('Shift group "Archive Me Team" restored.')).toBeVisible();
+    await expect(adminPage.getByRole('button', { name: /^Archive Me Team/ })).toBeVisible();
+    expect((await listShiftGroups(context)).some((g) => g.id === groupId)).toBe(true);
   });
 });

@@ -2,22 +2,31 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\OnCallAssignment;
+use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
+use App\Services\FutureWorkRemover;
 use App\Services\RestPolicyJanitor;
+use App\Support\BusinessDate;
 use App\Support\ShiftType;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class ShiftGroupController extends Controller
 {
     /**
-     * List all shift groups ordered by sort_order.
+     * List the shift groups ordered by sort_order. Archived groups are left out (schedule tabs,
+     * pickers) unless include_archived is set (the archived list, settlement reports of past periods).
      */
-    public function index()
+    public function index(Request $request)
     {
-        $groups = ShiftGroup::with('streakRules')->orderBy('sort_order')->orderBy('id')->get();
+        $groups = ShiftGroup::with('streakRules')
+            ->when(!$request->boolean('include_archived'), fn ($q) => $q->notArchived())
+            ->orderBy('sort_order')->orderBy('id')->get();
 
         return response()->json($groups);
     }
@@ -82,21 +91,119 @@ class ShiftGroupController extends Controller
     }
 
     /**
-     * Delete a shift group and all associated shifts (cascade).
-     * Cannot delete the default group.
+     * "Delete" archives the group (DELETE is kept for older clients): it leaves the schedule tabs,
+     * pickers and auto-fill, while its shifts, assignments, hours, change requests, checklists,
+     * on-call duties and callbacks stay and past settlement periods still count them.
+     *
+     * Work from tomorrow on (business date) is not left orphaned in a hidden group: while the group
+     * has assignments or on-call duties from tomorrow on, the answer is 409 future_work listing
+     * them; with remove_future_assignments they are removed as user deactivation removes them
+     * (pending change requests acknowledged and kept, rest policies cleared) and the group is
+     * archived. Today's and past work is never touched. The default group can't be archived.
      */
-    public function destroy(ShiftGroup $shiftGroup)
+    public function destroy(Request $request, ShiftGroup $shiftGroup, FutureWorkRemover $remover)
     {
+        $request->validate([
+            'remove_future_assignments' => ['sometimes', 'boolean'],
+        ]);
+
         if ($shiftGroup->is_default) {
-            return response()->json(['message' => 'Cannot delete the default shift group.'], 422);
+            return response()->json(['message' => 'Cannot archive the default shift group.'], 422);
         }
 
-        $shiftCount = $shiftGroup->shifts()->count();
-        $shiftGroup->delete(); // FK cascade deletes shifts + assignments
+        $result = DB::transaction(function () use ($request, $shiftGroup, $remover) {
+            // Locked so a concurrent archive/restore of the same group waits for this one.
+            $shiftGroup->newQuery()->whereKey($shiftGroup->id)->lockForUpdate()->first();
+            $shiftGroup->refresh();
+            if ($shiftGroup->isArchived()) {
+                return response()->json(['message' => "Shift group \"{$shiftGroup->name}\" is already archived."], 422);
+            }
+
+            $assignments = ShiftAssignment::with(['shift:id,date,shift_number,shift_group_id', 'user:id,name'])
+                ->whereHas('shift', fn ($q) => $q->where('shift_group_id', $shiftGroup->id)
+                    ->where('date', '>', BusinessDate::todayString()))
+                ->get()
+                ->sortBy(fn (ShiftAssignment $a) => [$a->shift->date->toDateString(), $a->shift->shift_number, $a->user?->name])
+                ->values();
+            $onCall = OnCallAssignment::with('user:id,name')
+                ->where('shift_group_id', $shiftGroup->id)
+                ->where('starts_at', '>=', BusinessDate::today()->addDay()->format('Y-m-d H:i:s'))
+                ->orderBy('starts_at')
+                ->get();
+
+            if (($assignments->isNotEmpty() || $onCall->isNotEmpty()) && !$request->boolean('remove_future_assignments')) {
+                return $this->futureWorkRefusal($shiftGroup, $assignments, $onCall);
+            }
+
+            $removedAssignments = $remover->removeAssignments($assignments);
+            $removedOnCall = OnCallAssignment::whereIn('id', $onCall->pluck('id'))->delete();
+            $shiftGroup->forceFill(['archived_at' => now()])->save();
+
+            return [$removedAssignments, $removedOnCall];
+        });
+
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        [$removedAssignments, $removedOnCall] = $result;
 
         return response()->json([
-            'message' => "Shift group \"{$shiftGroup->name}\" deleted with {$shiftCount} shifts.",
+            'message' => "Shift group \"{$shiftGroup->name}\" archived.",
+            'removed_assignments' => $removedAssignments,
+            'removed_on_call' => $removedOnCall,
+            'group' => $shiftGroup,
         ]);
+    }
+
+    /**
+     * Bring an archived group back into the schedule tabs and pickers, with all its history. Work
+     * removed when it was archived is not restored.
+     */
+    public function restore(ShiftGroup $shiftGroup)
+    {
+        if (!$shiftGroup->isArchived()) {
+            return response()->json(['message' => "Shift group \"{$shiftGroup->name}\" is not archived."], 422);
+        }
+
+        $shiftGroup->forceFill(['archived_at' => null])->save();
+        $shiftGroup->load('streakRules');
+
+        return response()->json([
+            'message' => "Shift group \"{$shiftGroup->name}\" restored.",
+            'group' => $shiftGroup,
+        ], 200, [], JSON_PRESERVE_ZERO_FRACTION);
+    }
+
+    /**
+     * The 409 asking the admin to confirm removing the group's work from tomorrow on.
+     */
+    private function futureWorkRefusal(ShiftGroup $group, Collection $assignments, Collection $onCall): JsonResponse
+    {
+        $parts = [];
+        if ($assignments->isNotEmpty()) {
+            $parts[] = $assignments->count() === 1 ? '1 shift assignment' : "{$assignments->count()} shift assignments";
+        }
+        if ($onCall->isNotEmpty()) {
+            $parts[] = $onCall->count() === 1 ? '1 on-call duty' : "{$onCall->count()} on-call duties";
+        }
+
+        return response()->json([
+            'code' => 'future_work',
+            'message' => "\"{$group->name}\" has " . implode(' and ', $parts) . ' from tomorrow on. '
+                . 'Confirm to remove them and archive the group; today\'s and past work stays.',
+            'assignments' => $assignments->map(fn (ShiftAssignment $a) => [
+                'id' => $a->id,
+                'date' => $a->shift->date->toDateString(),
+                'shift_number' => $a->shift->shift_number,
+                'user_name' => $a->user?->name,
+            ])->all(),
+            'on_call' => $onCall->map(fn (OnCallAssignment $o) => [
+                'id' => $o->id,
+                'starts_at' => $o->starts_at->format('Y-m-d H:i'),
+                'ends_at' => $o->ends_at->format('Y-m-d H:i'),
+                'user_name' => $o->user?->name,
+            ])->all(),
+        ], 409);
     }
 
     /**

@@ -240,10 +240,22 @@ class DelegationController extends Controller
     }
 
     /**
-     * Delete a delegation — admin.
+     * Delete a delegation — admin. Only while nobody has joined it: once a member is approved
+     * (status "approved", whether added by an admin or accepted after a request) the delegation is
+     * history and is archived instead (409). Pending requests and rejected ones don't count as
+     * joined; they are deleted with it, as is its log.
      */
     public function destroy(Delegation $delegation)
     {
+        $joined = $delegation->users()->wherePivot('status', 'approved')->orderBy('name')->pluck('name');
+        if ($joined->isNotEmpty()) {
+            return response()->json([
+                'code' => 'has_members',
+                'message' => 'This delegation has members (' . $joined->implode(', ') . '), so it can\'t be deleted. Archive it instead.',
+                'members' => $joined->values()->all(),
+            ], 409);
+        }
+
         $delegation->delete();
         return response()->json(['message' => 'Delegation deleted.']);
     }

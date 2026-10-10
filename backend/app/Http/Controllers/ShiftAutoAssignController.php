@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
+use App\Models\ShiftChangeRequest;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\UserAvailability;
@@ -26,7 +27,7 @@ class ShiftAutoAssignController extends Controller
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
-            'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
+            'shift_group_id' => ['sometimes', 'integer', ShiftGroup::activeExistsRule()],
         ]);
 
         $start = Month::start($request->month);
@@ -42,6 +43,11 @@ class ShiftAutoAssignController extends Controller
         $totalAssignments = 0;
 
         DB::transaction(function () use ($shifts, $groupId, $janitor, &$totalAssignments) {
+            // Clearing settles the month's pending change requests; they stay on record (with their
+            // shift and assignment links nulled, date and slot kept).
+            ShiftChangeRequest::whereIn('shift_id', $shifts->pluck('id'))
+                ->where('status', 'pending')
+                ->update(['status' => 'acknowledged']);
             $userIds = [];
             foreach ($shifts as $shift) {
                 $totalAssignments += $shift->assignments->count();
@@ -71,7 +77,7 @@ class ShiftAutoAssignController extends Controller
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
-            'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
+            'shift_group_id' => ['sometimes', 'integer', ShiftGroup::activeExistsRule()],
             'users_per_shift_weekday' => ['required', 'integer', 'min:1', 'max:20'],
             'users_per_shift_weekend' => ['required', 'integer', 'min:1', 'max:20'],
             'player_mode' => ['sometimes', 'in:all,include,exclude'],
@@ -205,7 +211,7 @@ class ShiftAutoAssignController extends Controller
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
-            'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
+            'shift_group_id' => ['sometimes', 'integer', ShiftGroup::activeExistsRule()],
             'users_per_shift_weekday' => ['required', 'integer', 'min:1', 'max:20'],
             'users_per_shift_weekend' => ['required', 'integer', 'min:1', 'max:20'],
             'rotation_days' => ['required', 'integer', 'min:1', 'max:31'],
@@ -588,7 +594,7 @@ class ShiftAutoAssignController extends Controller
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
-            'shift_group_id' => ['sometimes', 'integer', 'exists:shift_groups,id'],
+            'shift_group_id' => ['sometimes', 'integer', ShiftGroup::activeExistsRule()],
             'users_per_shift_weekday' => ['required', 'integer', 'min:1', 'max:20'],
             'users_per_shift_weekend' => ['required', 'integer', 'min:1', 'max:20'],
             'rotation_days' => ['required', 'integer', 'min:1', 'max:31'],

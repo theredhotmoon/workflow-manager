@@ -1,4 +1,4 @@
-import { createDelegation } from '../fixtures/api-setup.js';
+import { createDelegation, getEmployeeIdByEmail } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, test } from '../fixtures/auth.js';
 
 // Delegation dates in 2098-02 are reserved for this file.
@@ -136,5 +136,54 @@ test.describe('Delegations: create, act, withdraw', () => {
 
     await expect(adminPage.getByLabel('Name')).toHaveValue('Deleg Draft Kept');
     await expect(adminPage.getByLabel('Start Date')).toHaveValue('2098-02-25');
+  });
+});
+
+test.describe('Delegations: delete only while nobody has joined', () => {
+  test('a delegation with a member cannot be deleted: the server says why, and Delete is disabled', async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const delegation = await createDelegation(context, {
+      name: 'Deleg Has Member',
+      destination: 'Lublin',
+      start: '2098-02-27',
+      end: '2098-02-28',
+    });
+
+    await adminPage.goto('/delegations-manage');
+    const card = adminPage.locator('div.rounded-2xl').filter({
+      has: adminPage.getByRole('heading', { name: 'Deleg Has Member' }),
+    });
+    const deleteButton = card.getByRole('button', { name: 'Delete', exact: true });
+    await expect(deleteButton).toBeEnabled();
+
+    // Someone joins while the page is open (the list on screen still shows no members).
+    const memberId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    const headers = { Accept: 'application/json', ...(await getXsrfHeader(context)) };
+    const added = await context.request.post(`/api/delegations/${delegation.id}/add-user`, {
+      data: { user_id: memberId },
+      headers,
+    });
+    expect(added.ok()).toBe(true);
+
+    await deleteButton.click();
+    await adminPage
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Delete', exact: true })
+      .click();
+    await expect(
+      adminPage.getByText(
+        /This delegation has members \(.+\), so it can't be deleted\. Archive it instead\./,
+      ),
+    ).toBeVisible();
+    await expect(card).toBeVisible();
+
+    // Reloaded, the list knows about the member: Delete is disabled and says to archive instead.
+    await adminPage.reload();
+    const disabled = card.getByRole('button', {
+      name: 'Can’t delete: this delegation has members. Archive it instead.',
+    });
+    await expect(disabled).toBeDisabled();
   });
 });

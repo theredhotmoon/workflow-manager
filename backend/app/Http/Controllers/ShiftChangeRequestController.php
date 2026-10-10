@@ -69,7 +69,9 @@ class ShiftChangeRequestController extends Controller
     }
 
     /**
-     * Admin: Get all pending requests for a month.
+     * Schedule managers: every request for a shift in the month. Requests whose assignment or shift
+     * has since been removed are included (assignment_removed / shift_removed, with the shift's
+     * date and slot kept on the request).
      */
     public function index(Request $request)
     {
@@ -80,16 +82,17 @@ class ShiftChangeRequestController extends Controller
         $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
-        $requests = ShiftChangeRequest::with(['user:id,name', 'shift:id,date,shift_number', 'assignment'])
-            ->whereHas('shift', fn($q) => $q->whereBetween('date', [$start->toDateString(), $end->toDateString()]))
+        $requests = ShiftChangeRequest::with(['user:id,name', 'shift:id,date,shift_number,shift_group_id', 'shift.shiftGroup:id,name', 'assignment'])
+            ->whereBetween('shift_date', [$start->toDateString(), $end->toDateString()])
             ->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc')
             ->get();
 
         return response()->json($requests);
     }
 
     /**
-     * Employee: Get own requests.
+     * Employee: Get own requests (including ones whose assignment or shift was removed).
      */
     public function myRequests(Request $request)
     {

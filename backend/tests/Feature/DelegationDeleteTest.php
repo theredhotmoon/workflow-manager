@@ -28,12 +28,31 @@ it('refuses a delegation delete to anyone but an admin', function (string $role)
     expect($delegation->fresh())->not->toBeNull();
 })->with(['employee', 'schedule_maintainer']);
 
-it('deletes a delegation with its members and its log', function () {
-    // Current behaviour: cascades; see follow-up. Deleting (rather than archiving) a delegation
-    // drops who took part and its whole action log; the people stay.
+it('refuses to delete a delegation someone has joined and points to Archive', function () {
     $admin = User::factory()->create(['role' => 'admin']);
-    $member = User::factory()->create(['role' => 'employee']);
+    $member = User::factory()->create(['role' => 'employee', 'name' => 'Ada Member']);
     $delegation = dldDelegation($admin, $member);
+
+    $this->actingAs($admin)->deleteJson("/api/delegations/{$delegation->id}")
+        ->assertStatus(409)
+        ->assertJsonPath('code', 'has_members')
+        ->assertJsonPath('message', 'This delegation has members (Ada Member), so it can\'t be deleted. Archive it instead.')
+        ->assertJsonPath('members', ['Ada Member']);
+
+    expect($delegation->fresh())->not->toBeNull()
+        ->and(DB::table('delegation_user')->where('delegation_id', $delegation->id)->count())->toBe(1)
+        ->and(DelegationLog::where('delegation_id', $delegation->id)->count())->toBe(1);
+});
+
+it('deletes a delegation nobody has joined, with its pending and rejected requests and its log', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $delegation = Delegation::create([
+        'name' => 'Trip', 'destination' => 'Berlin', 'created_by' => $admin->id,
+        'start_datetime' => '2026-11-01 08:00:00', 'end_datetime' => '2026-11-02 18:00:00',
+    ]);
+    $delegation->users()->attach(User::factory()->create()->id, ['status' => 'pending']);
+    $delegation->users()->attach(User::factory()->create()->id, ['status' => 'rejected']);
+    DelegationLog::create(['delegation_id' => $delegation->id, 'performed_by' => $admin->id, 'action' => 'created']);
 
     $this->actingAs($admin)->deleteJson("/api/delegations/{$delegation->id}")
         ->assertOk()
@@ -42,6 +61,5 @@ it('deletes a delegation with its members and its log', function () {
     expect($delegation->fresh())->toBeNull()
         ->and(DB::table('delegation_user')->where('delegation_id', $delegation->id)->count())->toBe(0)
         ->and(DelegationLog::where('delegation_id', $delegation->id)->count())->toBe(0)
-        ->and($member->fresh())->not->toBeNull()
         ->and($admin->fresh())->not->toBeNull();
 });

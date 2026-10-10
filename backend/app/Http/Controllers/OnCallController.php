@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OnCallAssignment;
 use App\Models\OnCallCallback;
+use App\Models\ShiftGroup;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -39,7 +40,8 @@ class OnCallController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'shift_group_id' => ['required', 'integer', 'exists:shift_groups,id'],
+            // New duties only in groups that aren't archived; an archived group's history stays listable.
+            'shift_group_id' => ['required', 'integer', ShiftGroup::activeExistsRule()],
             'user_id' => ['required', 'integer', User::activeExistsRule()],
             'starts_at' => ['required', 'date'],
             'ends_at' => ['required', 'date', 'after:starts_at'],

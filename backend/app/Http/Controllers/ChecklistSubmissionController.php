@@ -11,6 +11,7 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftChecklist;
 use App\Models\User;
 use App\Support\BusinessDate;
+use App\Support\LikePattern;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -119,8 +120,8 @@ class ChecklistSubmissionController extends Controller
         }
         if ($request->filled('search')) {
             // Template or either person's name, case-insensitively; % and _ are matched literally.
-            $like = '%' . addcslashes(mb_strtolower($request->search), '\\%_') . '%';
-            $nameMatches = fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]);
+            $like = LikePattern::contains($request->search);
+            $nameMatches = fn ($q) => $q->where('name', 'ilike', $like);
             $query->where(fn ($q) => $q->whereHas('template', $nameMatches)
                 ->orWhereHas('outgoingUser', $nameMatches)
                 ->orWhereHas('incomingUser', $nameMatches));

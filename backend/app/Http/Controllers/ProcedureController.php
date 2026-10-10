@@ -9,6 +9,7 @@ use App\Models\ProcedureUserRead;
 use App\Models\ProcedureVersion;
 use App\Models\User;
 use App\Services\ProcedureHtmlSanitizer;
+use App\Support\LikePattern;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -50,10 +51,12 @@ class ProcedureController extends Controller
             ->when($archived, fn ($q) => $q->whereNotNull('archived_at'), fn ($q) => $q->notArchived());
 
         if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%{$search}%")
-                    ->orWhere('identifier', 'like', "%{$search}%")
-                    ->orWhere('purpose', 'like', "%{$search}%");
+            // Case-insensitive; % and _ in the search are matched literally.
+            $pattern = LikePattern::contains($search);
+            $query->where(function ($q) use ($pattern) {
+                $q->where('title', 'ilike', $pattern)
+                    ->orWhere('identifier', 'ilike', $pattern)
+                    ->orWhere('purpose', 'ilike', $pattern);
             });
         }
 

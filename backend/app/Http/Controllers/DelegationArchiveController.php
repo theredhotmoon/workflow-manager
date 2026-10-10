@@ -6,6 +6,7 @@ use App\Models\ArchivedDelegation;
 use App\Models\ArchivedDelegationLog;
 use App\Models\Delegation;
 use App\Models\DelegationLog;
+use App\Support\LikePattern;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -45,7 +46,7 @@ class DelegationArchiveController extends Controller
 
         // Filter by destination
         if ($dest = $request->input('destination')) {
-            $query->where('destination', 'like', "%{$dest}%");
+            $query->where('destination', 'ilike', LikePattern::contains($dest));
         }
 
         // Filter by employee

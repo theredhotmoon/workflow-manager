@@ -9,6 +9,7 @@ use App\Models\ShiftChecklist;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\ChecklistTemplate;
+use App\Services\BusyIntervals;
 use App\Services\RestPolicyJanitor;
 use App\Services\ShiftTypeChanger;
 use App\Services\StreakReplay;
@@ -355,6 +356,8 @@ class ScheduleController extends Controller
             // Only the assigned user's own assignment can be the source of their move (re-checked below).
             'move_from_assignment_id' => ['nullable', 'integer', Rule::exists('shift_assignments', 'id')
                 ->where('user_id', (int) $request->input('user_id'))],
+            // The manager's go-ahead after a 409 short_daily_rest.
+            'confirm_short_rest' => ['sometimes', 'boolean'],
         ]);
 
         if (!$request->filled('move_from_assignment_id')) {
@@ -485,6 +488,17 @@ class ScheduleController extends Controller
             ], 409);
         }
 
+        // Less than 11 h of rest next to the employee's other work needs the manager's go-ahead.
+        if (!$request->boolean('confirm_short_rest') && ($conflicts = $this->shortRestConflicts($shift, $userId)) !== []) {
+            $list = implode('; ', array_map(fn ($c) => $c['label'], $conflicts));
+
+            return response()->json([
+                'code' => 'short_daily_rest',
+                'message' => 'This leaves the employee less than ' . BusyIntervals::MIN_DAILY_REST_HOURS . " hours of rest: {$list}.",
+                'conflicts' => array_map(fn ($c) => array_diff_key($c, ['label' => true]), $conflicts),
+            ], 409);
+        }
+
         // The chosen policy applies to the whole chain: stamping it can push further shifts into rest.
         $laterPolicy = $affectedIds !== [] ? $request->input('later_rest_policy') : null;
         $updatedIds = $laterPolicy !== null
@@ -512,6 +526,100 @@ class ScheduleController extends Controller
     }
 
     private const ALREADY_ASSIGNED_MESSAGE = 'User is already assigned to this shift.';
+
+    /**
+     * The employee's other work (shifts in any group, on-call callbacks) that would leave less than
+     * MIN_DAILY_REST_HOURS of rest next to $shift: empty when the rest is enough. The decision is
+     * BusyIntervals::allowsDailyRest(), the rule auto-fill uses; the list only explains it. Shifts
+     * without both times are left out (when they happen isn't known). For a move, the source is
+     * already deleted in the surrounding transaction, so it doesn't count.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function shortRestConflicts(Shift $shift, int $userId): array
+    {
+        if (!$shift->start_time || !$shift->end_time) {
+            return [];
+        }
+        // The longest shift is 24 h, so two days either side hold every neighbour that matters.
+        $from = $shift->date->copy()->subDays(2)->toDateString();
+        $to = $shift->date->copy()->addDays(2)->toDateString();
+        $others = BusyIntervals::loadAssignedShifts([$userId], $from, $to)
+            ->filter(fn (Shift $other) => $other->id !== $shift->id && $other->start_time && $other->end_time)
+            ->load('shiftGroup:id,name');
+        $callbacks = BusyIntervals::loadCallbacks([$userId], $from, $to);
+
+        $busy = new BusyIntervals();
+        foreach ($others as $other) {
+            $busy->add($userId, ...BusyIntervals::shiftSpan($other));
+        }
+        foreach ($callbacks as $callback) {
+            $busy->add($userId, ...BusyIntervals::callbackSpan($callback));
+        }
+        [$start, $end] = BusyIntervals::shiftSpan($shift);
+        if ($busy->allowsDailyRest($userId, $start, $end)) {
+            return [];
+        }
+
+        $minRest = BusyIntervals::MIN_DAILY_REST_HOURS * 3600;
+        $restHours = function (int $a, int $b) use ($start, $end): float {
+            $gap = $b <= $start ? $start - $b : ($a >= $end ? $a - $end : 0);
+
+            return round($gap / 3600, 1);
+        };
+        $conflicts = [];
+        foreach ($others as $other) {
+            [$a, $b] = BusyIntervals::shiftSpan($other);
+            $rest = $restHours($a, $b);
+            if ($rest * 3600 < $minRest) {
+                $times = substr($other->start_time, 0, 5) . '–' . substr($other->end_time, 0, 5);
+                $where = $other->shiftGroup?->name ? ", {$other->shiftGroup->name}" : '';
+                $conflicts[] = [
+                    'type' => 'shift',
+                    'shift_id' => $other->id,
+                    'date' => $other->date->toDateString(),
+                    'shift_number' => $other->shift_number,
+                    'start_time' => substr($other->start_time, 0, 5),
+                    'end_time' => substr($other->end_time, 0, 5),
+                    'shift_group_name' => $other->shiftGroup?->name,
+                    'rest_hours' => $rest,
+                    'starts_at' => $a,
+                    'label' => self::restLabel($rest, $a >= $end) . " shift {$other->shift_number} on {$other->date->toDateString()} ({$times}{$where})",
+                ];
+            }
+        }
+        foreach ($callbacks as $callback) {
+            [$a, $b] = BusyIntervals::callbackSpan($callback);
+            $rest = $restHours($a, $b);
+            if ($rest * 3600 < $minRest) {
+                $conflicts[] = [
+                    'type' => 'on_call_callback',
+                    'callback_id' => $callback->id,
+                    'date' => BusyIntervals::callbackDate($callback),
+                    'start_time' => $callback->starts_at->format('H:i'),
+                    'end_time' => $callback->ends_at->format('H:i'),
+                    'rest_hours' => $rest,
+                    'starts_at' => $a,
+                    'label' => self::restLabel($rest, $a >= $end) . ' an on-call callback on ' . BusyIntervals::callbackDate($callback)
+                        . ' (' . $callback->starts_at->format('H:i') . '–' . $callback->ends_at->format('H:i') . ')',
+                ];
+            }
+        }
+        usort($conflicts, fn ($x, $y) => $x['starts_at'] <=> $y['starts_at']);
+
+        return array_map(fn ($c) => array_diff_key($c, ['starts_at' => true]), $conflicts);
+    }
+
+    /** "8 h after" / "3 h before" / "overlaps": how the candidate sits next to other work. */
+    private static function restLabel(float $restHours, bool $otherIsLater): string
+    {
+        if ($restHours <= 0) {
+            return 'overlaps';
+        }
+        $hours = rtrim(rtrim(number_format($restHours, 1, '.', ''), '0'), '.');
+
+        return "{$hours} h " . ($otherIsLater ? 'before' : 'after');
+    }
 
     /** The insert of placeAssignment(), with its locks and the later shifts' policy stamps. */
     private function createAssignment(Shift $shift, int $userId, ?string $restPolicy, array $updatedIds, ?string $laterPolicy, RestPolicyJanitor $janitor): ShiftAssignment

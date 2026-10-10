@@ -129,6 +129,26 @@ export async function setShiftTypes(context, { shiftGroupId, month, shiftNumber,
   return await res.json();
 }
 
+export async function setShiftTimes(context, { shiftId, startTime, endTime }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'put', `/api/schedule/shifts/${shiftId}/times`, {
+    data: { start_time: startTime, end_time: endTime },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`set shift times failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Archives a group a spec created (with its future assignments), so later specs don't get its tab.
+export async function archiveShiftGroup(context, groupId) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'delete', `/api/shift-groups/${groupId}`, {
+    data: { remove_future_assignments: true },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`archive shift group failed: ${res.status()} ${await res.text()}`);
+}
+
 export async function setShiftType(context, { shiftId, shiftType }) {
   const headers = await getXsrfHeader(context);
   const res = await send(context, 'put', `/api/schedule/shifts/${shiftId}/type`, {

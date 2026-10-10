@@ -2726,7 +2726,8 @@ function abandonDrop(shift, item) {
 
 // Resolves to { status: 'assigned' | 'prompted' (waiting on the rest-day dialog) | 'failed', updatedCount }.
 // laterRestPolicy goes with the ids of the later shifts the manager was shown; if the server's list
-// differs by now, it asks again.
+// differs by now, it asks again. confirmShortRest is the manager's go-ahead for less than 11 h of
+// daily rest (the server asks with 409 short_daily_rest, listing the shifts too close).
 async function doAssign(
   shift,
   item,
@@ -2734,6 +2735,7 @@ async function doAssign(
   restPolicy = null,
   laterRestPolicy = null,
   expectedAffectedIds = null,
+  confirmShortRest = false,
 ) {
   const moveFrom = pendingMoves.get(item);
   try {
@@ -2745,6 +2747,7 @@ async function doAssign(
       ...(laterRestPolicy
         ? { later_rest_policy: laterRestPolicy, expected_affected_ids: expectedAffectedIds || [] }
         : {}),
+      ...(confirmShortRest ? { confirm_short_rest: true } : {}),
     });
     pendingMoves.delete(item);
     item.id = response.data.id;
@@ -2764,6 +2767,19 @@ async function doAssign(
     ) {
       restPrompt.value = { shift, item, index, conflict: err.response.data, restPolicy };
       return { status: 'prompted', updatedCount: 0 };
+    }
+    if (err.response?.status === 409 && code === 'short_daily_rest') {
+      const ok = await confirm({
+        title: 'Less than 11 hours of rest',
+        message: `${err.response.data.message} Assign anyway?`,
+        confirmLabel: 'Assign anyway',
+      });
+      if (!ok) {
+        abandonDrop(shift, item);
+        return { status: 'failed', updatedCount: 0 };
+      }
+      // Same request with the manager's go-ahead; earlier answers (rest-day policies) go along.
+      return doAssign(shift, item, index, restPolicy, laterRestPolicy, expectedAffectedIds, true);
     }
     abandonDrop(shift, item);
     const msg = err.response?.data?.message || 'Failed to assign user.';

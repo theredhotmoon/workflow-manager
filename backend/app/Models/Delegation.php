@@ -61,6 +61,38 @@ class Delegation extends Model
         }];
     }
 
+    /** Pivot columns about someone's own application: when they applied and their own travel dates. */
+    private const PRIVATE_PIVOT_FIELDS = ['custom_start', 'custom_end', 'created_at', 'updated_at'];
+
+    /**
+     * After membersFor(): for a non-admin, other participants keep only id, name and pivot status;
+     * when they applied and their custom travel dates stay on the viewer's own row only (L4).
+     */
+    public function hideOthersApplicationDetails(User $viewer): static
+    {
+        if ($viewer->isAdmin() || !$this->relationLoaded('users')) {
+            return $this;
+        }
+        foreach ($this->users as $member) {
+            if ((int) $member->id !== (int) $viewer->id) {
+                $member->pivot?->makeHidden(self::PRIVATE_PIVOT_FIELDS);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Eager load of approved participants (id, name), for every role: the Schedule overlay and its
+     * conflict checks (as auto-fill does) treat a listed user as away, so pending and rejected
+     * applicants would only produce false warnings. Managing applicants uses the admin endpoints.
+     */
+    public static function approvedMembers(): array
+    {
+        return ['users' => fn ($query) => $query->select('users.id', 'users.name')
+            ->where('delegation_user.status', 'approved')];
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

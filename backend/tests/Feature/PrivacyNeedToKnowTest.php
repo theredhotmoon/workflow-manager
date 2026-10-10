@@ -1,8 +1,12 @@
 <?php
 
+use App\Models\Alarm;
+use App\Models\ChecklistSubmission;
+use App\Models\ChecklistTemplate;
 use App\Models\Delegation;
 use App\Models\Procedure;
 use App\Models\ProcedureAccessLog;
+use App\Models\ProcedureFaqItem;
 use App\Models\ProcedureVersion;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
@@ -173,6 +177,9 @@ it('hides a procedure draft from everyone but admins and the owner, in every pro
         foreach (['/api/procedures-tree', "/api/procedures/{$procedure->id}/versions", "/api/procedures/{$procedure->id}/versions/1", '/api/procedures-to-learn'] as $url) {
             $body = $this->actingAs($cast[$who])->getJson($url)->assertOk()->getContent();
             expect($body)->not->toContain('Secret draft');
+            if (!$sees) {
+                expect(str_contains($body, '"has_draft"'))->toBeFalse("{$who} {$url} has_draft");
+            }
         }
     }
 });
@@ -233,8 +240,43 @@ it('sweeps the user-serialising endpoints: an employee sees no email but their o
         'start_datetime' => '2026-11-01', 'end_datetime' => '2026-11-02',
     ]);
     $delegation->users()->attach($cast['subject']->id, ['status' => 'approved']);
+    // Rows so the history, FAQ, alarm and request URLs return colleague data and can fail.
+    $template = ChecklistTemplate::create(['name' => 'Handover', 'is_active' => true]);
+    $submission = ChecklistSubmission::create([
+        'checklist_template_id' => $template->id, 'date' => '2026-10-09', 'status' => 'pending_confirmation',
+        'outgoing_user_id' => $cast['subject']->id, 'incoming_user_id' => $me->id, 'submitted_at' => now(),
+    ]);
+    $submission->forceFill(['submitted_by_user_id' => $cast['subject']->id])->save();
+    ProcedureFaqItem::create(['procedure_id' => $procedure->id, 'question' => 'Why?', 'created_by' => $cast['subject']->id, 'for_version' => 1]);
+    Alarm::create(['type' => 'info', 'user_id' => $me->id, 'short_message' => "{$cast['subject']->name} did something"]);
+    $myAssignment = ShiftAssignment::where('user_id', $me->id)->first();
+    ShiftChangeRequest::create([
+        'shift_assignment_id' => $myAssignment->id, 'user_id' => $me->id, 'shift_id' => $myAssignment->shift_id,
+        'reason' => 'Mine', 'status' => 'pending',
+    ]);
+
+    // The login response: your own email only.
+    $login = $this->postJson('/api/login', ['email' => $me->email, 'password' => 'password'])->assertOk()->json();
+    expect(ntkEmailOwners($login))->toBe([$me->id]);
+
+    // Each of these must actually carry colleague data (else it could not catch a leak).
+    $withColleagues = [
+        '/api/checklist-submissions',
+        '/api/checklist-submissions/pending-confirmations',
+        "/api/checklist-submissions/{$submission->id}",
+        "/api/procedures/{$procedure->id}/faq",
+    ];
+    foreach ($withColleagues as $url) {
+        $body = $this->actingAs($me)->getJson($url)->assertOk()->getContent();
+        expect(str_contains($body, json_encode($cast['subject']->name)))->toBeTrue("{$url} has no colleague row");
+    }
+    $this->actingAs($me)->getJson('/api/alarms')->assertOk()->assertJsonCount(1, 'data');
+    $this->actingAs($me)->getJson('/api/shift-change-requests/mine')->assertOk()->assertJsonCount(1);
 
     $urls = [
+        ...$withColleagues,
+        '/api/alarms/latest',
+        '/api/shift-change-requests/mine',
         '/api/employees',
         '/api/employees?include_deactivated=1',
         '/api/user-groups',
@@ -249,7 +291,6 @@ it('sweeps the user-serialising endpoints: an employee sees no email but their o
         "/api/procedures/{$procedure->id}",
         '/api/procedures-to-learn',
         "/api/procedures/{$procedure->id}/versions",
-        '/api/checklist-submissions',
         '/api/alarms',
     ];
     foreach ($urls as $url) {
@@ -296,6 +337,7 @@ it('shows employees only approved participants and their own application on open
     $delegation->users()->attach($approved->id, ['status' => 'approved']);
     $delegation->users()->attach($pending->id, ['status' => 'pending']);
     $delegation->users()->attach($rejected->id, ['status' => 'rejected']);
+    $delegation->users()->attach($cast['maintainer']->id, ['status' => 'pending']);
 
     // A rejected applicant sees their own status, the approved participant, nobody else.
     $users = collect($this->actingAs($rejected)->getJson('/api/delegations/open')->assertOk()->json('0.users'));
@@ -308,11 +350,44 @@ it('shows employees only approved participants and their own application on open
     $users = collect($this->actingAs($cast['employee'])->deleteJson("/api/delegations/{$delegation->id}/self-unregister")->assertOk()->json('users'));
     expect($users->pluck('id')->all())->toBe([$approved->id]);
 
-    // Schedule overlay: a maintainer gets approved participants; admins every applicant.
-    $mnt = collect($this->actingAs($cast['maintainer'])->getJson('/api/delegations/month?month=2026-10')->assertOk()->json('0.users'));
-    expect($mnt->pluck('id')->all())->toBe([$approved->id]);
-    $adm = collect($this->actingAs($cast['admin'])->getJson('/api/delegations/month?month=2026-10')->assertOk()->json('0.users'));
-    expect($adm)->toHaveCount(3);
+    // Schedule overlay and its conflict checks: approved participants only, for every role (not
+    // even the maintainer's own pending application), as auto-fill counts them.
+    foreach (['maintainer', 'admin'] as $who) {
+        $month = collect($this->actingAs($cast[$who])->getJson('/api/delegations/month?month=2026-10')->assertOk()->json('0.users'));
+        expect($month->pluck('id')->all())->toBe([$approved->id], "{$who} month");
+    }
+    // The admin management screen (its own endpoint) still lists every applicant with status.
     $all = collect($this->actingAs($cast['admin'])->getJson('/api/delegations')->assertOk()->json('0.users'));
-    expect($all->pluck('pivot.status')->sort()->values()->all())->toBe(['approved', 'pending', 'rejected']);
+    expect($all->pluck('pivot.status')->sort()->values()->all())->toBe(['approved', 'pending', 'pending', 'rejected']);
+});
+
+it('hides other participants application times and travel dates on open delegations', function () {
+    $cast = ntkCast();
+    $delegation = Delegation::create([
+        'name' => 'Trip', 'destination' => 'Berlin', 'created_by' => $cast['admin']->id, 'registration_open' => true,
+        'start_datetime' => '2026-10-20', 'end_datetime' => '2026-10-23',
+    ]);
+    $delegation->users()->attach($cast['subject']->id, ['status' => 'approved', 'custom_start' => '2026-10-21', 'custom_end' => '2026-10-22']);
+    $delegation->users()->attach($cast['employee']->id, ['status' => 'approved', 'custom_start' => '2026-10-20', 'custom_end' => '2026-10-21']);
+    $private = ['custom_start', 'custom_end', 'created_at', 'updated_at'];
+
+    $rows = collect($this->actingAs($cast['employee'])->getJson('/api/delegations/open')->assertOk()->json('0.users'))->keyBy('id');
+    expect($rows[$cast['subject']->id]['pivot']['status'])->toBe('approved');
+    foreach ($private as $field) {
+        expect($rows[$cast['subject']->id]['pivot'])->not->toHaveKey($field);
+        expect($rows[$cast['employee']->id]['pivot'])->toHaveKey($field);
+    }
+
+    // Same on the self-register response.
+    $users = collect($this->actingAs($cast['maintainer'])->postJson("/api/delegations/{$delegation->id}/self-register")->assertOk()->json('users'))->keyBy('id');
+    foreach ($private as $field) {
+        expect($users[$cast['subject']->id]['pivot'])->not->toHaveKey($field);
+        expect($users[$cast['maintainer']->id]['pivot'])->toHaveKey($field);
+    }
+
+    // Admins keep everything.
+    $rows = collect($this->actingAs($cast['admin'])->getJson('/api/delegations/open')->assertOk()->json('0.users'))->keyBy('id');
+    foreach ($private as $field) {
+        expect($rows[$cast['subject']->id]['pivot'])->toHaveKey($field);
+    }
 });

@@ -64,7 +64,9 @@ class UserController extends Controller
     public function show(User $user)
     {
         return response()->json(array_merge(
-            $user->only(['id', 'name', 'email', 'role', 'is_admin', 'deactivated_at', 'created_at', 'updated_at']),
+            // From toArray(), not $user->only(), so the email follows User::getHidden() like every
+            // other payload (admin-only route today, but a copy elsewhere must not leak it).
+            collect($user->toArray())->only(['id', 'name', 'email', 'role', 'is_admin', 'deactivated_at', 'created_at', 'updated_at'])->all(),
             [
                 'future_assignments_count' => $this->futureAssignments($user)->count(),
                 'future_on_call_count' => $this->futureOnCall($user)->count(),

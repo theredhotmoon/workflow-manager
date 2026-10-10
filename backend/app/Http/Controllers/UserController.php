@@ -143,6 +143,8 @@ class UserController extends Controller
                 return [0, 0];
             }
 
+            // On-call duties first, then assignments: group archive removes in the same order (see
+            // ShiftGroup's lock-order note), so the two can't deadlock over a member's rows.
             $removedOnCall = $this->futureOnCall($user)->delete();
 
             // As when a manager unassigns: pending change requests are settled (and kept), then the

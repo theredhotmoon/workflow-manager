@@ -63,6 +63,10 @@ class ShiftGroup extends Model
      * that waited then sees (READ COMMITTED) the work the writer committed, lists it in its 409 or
      * removes it on confirm. No transaction takes these locks in another order, so they can't
      * deadlock with each other.
+     * - Removing future work (group archive, user deactivation with "remove future shifts") deletes
+     *   on-call duties before it locks and removes assignments, in both places.
+     * - Change request filing locks the shift FOR SHARE, then the assignment, the order a day-count
+     *   reduction uses (shifts FOR UPDATE, then their assignments).
      */
 
     /**

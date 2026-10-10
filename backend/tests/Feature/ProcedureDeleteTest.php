@@ -242,7 +242,7 @@ it('freezes an archived procedure: FAQ, feedback and template writes are refused
         ['deleteJson', "/api/procedure-faq/{$h['faq']->id}", []],
         ['deleteJson', "/api/procedure-faq-replies/{$h['reply']->id}", []],
         ['postJson', "/api/procedures/{$id}/feedback", ['type' => 'error', 'description' => 'Typo']],
-        ['putJson', "/api/procedure-feedbacks/{$h['feedback']->id}", ['status' => 'resolved']],
+        ['putJson', "/api/procedure-feedbacks/{$h['feedback']->id}", ['status' => 'resolved', 'owner_comment' => 'Fixed.']],
         ['postJson', "/api/procedures/{$id}/templates", ['title' => 'T', 'body' => 'B']],
         ['putJson', "/api/procedure-templates/{$h['responseTemplate']->id}", ['title' => 'T2']],
         ['deleteJson', "/api/procedure-templates/{$h['responseTemplate']->id}", []],
@@ -331,4 +331,22 @@ it('keeps a restored procedure\'s sort order', function () {
     $this->actingAs($admin)->postJson("/api/procedures/{$proc->id}/restore")->assertOk();
 
     expect($proc->fresh()->sort_order)->toBe(7);
+});
+
+it('lets an admin settle open feedback on an archived procedure, but not comment on it', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $h = prdProcedureWithHistory(User::factory()->create(), User::factory()->create());
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$h['child']->id}")->assertOk();
+    $this->actingAs($admin)->deleteJson("/api/procedures/{$h['procedure']->id}")->assertOk();
+
+    $this->actingAs($admin)->putJson("/api/procedure-feedbacks/{$h['feedback']->id}", [
+        'status' => 'resolved', 'resolution' => 'deferred',
+    ])->assertOk()->assertJsonPath('status', 'resolved');
+    $this->actingAs($admin)->putJson("/api/procedure-feedbacks/{$h['feedback']->id}", ['owner_comment' => 'Later.'])
+        ->assertStatus(409);
+
+    $fresh = $h['feedback']->fresh();
+    expect($fresh->status)->toBe('resolved')
+        ->and($fresh->resolution)->toBe('deferred')
+        ->and($fresh->owner_comment)->toBeNull();
 });

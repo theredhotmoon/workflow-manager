@@ -135,8 +135,10 @@ class ShiftGroupController extends Controller
                 return $this->futureWorkRefusal($shiftGroup, $assignments, $onCall);
             }
 
-            $removedAssignments = $remover->removeAssignments($assignments);
+            // On-call duties before assignments, the order user deactivation uses (see ShiftGroup's
+            // lock-order note): both touch the same rows, so the same order can't deadlock.
             $removedOnCall = OnCallAssignment::whereIn('id', $onCall->pluck('id'))->delete();
+            $removedAssignments = $remover->removeAssignments($assignments);
             $shiftGroup->forceFill(['archived_at' => now()])->save();
 
             return [$removedAssignments, $removedOnCall];

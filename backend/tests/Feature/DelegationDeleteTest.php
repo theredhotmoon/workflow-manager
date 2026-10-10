@@ -88,3 +88,23 @@ it('answers 404, not a server error, when the delegation is deleted while a memb
 
     expect(DelegationLog::where('delegation_id', $delegation->id)->count())->toBe(0);
 })->with(['approve-user', 'add-user']);
+
+it('answers 404 and archives nothing when the delegation is deleted while it is being archived', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $delegation = dldDelegation($admin, User::factory()->create(['role' => 'employee']));
+    // Deterministic stand-in for a concurrent delete: it lands right after route binding found the row.
+    $fired = false;
+    DB::listen(function ($query) use (&$fired, $delegation) {
+        if ($fired || !str_contains($query->sql, 'from "delegations"')) {
+            return;
+        }
+        $fired = true;
+        DB::table('delegations')->where('id', $delegation->id)->delete();
+    });
+
+    $this->actingAs($admin)->postJson("/api/delegations/{$delegation->id}/archive")
+        ->assertNotFound()
+        ->assertJsonPath('message', 'This delegation no longer exists.');
+
+    expect(\App\Models\ArchivedDelegation::where('original_id', $delegation->id)->count())->toBe(0);
+});

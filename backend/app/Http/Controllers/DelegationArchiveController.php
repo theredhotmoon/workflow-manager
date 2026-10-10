@@ -65,6 +65,9 @@ class DelegationArchiveController extends Controller
     public function archive(Request $request, Delegation $delegation)
     {
         return DB::transaction(function () use ($request, $delegation) {
+            // Locked first, then re-read (Delegation::lockOrGone): a member approved or added
+            // meanwhile is copied into the archive instead of being deleted with the original.
+            $delegation = Delegation::lockOrGone($delegation->id);
             // Create archived copy. forceFill (not create) so created_at /
             // updated_at are copied verbatim: they are not mass-assignable, and
             // Eloquent only stamps "now" on timestamp columns that are not dirty.

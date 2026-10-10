@@ -57,7 +57,11 @@ class ProcedureFeedbackController extends Controller
 
     public function update(Request $request, ProcedureFeedback $feedback)
     {
-        $feedback->procedure->refuseWritesIfArchived($request->user());
+        // Feedback on an archived procedure can still be settled (status, resolution), so the admin
+        // list can be cleared; a new owner comment is content and is refused like other writes.
+        if ($request->has('owner_comment')) {
+            $feedback->procedure->refuseWritesIfArchived($request->user());
+        }
         $validated = $request->validate([
             'status' => ['sometimes', 'string', 'in:open,reviewed,resolved'],
             'resolution' => ['sometimes', 'nullable', 'string', 'in:accepted,rejected,deferred'],

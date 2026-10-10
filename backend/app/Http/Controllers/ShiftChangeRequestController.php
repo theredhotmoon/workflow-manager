@@ -30,7 +30,13 @@ class ShiftChangeRequestController extends Controller
             // settles requests and deletes it, so a request filed meanwhile either lands first (and
             // is settled with the rest) or waits and finds the assignment gone (404, not a 500 on
             // the foreign key or a request left pending on a removed assignment).
-            $assignment = ShiftAssignment::with('shift')->lockForUpdate()->find($request->shift_assignment_id);
+            // Shift first (FOR SHARE), then the assignment: the order a day-count reduction locks them
+            // (its shifts FOR UPDATE, then their assignments), so the two can't deadlock.
+            $shiftId = ShiftAssignment::whereKey($request->shift_assignment_id)->value('shift_id');
+            $shiftLocked = $shiftId && Shift::whereKey($shiftId)->sharedLock()->first(['id']);
+            $assignment = $shiftLocked
+                ? ShiftAssignment::with('shift')->lockForUpdate()->find($request->shift_assignment_id)
+                : null;
             if (!$assignment) {
                 return response()->json(['message' => 'This assignment no longer exists.'], 404);
             }

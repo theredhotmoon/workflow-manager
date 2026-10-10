@@ -2769,8 +2769,10 @@ async function doAssign(
       return { status: 'prompted', updatedCount: 0 };
     }
     if (err.response?.status === 409 && code === 'short_daily_rest') {
+      // An overlap (booked twice at the same time) is the harder case: say so in the title too.
+      const overlaps = err.response.data.overlaps === true;
       const ok = await confirm({
-        title: 'Less than 11 hours of rest',
+        title: overlaps ? 'Overlapping shift' : 'Less than 11 hours of rest',
         message: `${err.response.data.message} Assign anyway?`,
         confirmLabel: 'Assign anyway',
       });

@@ -6,6 +6,7 @@ use App\Models\NewbiePeriod;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use App\Support\Month;
 
 class NewbiePeriodController extends Controller
@@ -71,14 +72,24 @@ class NewbiePeriodController extends Controller
     }
 
     /**
-     * Update a newbie period.
+     * Update a newbie period. Either date may change alone, so the range is checked as it will be
+     * stored: the new value(s) merged with the current ones.
      */
     public function update(Request $request, NewbiePeriod $newbiePeriod)
     {
         $validated = $request->validate([
             'start_date' => ['sometimes', 'date'],
-            'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],
+            'end_date' => ['sometimes', 'date'],
         ]);
+        $validated = array_map(fn ($date) => Carbon::parse($date)->toDateString(), $validated);
+
+        $start = $validated['start_date'] ?? $newbiePeriod->start_date->toDateString();
+        $end = $validated['end_date'] ?? $newbiePeriod->end_date->toDateString();
+        if ($end < $start) {
+            throw ValidationException::withMessages([
+                'end_date' => "The end date must be on or after the start date ({$start}).",
+            ]);
+        }
 
         $newbiePeriod->update($validated);
 

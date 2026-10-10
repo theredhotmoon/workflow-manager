@@ -158,6 +158,13 @@ class DelegationController extends Controller
             $pivotData['custom_start'] = self::dateOnly($request->custom_start);
         if ($request->has('custom_end'))
             $pivotData['custom_end'] = self::dateOnly($request->custom_end);
+        // A date not sent stays as stored, so the check uses the member's current one.
+        $current = $delegation->users()->where('users.id', $request->user_id)->first()?->pivot;
+        $this->ensureTravelDatesFit(
+            $delegation,
+            array_key_exists('custom_start', $pivotData) ? $pivotData['custom_start'] : $current?->custom_start,
+            array_key_exists('custom_end', $pivotData) ? $pivotData['custom_end'] : $current?->custom_end,
+        );
 
         DB::transaction(function () use ($request, $delegation, $pivotData) {
             // Locked like destroy(), so a delete can't miss a member added at the same moment.
@@ -186,9 +193,13 @@ class DelegationController extends Controller
             'custom_end' => ['sometimes', 'nullable', 'date'],
         ]);
 
+        $customStart = self::dateOnly($request->custom_start);
+        $customEnd = self::dateOnly($request->custom_end);
+        $this->ensureTravelDatesFit($delegation, $customStart, $customEnd);
+
         $delegation->users()->updateExistingPivot($request->user_id, [
-            'custom_start' => self::dateOnly($request->custom_start),
-            'custom_end' => self::dateOnly($request->custom_end),
+            'custom_start' => $customStart,
+            'custom_end' => $customEnd,
         ]);
 
         $userName = User::find($request->user_id)?->name ?? $request->user_id;
@@ -394,6 +405,29 @@ class DelegationController extends Controller
             ->get();
 
         return response()->json($delegations);
+    }
+
+    /**
+     * A member's own travel dates (either may be unset) lie within the delegation's days, and the
+     * last is on or after the first.
+     */
+    private function ensureTravelDatesFit(Delegation $delegation, ?string $customStart, ?string $customEnd): void
+    {
+        $first = $delegation->start_datetime->format('Y-m-d');
+        $last = $delegation->end_datetime->format('Y-m-d');
+        $outside = "Travel dates must fall within the delegation ({$first} to {$last}).";
+        $errors = [];
+        if ($customStart !== null && ($customStart < $first || $customStart > $last)) {
+            $errors['custom_start'] = $outside;
+        }
+        if ($customEnd !== null && ($customEnd < $first || $customEnd > $last)) {
+            $errors['custom_end'] = $outside;
+        } elseif ($customStart !== null && $customEnd !== null && $customEnd < $customStart) {
+            $errors['custom_end'] = 'The travel end date must be on or after the travel start date.';
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**

@@ -138,11 +138,13 @@
                       </td>
                       <td class="px-4 py-2.5">
                         <input type="date" :value="user.pivot?.custom_start || ''" :disabled="isUserBusy(del, user)" :aria-label="`Custom start for ${user.name}`"
+                          :min="del.start_datetime?.substring(0, 10)" :max="user.pivot?.custom_end || del.end_datetime?.substring(0, 10)"
                           @change="updateDates(del, user, 'custom_start', $event.target.value)"
                           class="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32" />
                       </td>
                       <td class="px-4 py-2.5">
                         <input type="date" :value="user.pivot?.custom_end || ''" :disabled="isUserBusy(del, user)" :aria-label="`Custom end for ${user.name}`"
+                          :min="user.pivot?.custom_start || del.start_datetime?.substring(0, 10)" :max="del.end_datetime?.substring(0, 10)"
                           @change="updateDates(del, user, 'custom_end', $event.target.value)"
                           class="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32" />
                       </td>

@@ -50,6 +50,7 @@ const App = {
           h(
             BaseModal,
             {
+              panelClass: 'panel',
               described: true,
               backdropClass: 'backdrop',
               busy: busy.value,
@@ -82,6 +83,7 @@ const App = {
           h(
             BaseModal,
             {
+              panelClass: 'panel',
               role: 'alertdialog',
               initialFocus: '#inner-ok',
               onClose: () => (inner.value = false),
@@ -98,6 +100,7 @@ const App = {
           h(
             BaseModal,
             {
+              panelClass: 'panel',
               closeOnBackdrop: false,
               closeOnEscape: false,
               label: 'Sticky dialog',
@@ -113,6 +116,7 @@ const App = {
           h(
             BaseModal,
             {
+              panelClass: 'panel',
               label: 'Vanish dialog',
               returnFocus: vanish.value === 'custom' ? '#after' : '',
               onClose: () => (vanish.value = ''),

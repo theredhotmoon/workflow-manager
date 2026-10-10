@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
-/* Programmatic focus targets (a dialog panel, <main> after a dialog whose opener is gone
-   closes) take focus for screen readers and the keyboard, but are not controls: no ring. */
-[tabindex="-1"]:focus {
+/* Where useFocusTrap puts focus when a dialog closes and its opener is gone (usually <main>):
+   a stand-in focus target for screen readers and the keyboard, not a control, so no ring. */
+[data-focus-fallback]:focus {
   outline: none;
 }

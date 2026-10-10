@@ -6,8 +6,13 @@ import { expect, test } from '@playwright/test';
 // Vite server (middleware mode, its own cache dir, no file watcher, dependency scan limited to the
 // harness) compiles BaseModal.harness.js for the page.
 const root = resolvePath(__dirname, '../..');
+// Just enough layout for real mouse clicks: full-screen overlay and backdrop, a panel on top of
+// them away from the corner, so a click at (5, 5) lands on the backdrop (or the bare overlay).
+const STYLE =
+  '<style>.fixed{position:fixed}.inset-0{inset:0}.backdrop{position:fixed;inset:0}' +
+  '.panel{position:relative;width:320px;margin:120px auto;background:#fff}</style>';
 const HARNESS =
-  '<!doctype html><html><body><div id="app"></div>' +
+  `<!doctype html><html><head>${STYLE}</head><body><div id="app"></div>` +
   '<script type="module" src="/src/components/BaseModal.harness.js"></script></body></html>';
 
 let vite;
@@ -165,7 +170,7 @@ test('a backdrop click closes; with close-on-backdrop and close-on-escape off ne
   page,
 }) => {
   const outer = await openOuterWithKeyboard(page);
-  await page.locator('.backdrop').dispatchEvent('click');
+  await page.mouse.click(5, 5);
   await expect(outer).toHaveCount(0);
 
   await page.locator('#open-sticky').focus();
@@ -173,10 +178,12 @@ test('a backdrop click closes; with close-on-backdrop and close-on-escape off ne
   const sticky = page.getByRole('dialog', { name: 'Sticky dialog' });
   await expect(sticky).toBeVisible();
   await page.keyboard.press('Escape');
-  await sticky.evaluate((el) => el.parentElement.click());
+  await page.mouse.click(5, 5);
   await expect(sticky).toBeVisible();
 
-  await expect.poll(() => focusedId(page)).toBe('sticky-close');
+  // The click left focus on the page; the next Tab brings it back into the dialog.
+  await page.keyboard.press('Tab');
+  expect(await focusedId(page)).toBe('sticky-close');
   await page.keyboard.press('Enter');
   await expect(sticky).toHaveCount(0);
   expect(await focusedId(page)).toBe('open-sticky');
@@ -209,7 +216,7 @@ test('while busy, neither Escape nor a backdrop click closes the dialog', async 
   const outer = await openOuterWithKeyboard(page);
   await page.locator('#outer-busy').check();
   await page.keyboard.press('Escape');
-  await page.locator('.backdrop').dispatchEvent('click');
+  await page.mouse.click(5, 5);
   await expect(outer).toBeVisible();
 
   await page.locator('#outer-busy').uncheck();
@@ -239,4 +246,50 @@ test('when the opener is gone, focus goes to return-focus, else to <main>, not <
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   expect(await focusedId(page)).toBe('after');
+});
+
+test('dragging a selection out of a field onto the backdrop does not close the dialog', async ({
+  page,
+}) => {
+  const outer = await openOuterWithKeyboard(page);
+  const field = page.locator('#outer-first');
+  await field.fill('typed text that must survive');
+  const box = await field.boundingBox();
+
+  // Press in the field, release over the backdrop: the browser fires click on the overlay.
+  await page.mouse.move(box.x + 5, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(5, 5, { steps: 5 });
+  await page.mouse.up();
+  await expect(outer).toBeVisible();
+  await expect(field).toHaveValue('typed text that must survive');
+
+  // The reverse (press on the backdrop, release in the panel) does not close it either.
+  await page.mouse.move(5, 5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 5, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(outer).toBeVisible();
+
+  // A real click on the backdrop still does.
+  await page.mouse.click(5, 5);
+  await expect(outer).toHaveCount(0);
+});
+
+test('the stand-in focus target is only temporary: <main> loses tabindex once focus moves on', async ({
+  page,
+}) => {
+  await page.goto(baseURL);
+  await page.locator('#vanish-default').focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  const main = page.locator('main');
+  await expect(main).toBeFocused();
+  await expect(main).toHaveAttribute('tabindex', '-1');
+  await expect(main).toHaveAttribute('data-focus-fallback', '');
+
+  await page.keyboard.press('Tab');
+  await expect(main).not.toBeFocused();
+  await expect(main).not.toHaveAttribute('tabindex');
+  await expect(main).not.toHaveAttribute('data-focus-fallback');
 });

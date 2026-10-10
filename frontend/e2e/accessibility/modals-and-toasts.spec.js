@@ -1,4 +1,4 @@
-import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
+import { createShiftGroupWithStreakRule, createUser } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 
 // Keyboard and screen-reader basics for the shared modal shell (BaseModal), the toast live
@@ -101,6 +101,60 @@ test.describe('Modals: keyboard', () => {
     await adminPage.keyboard.press('Escape');
     await expect(step2).toHaveCount(0);
     await expect(opener).toBeFocused();
+  });
+});
+
+test.describe('Modals: closing while a save is in flight', () => {
+  test('Users "Change Password": Escape waits, Cancel closes, a late failure is a toast', async ({
+    adminPage,
+  }) => {
+    const stamp = Date.now();
+    const name = `Busy Pw ${stamp}`;
+    await createUser(adminPage.context(), { name, email: `busy-pw-${stamp}@example.test` });
+
+    // Hold the password request until the dialog has been closed, then fail it.
+    let releaseSave;
+    const released = new Promise((resolve) => {
+      releaseSave = resolve;
+    });
+    await adminPage.route('**/api/users/*/password', async (route) => {
+      await released;
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Server exploded.' }),
+      });
+    });
+
+    await adminPage.goto('/users');
+    await adminPage
+      .getByRole('row', { name: new RegExp(name) })
+      .getByTitle('Change Password')
+      .click();
+    const dialog = adminPage.getByRole('dialog', { name: 'Change Password' });
+    await dialog.getByPlaceholder('Minimum 8 characters').fill('newpassword1');
+    await dialog.getByPlaceholder('Re-enter new password').fill('newpassword1');
+    await dialog.getByRole('button', { name: 'Change Password' }).click();
+    await expect(dialog.getByRole('button', { name: 'Changing...' })).toBeVisible();
+
+    // Busy: Escape and a backdrop click are ignored, the visible Cancel still works.
+    await adminPage.keyboard.press('Escape');
+    await adminPage.mouse.click(5, 5);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toHaveCount(0);
+
+    releaseSave();
+    await expect(adminPage.locator('[role="alert"][aria-live="assertive"]')).toContainText(
+      `Password for "${name}" was not changed: Server exploded.`,
+    );
+    // Reopening shows a clean form, not the late error.
+    await adminPage
+      .getByRole('row', { name: new RegExp(name) })
+      .getByTitle('Change Password')
+      .click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).not.toContainText('Server exploded.');
   });
 });
 

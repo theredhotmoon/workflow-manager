@@ -160,9 +160,20 @@ export function createFocusTrap(containerRef, options = {}) {
       topModalContainer() ||
       document.querySelector('main');
     if (!(target instanceof HTMLElement)) return;
-    // A dialog or <main> is not focusable by itself: make it a programmatic focus target only.
+    // A dialog or <main> is not focusable by itself: make it a programmatic focus target for
+    // this one move, and undo that when focus leaves, so later clicks on page text don't land
+    // focus on it. `data-focus-fallback` drops its focus ring (app.css).
     if (!target.matches(FOCUSABLE_SELECTORS) && !target.hasAttribute('tabindex')) {
       target.setAttribute('tabindex', '-1');
+      target.setAttribute('data-focus-fallback', '');
+      target.addEventListener(
+        'blur',
+        () => {
+          target.removeAttribute('tabindex');
+          target.removeAttribute('data-focus-fallback');
+        },
+        { once: true },
+      );
     }
     target.focus({ preventScroll: true });
   }

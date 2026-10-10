@@ -12,7 +12,7 @@
   what that means.
 -->
 <template>
-  <div :class="overlayClass" @click.self="onBackdropClick">
+  <div :class="overlayClass" @pointerdown.capture="onPointerdown" @click.self="onBackdropClick">
     <div v-if="backdropClass" :class="backdropClass" aria-hidden="true" @click="onBackdropClick"></div>
     <div
       ref="panelRef"
@@ -62,8 +62,9 @@ const props = defineProps({
    */
   returnFocus: { type: [String, Function], default: '' },
   /**
-   * A request is in flight: Escape and backdrop clicks do not close the dialog (the caller should
-   * also disable its own Cancel / close buttons), so a save can't finish against a closed form.
+   * A request is in flight: Escape and backdrop clicks do not close the dialog, so a stray key or
+   * click can't drop a form mid-save. The caller's own Cancel / close buttons stay enabled (an
+   * explicit way out); its save handler must cope with the dialog closing before the response.
    */
   busy: { type: Boolean, default: false },
 });
@@ -74,8 +75,19 @@ const titleId = useId();
 const descriptionId = useId();
 const panelRef = ref(null);
 
-function onBackdropClick() {
-  if (props.closeOnBackdrop && !props.busy) emit('close');
+// A click counts as a backdrop click only if the press started on the backdrop too: dragging a
+// text selection out of a field and releasing over the backdrop makes the browser fire `click`
+// on the overlay (the common ancestor), and that must not close the dialog.
+let pressedOn = null;
+
+function onPointerdown(event) {
+  pressedOn = event.target;
+}
+
+function onBackdropClick(event) {
+  const startedHere = pressedOn === event.currentTarget;
+  pressedOn = null;
+  if (startedHere && props.closeOnBackdrop && !props.busy) emit('close');
 }
 
 function resolveReturnFocus() {

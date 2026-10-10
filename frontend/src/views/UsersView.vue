@@ -401,7 +401,7 @@
           <h2 :id="titleId" class="text-lg font-semibold text-white">Change Password</h2>
           <p class="text-slate-400 text-sm mt-1">For: {{ passwordUser?.name }}</p>
         </div>
-        <button @click="closePasswordModal" :disabled="savingPassword" aria-label="Close" class="disabled:opacity-50 text-slate-400 hover:text-white transition-colors">
+        <button @click="closePasswordModal" aria-label="Close" class="text-slate-400 hover:text-white transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -427,8 +427,8 @@
         </div>
 
         <div class="flex items-center gap-3 pt-2">
-          <button type="button" @click="closePasswordModal" :disabled="savingPassword"
-            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200 disabled:opacity-50">
+          <button type="button" @click="closePasswordModal"
+            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
             Cancel
           </button>
           <button type="submit" :disabled="savingPassword"
@@ -476,8 +476,8 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <button @click="closeDeactivateModal" :disabled="deactivating"
-          class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200 disabled:opacity-50">
+        <button @click="closeDeactivateModal"
+          class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
           Cancel
         </button>
         <button @click="deactivateUserConfirmed" :disabled="deactivating || futureWork === null"
@@ -1015,6 +1015,12 @@ function closePasswordModal() {
   passwordUser.value = null;
 }
 
+// Cancel stays usable while a save runs, so the dialog may be closed or reopened for another user
+// before the response arrives: results only touch the dialog if it still shows that user.
+function passwordDialogIsFor(user) {
+  return showPasswordModal.value && passwordUser.value === user;
+}
+
 async function changePassword() {
   // Captured before the request: the dialog's state must not be read after the await.
   const user = passwordUser.value;
@@ -1026,12 +1032,16 @@ async function changePassword() {
       password_confirmation: passwordForm.password_confirmation,
     });
     showToast(`Password for "${user.name}" changed successfully.`);
-    closePasswordModal();
+    if (passwordDialogIsFor(user)) closePasswordModal();
   } catch (err) {
     const data = err.response?.data;
-    passwordError.value = data?.errors
+    const message = data?.errors
       ? Object.values(data.errors).flat().join(' ')
       : data?.message || 'An error occurred.';
+    // Closed (or reopened for someone else) while the request ran: say so in a toast rather than
+    // leave the error on a form that is no longer this request's.
+    if (passwordDialogIsFor(user)) passwordError.value = message;
+    else showToast(`Password for "${user.name}" was not changed: ${message}`, 'error');
   } finally {
     savingPassword.value = false;
   }
@@ -1068,6 +1078,12 @@ function closeDeactivateModal() {
   deactivateTarget.value = null;
 }
 
+// As for the password dialog: Cancel works mid-request, so results check the dialog still shows
+// this user before touching it.
+function deactivateDialogIsFor(user) {
+  return showDeactivateModal.value && deactivateTarget.value === user;
+}
+
 async function deactivateUserConfirmed() {
   // Captured before the request: the dialog's state must not be read after the await.
   const target = deactivateTarget.value;
@@ -1078,10 +1094,12 @@ async function deactivateUserConfirmed() {
       remove_future_assignments: futureWorkTotal.value > 0 && removeFutureAssignments.value,
     });
     showToast(`User "${target.name}" deactivated.`);
-    closeDeactivateModal();
+    if (deactivateDialogIsFor(target)) closeDeactivateModal();
     await fetchUsers();
   } catch (err) {
-    deactivateError.value = err.response?.data?.message || 'An error occurred.';
+    const message = err.response?.data?.message || 'An error occurred.';
+    if (deactivateDialogIsFor(target)) deactivateError.value = message;
+    else showToast(`User "${target.name}" was not deactivated: ${message}`, 'error');
   } finally {
     deactivating.value = false;
   }

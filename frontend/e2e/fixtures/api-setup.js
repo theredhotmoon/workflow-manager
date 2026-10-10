@@ -52,10 +52,10 @@ export async function generateMonthShifts(context, { monthKey, shiftGroupId }) {
   if (!res.ok()) throw new Error(`generate month failed: ${res.status()} ${await res.text()}`);
 }
 
-// Seeds an assignment. The 11 h daily-rest question (409 short_daily_rest) is answered yes by
-// default: specs share the seeded employees across groups and runs, so their shifts can sit close
-// together or overlap, and the rest check has its own spec (schedule/short-rest.spec.js).
-export async function assignShift(context, { shiftId, userId, confirmShortRest = true }) {
+// Seeds an assignment. A spec that deliberately seeds shifts closer than 11 h (or overlapping) for
+// one employee passes confirmShortRest: true to answer the 409 short_daily_rest question; by
+// default it isn't answered, so an unexpected short-rest refusal fails the setup loudly.
+export async function assignShift(context, { shiftId, userId, confirmShortRest = false }) {
   const headers = await getXsrfHeader(context);
   const res = await send(context, 'post', '/api/schedule/assign', {
     data: { shift_id: shiftId, user_id: userId, confirm_short_rest: confirmShortRest },

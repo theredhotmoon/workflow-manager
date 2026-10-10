@@ -234,6 +234,8 @@ class ChecklistSubmissionController extends Controller
             $submission = ChecklistSubmission::create([
                 'checklist_template_id' => $request->checklist_template_id,
                 'shift_id' => $request->shift_id,
+                // Kept apart from a shift link nulled later (its shift removed): see the alerts.
+                'filed_without_shift' => !$request->filled('shift_id'),
                 'date' => $request->date,
                 'outgoing_user_id' => $request->outgoing_user_id,
                 'incoming_user_id' => $request->incoming_user_id,

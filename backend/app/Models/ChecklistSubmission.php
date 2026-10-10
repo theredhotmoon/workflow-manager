@@ -9,6 +9,7 @@ class ChecklistSubmission extends Model
     protected $fillable = [
         'checklist_template_id',
         'shift_id',
+        'filed_without_shift',
         'date',
         'outgoing_user_id',
         'incoming_user_id',
@@ -26,8 +27,17 @@ class ChecklistSubmission extends Model
         'submitted_at' => 'datetime',
         'confirmed_at' => 'datetime',
         'submitted_on_time' => 'boolean',
+        'filed_without_shift' => 'boolean',
         'incoming_reassigned_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // A handover created without a shift was filed without one (F8); set unless given.
+        static::creating(function (self $submission) {
+            $submission->filed_without_shift ??= $submission->shift_id === null;
+        });
+    }
 
     public function template()
     {

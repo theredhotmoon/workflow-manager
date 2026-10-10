@@ -59,3 +59,14 @@ it('renders an unreadable filter value on a GET as 422, not 500 (L7 safety net)'
         ->assertUnprocessable()
         ->assertJsonPath('message', 'One of the values sent is not valid.');
 });
+
+it('renders an out-of-range number on a GET as 422, not 500 (review M1)', function () {
+    // shift_number is a 4-byte integer column: 3000000000 can't be compared with it (22003).
+    Route::middleware('api')->get('/api/__test-out-of-range', function (Request $request) {
+        return response()->json(DB::table('shifts')->where('shift_number', $request->input('n'))->get());
+    });
+
+    $this->getJson('/api/__test-out-of-range?n=3000000000')
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'One of the values sent is not valid.');
+});

@@ -99,3 +99,12 @@ it('validates the procedure feedback status filter', function () {
     $this->getJson('/api/procedure-feedbacks?status=closed')->assertUnprocessable()->assertJsonValidationErrors('status');
     $this->getJson('/api/procedure-feedbacks?status=open')->assertOk();
 });
+
+it('refuses an access log version beyond the column range (review M1)', function () {
+    $admin = fvAdmin();
+    $procedure = fvProcedure($admin);
+
+    $this->actingAs($admin)->getJson("/api/procedures/{$procedure->id}/access-log?version=3000000000")
+        ->assertUnprocessable()->assertJsonValidationErrors('version');
+    $this->actingAs($admin)->getJson("/api/procedures/{$procedure->id}/access-log?version=2147483647")->assertOk();
+});

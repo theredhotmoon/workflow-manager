@@ -52,7 +52,8 @@ class Handler extends ExceptionHandler
 
         // Safety net behind request validation (L7): a GET whose filter value PostgreSQL can't read
         // as the column's type (invalid_text_representation 22P02, invalid_datetime_format 22007,
-        // datetime_field_overflow 22008) is the caller's mistake, so it answers 422, not 500.
+        // datetime_field_overflow 22008, numeric_value_out_of_range 22003) is the caller's mistake,
+        // so it answers 422, not 500.
         // Writes are left alone: there a failed statement may be a real bug worth a 500 and a report.
         $this->renderable(function (QueryException $e, Request $request) {
             if ($request->isMethod('GET') && $request->is('api', 'api/*') && SqlState::isInvalidInput($e)) {

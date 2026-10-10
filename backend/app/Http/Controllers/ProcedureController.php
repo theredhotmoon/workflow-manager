@@ -529,7 +529,8 @@ class ProcedureController extends Controller
 
         $request->validate([
             'user_id' => ['sometimes', 'nullable', 'integer'],
-            'version' => ['sometimes', 'nullable', 'integer'],
+            // version_read is a 4-byte integer column.
+            'version' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:2147483647'],
             'date_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'date_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
         ]);

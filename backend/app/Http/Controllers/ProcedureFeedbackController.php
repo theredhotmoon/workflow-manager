@@ -24,6 +24,7 @@ class ProcedureFeedbackController extends Controller
 
     public function store(Request $request, Procedure $procedure)
     {
+        $procedure->refuseWritesIfArchived($request->user());
         $validated = $request->validate([
             'type' => ['required', 'string', 'in:error,suggestion'],
             'description' => ['required', 'string', 'max:5000'],
@@ -56,6 +57,7 @@ class ProcedureFeedbackController extends Controller
 
     public function update(Request $request, ProcedureFeedback $feedback)
     {
+        $feedback->procedure->refuseWritesIfArchived($request->user());
         $validated = $request->validate([
             'status' => ['sometimes', 'string', 'in:open,reviewed,resolved'],
             'resolution' => ['sometimes', 'nullable', 'string', 'in:accepted,rejected,deferred'],

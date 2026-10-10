@@ -32,6 +32,10 @@ class FutureWorkRemover
         $assignments->loadMissing('shift:id,shift_group_id');
         $ids = $assignments->pluck('id');
 
+        // Rows locked (id order) before the requests are settled: a change request being filed for
+        // one of them waits, then finds it gone, instead of landing pending after the settle.
+        ShiftAssignment::whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get(['id']);
+
         ShiftChangeRequest::whereIn('shift_assignment_id', $ids)
             ->where('status', 'pending')
             ->update(['status' => 'acknowledged']);

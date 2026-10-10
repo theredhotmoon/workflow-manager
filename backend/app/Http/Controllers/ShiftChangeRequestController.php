@@ -8,7 +8,9 @@ use App\Models\Shift;
 use App\Models\Alarm;
 use App\Services\AlarmService;
 use App\Support\BusinessDate;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Support\Month;
 
 class ShiftChangeRequestController extends Controller
@@ -23,34 +25,49 @@ class ShiftChangeRequestController extends Controller
             'reason' => ['required', 'string', 'min:3', 'max:1000'],
         ]);
 
-        $assignment = ShiftAssignment::with('shift')->findOrFail($request->shift_assignment_id);
+        $result = DB::transaction(function () use ($request) {
+            // The assignment row is locked: an unassign, move or bulk removal locks it too before it
+            // settles requests and deletes it, so a request filed meanwhile either lands first (and
+            // is settled with the rest) or waits and finds the assignment gone (404, not a 500 on
+            // the foreign key or a request left pending on a removed assignment).
+            $assignment = ShiftAssignment::with('shift')->lockForUpdate()->find($request->shift_assignment_id);
+            if (!$assignment) {
+                return response()->json(['message' => 'This assignment no longer exists.'], 404);
+            }
 
-        // Ensure the assignment belongs to the current user
-        if ($assignment->user_id !== auth()->id()) {
-            return response()->json(['message' => 'You can only request changes for your own assignments.'], 403);
+            // Ensure the assignment belongs to the current user
+            if ($assignment->user_id !== auth()->id()) {
+                return response()->json(['message' => 'You can only request changes for your own assignments.'], 403);
+            }
+
+            // Ensure the shift is today or in the future (the business timezone's today)
+            if ($assignment->shift->date->toDateString() < BusinessDate::todayString()) {
+                return response()->json(['message' => 'Cannot request changes for past shifts.'], 422);
+            }
+
+            // Ensure no existing pending request
+            $existing = ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
+                ->where('status', 'pending')
+                ->exists();
+
+            if ($existing) {
+                return response()->json(['message' => 'You already have a pending request for this shift.'], 422);
+            }
+
+            $changeRequest = ShiftChangeRequest::create([
+                'shift_assignment_id' => $assignment->id,
+                'user_id' => auth()->id(),
+                'shift_id' => $assignment->shift_id,
+                'reason' => $request->reason,
+                'status' => 'pending',
+            ]);
+
+            return [$assignment, $changeRequest];
+        });
+        if ($result instanceof JsonResponse) {
+            return $result;
         }
-
-        // Ensure the shift is today or in the future (the business timezone's today)
-        if ($assignment->shift->date->toDateString() < BusinessDate::todayString()) {
-            return response()->json(['message' => 'Cannot request changes for past shifts.'], 422);
-        }
-
-        // Ensure no existing pending request
-        $existing = ShiftChangeRequest::where('shift_assignment_id', $assignment->id)
-            ->where('status', 'pending')
-            ->exists();
-
-        if ($existing) {
-            return response()->json(['message' => 'You already have a pending request for this shift.'], 422);
-        }
-
-        $changeRequest = ShiftChangeRequest::create([
-            'shift_assignment_id' => $assignment->id,
-            'user_id' => auth()->id(),
-            'shift_id' => $assignment->shift_id,
-            'reason' => $request->reason,
-            'status' => 'pending',
-        ]);
+        [$assignment, $changeRequest] = $result;
 
         // Dispatch alarm to admins and schedule maintainers
         $userName = auth()->user()->name;

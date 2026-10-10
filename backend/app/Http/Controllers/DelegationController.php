@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use App\Support\Month;
 
@@ -157,13 +158,17 @@ class DelegationController extends Controller
         if ($request->has('custom_end'))
             $pivotData['custom_end'] = self::dateOnly($request->custom_end);
 
-        $delegation->users()->syncWithoutDetaching([$request->user_id => $pivotData]);
+        DB::transaction(function () use ($request, $delegation, $pivotData) {
+            // Locked like destroy(), so a delete can't miss a member added at the same moment.
+            $this->lockOrGone($delegation);
+            $delegation->users()->syncWithoutDetaching([$request->user_id => $pivotData]);
 
-        // If user already existed with different status, update it
-        $delegation->users()->updateExistingPivot($request->user_id, $pivotData);
+            // If user already existed with different status, update it
+            $delegation->users()->updateExistingPivot($request->user_id, $pivotData);
 
-        $userName = User::find($request->user_id)?->name ?? $request->user_id;
-        $this->log($delegation->id, $request->user()->id, 'user_added', "Added {$userName} (approved by admin)");
+            $userName = User::find($request->user_id)?->name ?? $request->user_id;
+            $this->log($delegation->id, $request->user()->id, 'user_added', "Added {$userName} (approved by admin)");
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
         return response()->json($delegation);
@@ -199,10 +204,14 @@ class DelegationController extends Controller
     {
         $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
 
-        $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'approved']);
+        DB::transaction(function () use ($request, $delegation) {
+            // Locked like destroy(), so a delete can't miss a member approved at the same moment.
+            $this->lockOrGone($delegation);
+            $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'approved']);
 
-        $userName = User::find($request->user_id)?->name ?? $request->user_id;
-        $this->log($delegation->id, $request->user()->id, 'user_approved', "Approved {$userName}");
+            $userName = User::find($request->user_id)?->name ?? $request->user_id;
+            $this->log($delegation->id, $request->user()->id, 'user_approved', "Approved {$userName}");
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
         return response()->json($delegation);
@@ -247,17 +256,34 @@ class DelegationController extends Controller
      */
     public function destroy(Delegation $delegation)
     {
-        $joined = $delegation->users()->wherePivot('status', 'approved')->orderBy('name')->pluck('name');
-        if ($joined->isNotEmpty()) {
-            return response()->json([
-                'code' => 'has_members',
-                'message' => 'This delegation has members (' . $joined->implode(', ') . '), so it can\'t be deleted. Archive it instead.',
-                'members' => $joined->values()->all(),
-            ], 409);
-        }
+        return DB::transaction(function () use ($delegation) {
+            // The delegation row is locked here and by addUser()/approveUser(), so a member added
+            // or approved meanwhile is seen (and blocks the delete) rather than deleted with it.
+            $this->lockOrGone($delegation);
+            $joined = $delegation->users()->wherePivot('status', 'approved')->orderBy('name')->pluck('name');
+            if ($joined->isNotEmpty()) {
+                return response()->json([
+                    'code' => 'has_members',
+                    'message' => 'This delegation has members (' . $joined->implode(', ') . '), so it can\'t be deleted. Archive it instead.',
+                    'members' => $joined->values()->all(),
+                ], 409);
+            }
 
-        $delegation->delete();
-        return response()->json(['message' => 'Delegation deleted.']);
+            $delegation->delete();
+
+            return response()->json(['message' => 'Delegation deleted.']);
+        });
+    }
+
+    /**
+     * Locks the delegation's row for the caller's transaction (the only row these writes lock, so
+     * there is no lock order to get wrong). 404 when it was deleted or archived meanwhile.
+     */
+    private function lockOrGone(Delegation $delegation): void
+    {
+        if (!Delegation::whereKey($delegation->id)->lockForUpdate()->first(['id'])) {
+            abort(404, 'This delegation no longer exists.');
+        }
     }
 
     /**

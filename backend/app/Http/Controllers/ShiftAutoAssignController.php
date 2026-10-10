@@ -43,6 +43,11 @@ class ShiftAutoAssignController extends Controller
         $totalAssignments = 0;
 
         DB::transaction(function () use ($shifts, $groupId, $janitor, &$totalAssignments) {
+            // The group first (ShiftGroup's lock order): an archive since validation is refused.
+            ShiftGroup::lockActiveOrFail($groupId);
+            // Then the assignment rows, so a change request being filed for one waits and then
+            // finds it gone instead of being left pending.
+            ShiftAssignment::whereIn('shift_id', $shifts->pluck('id'))->orderBy('id')->lockForUpdate()->get(['id']);
             // Clearing settles the month's pending change requests; they stay on record (with their
             // shift and assignment links nulled, date and slot kept).
             ShiftChangeRequest::whereIn('shift_id', $shifts->pluck('id'))
@@ -132,6 +137,9 @@ class ShiftAutoAssignController extends Controller
         DB::transaction(function () use (
             $request, $shifts, $employees, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
         ) {
+            // The group first (ShiftGroup's lock order): an archive since validation is refused here
+            // instead of a whole month landing in an archived group.
+            ShiftGroup::lockActiveOrFail($group?->id);
             foreach ($shifts as $shift) {
                 $dateStr = $shift->date->format('Y-m-d');
                 $dayOfWeek = $shift->date->dayOfWeekIso; // 1=Mon, 7=Sun
@@ -284,6 +292,9 @@ class ShiftAutoAssignController extends Controller
         DB::transaction(function () use (
             $request, $shifts, $shiftsByDate, $dateChunks, $employees, $employeeIds, $poolIndex, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
         ) {
+            // The group first (ShiftGroup's lock order): an archive since validation is refused here
+            // instead of a whole month landing in an archived group.
+            ShiftGroup::lockActiveOrFail($group?->id);
             foreach ($dateChunks as $dateBlock) {
                 // Determine how many unique users this block needs:
                 // max users needed for any single shift × shifts per day
@@ -758,6 +769,9 @@ class ShiftAutoAssignController extends Controller
         DB::transaction(function () use (
             $request, $shifts, $employees, $blockedMap, $assignmentTracker, $weekKeyByDate, $weekCapByDate, $shiftTimes, $windowsByShift, $employeeState, $busy, $streakTimeline, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
         ) {
+            // The group first (ShiftGroup's lock order): an archive since validation is refused here
+            // instead of a whole month landing in an archived group.
+            ShiftGroup::lockActiveOrFail($group?->id);
             foreach ($shifts as $shift) {
                 $dateStr = $shift->date->format('Y-m-d');
                 $dayOfWeek = $shift->date->dayOfWeekIso;

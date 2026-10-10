@@ -234,3 +234,39 @@ it('migrates existing requests: backfills date and slot, then nulls links instea
     expect($request->fresh()->shift_assignment_id)->toBeNull()
         ->and($request->fresh()->shift_id)->toBe($assignment->shift_id);
 });
+
+it('keeps a request\'s slot number in step when a day-count reduction renumbers its shift', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    scrAssign(User::factory()->create(), '2026-10-20', 1);
+    Shift::create(['date' => '2026-10-20', 'shift_number' => 2, 'shift_group_id' => $this->group->id]);
+    $assignment = scrAssign($this->employee, '2026-10-20', 3);
+    $request = scrRequest($assignment);
+
+    // The empty slot 2 goes; slot 3 becomes slot 2.
+    $this->actingAs($maintainer)->putJson('/api/schedule/day-shifts', [
+        'date' => '2026-10-20', 'count' => 2, 'shift_group_id' => $this->group->id,
+    ])->assertOk();
+
+    expect($assignment->shift->fresh()->shift_number)->toBe(2)
+        ->and($request->fresh()->shift_number)->toBe(2)
+        ->and($request->fresh()->status)->toBe('pending');
+});
+
+it('answers 404 with a clear message when the assignment is removed while the request is being filed', function () {
+    $assignment = scrAssign($this->employee, '2026-10-20');
+    // Deterministic stand-in for a concurrent unassign: it lands right after validation found the row.
+    $fired = false;
+    \Illuminate\Support\Facades\DB::listen(function ($query) use (&$fired, $assignment) {
+        if ($fired || !str_contains($query->sql, 'from "shift_assignments"')) {
+            return;
+        }
+        $fired = true;
+        \Illuminate\Support\Facades\DB::table('shift_assignments')->where('id', $assignment->id)->delete();
+    });
+
+    $this->actingAs($this->employee)->postJson('/api/shift-change-requests', [
+        'shift_assignment_id' => $assignment->id, 'reason' => 'Doctor appointment',
+    ])->assertNotFound()->assertJsonPath('message', 'This assignment no longer exists.');
+
+    expect(ShiftChangeRequest::count())->toBe(0);
+});

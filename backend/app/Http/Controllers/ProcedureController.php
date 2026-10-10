@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ProcedureController extends Controller
 {
@@ -419,24 +420,32 @@ class ProcedureController extends Controller
      */
     public function destroy(Procedure $procedure)
     {
-        if ($procedure->isArchived()) {
-            return response()->json(['message' => 'This procedure is already archived.'], 422);
-        }
+        return DB::transaction(function () use ($procedure) {
+            // Lock order with move(): move locks the new parent FOR SHARE before updating the moved
+            // row; archiving locks the procedure FOR UPDATE before reading its children. So a move
+            // under it either commits first (its child is seen and refused below) or waits and then
+            // sees the parent archived.
+            $procedure->newQuery()->whereKey($procedure->id)->lockForUpdate()->first(['id']);
+            $procedure->refresh();
+            if ($procedure->isArchived()) {
+                return response()->json(['message' => 'This procedure is already archived.'], 422);
+            }
 
-        $children = $procedure->children()->notArchived()->get(['id', 'identifier', 'title']);
-        if ($children->isNotEmpty()) {
-            $list = $children->map(fn (Procedure $child) => "{$child->identifier} {$child->title}")->implode(', ');
+            $children = $procedure->children()->notArchived()->get(['id', 'identifier', 'title']);
+            if ($children->isNotEmpty()) {
+                $list = $children->map(fn (Procedure $child) => "{$child->identifier} {$child->title}")->implode(', ');
 
-            return response()->json([
-                'code' => 'has_children',
-                'message' => "Move or archive its sub-procedures first: {$list}.",
-                'children' => $children->map->only(['id', 'identifier', 'title'])->values()->all(),
-            ], 409);
-        }
+                return response()->json([
+                    'code' => 'has_children',
+                    'message' => "Move or archive its sub-procedures first: {$list}.",
+                    'children' => $children->map->only(['id', 'identifier', 'title'])->values()->all(),
+                ], 409);
+            }
 
-        $procedure->forceFill(['archived_at' => now()])->save();
+            $procedure->forceFill(['archived_at' => now()])->save();
 
-        return response()->json(['message' => 'Procedure archived.']);
+            return response()->json(['message' => 'Procedure archived.']);
+        });
     }
 
     /**
@@ -473,7 +482,7 @@ class ProcedureController extends Controller
             return null;
         }
 
-        return response()->json(['message' => 'This procedure is archived. Restore it before changing it.'], 409);
+        return response()->json(['message' => Procedure::ARCHIVED_MESSAGE], 409);
     }
 
     public function syncTags(Request $request, Procedure $procedure)
@@ -599,9 +608,22 @@ class ProcedureController extends Controller
             }
         }
 
-        $procedure->update([
-            'parent_id' => $validated['parent_id'],
-        ]);
+        $moved = DB::transaction(function () use ($procedure, $validated) {
+            // The new parent is locked FOR SHARE and re-checked (see destroy() for the lock order):
+            // an archive of it since validation is refused instead of hiding this procedure under it.
+            if ($validated['parent_id']) {
+                $parent = Procedure::whereKey($validated['parent_id'])->sharedLock()->first(['id', 'archived_at']);
+                if (!$parent || $parent->isArchived()) {
+                    return false;
+                }
+            }
+            $procedure->update(['parent_id' => $validated['parent_id']]);
+
+            return true;
+        });
+        if (!$moved) {
+            throw ValidationException::withMessages(['parent_id' => 'The selected parent procedure is archived or no longer exists.']);
+        }
 
         return response()->json(['message' => 'Procedure moved.']);
     }

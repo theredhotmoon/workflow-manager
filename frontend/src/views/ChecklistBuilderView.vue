@@ -197,7 +197,8 @@
                         class="px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer w-[140px] shrink-0" title="Link a procedure">
                         <option :value="null" class="bg-slate-800">No procedure</option>
                         <option v-for="proc in procedures" :key="proc.id" :value="proc.id" class="bg-slate-800">{{ proc.identifier }} — {{ proc.title }}</option>
-                        <option v-for="proc in archivedLinked" :key="`archived-${proc.id}`" :value="proc.id" class="bg-slate-800">{{ proc.identifier }} — {{ proc.title }} (archived)</option>
+                        <!-- Only the item that already links an archived procedure offers it (the server refuses new links). -->
+                        <option v-if="item.id && archivedLinkByItem[item.id]" :value="archivedLinkByItem[item.id].id" class="bg-slate-800">{{ archivedLinkByItem[item.id].identifier }} — {{ archivedLinkByItem[item.id].title }} (archived)</option>
                       </select>
                       <button @click="item.requires_confirmation = !item.requires_confirmation"
                         :class="[
@@ -321,7 +322,8 @@ const defaultForm = () => ({
 
 const form = ref(defaultForm());
 const procedures = ref([]);
-const archivedLinked = ref([]);
+// item id => the archived procedure it already links (kept and labelled; never offered to other items).
+const archivedLinkByItem = ref({});
 // Track which group indexes are collapsed in the accordion
 const collapsedGroups = reactive(new Set());
 
@@ -362,7 +364,7 @@ function openCreateModal() {
   editRequests.invalidate();
   editingTemplate.value = null;
   form.value = defaultForm();
-  archivedLinked.value = [];
+  archivedLinkByItem.value = {};
   touchedName.value = false;
   collapsedGroups.clear();
   showModal.value = true;
@@ -377,9 +379,12 @@ async function editTemplate(tpl) {
     const data = response.data;
     // Procedures this template links that have since been archived: still offered (labelled) so
     // the link shows and survives a re-save, but not offered to other items as a new link.
-    archivedLinked.value = data.groups
-      .flatMap((g) => g.items.map((i) => i.procedure))
-      .filter((p, idx, all) => p?.archived_at && all.findIndex((q) => q?.id === p.id) === idx);
+    archivedLinkByItem.value = Object.fromEntries(
+      data.groups
+        .flatMap((g) => g.items)
+        .filter((i) => i.procedure?.archived_at)
+        .map((i) => [i.id, i.procedure]),
+    );
     touchedName.value = false;
     collapsedGroups.clear();
     form.value = {

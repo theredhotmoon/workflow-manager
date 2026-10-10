@@ -281,3 +281,101 @@ it('lets a new group take the name of an archived one', function () {
 
     expect(ShiftGroup::where('name', 'Night desk')->count())->toBe(2);
 });
+
+it('refuses every other schedule change in an archived group, including moves in and out', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $worker = User::factory()->create(['role' => 'employee']);
+    $main = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
+    $old = ShiftGroup::create(['name' => 'Old desk', 'is_default' => false, 'sort_order' => 1]);
+    $shift = Shift::create(['date' => '2026-10-05', 'shift_number' => 1, 'shift_group_id' => $old->id, 'start_time' => '08:00', 'end_time' => '16:00']);
+    $oldAssignment = ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $worker->id]);
+    $mainShift = Shift::create(['date' => '2026-10-20', 'shift_number' => 1, 'shift_group_id' => $main->id]);
+    $mainAssignment = ShiftAssignment::create(['shift_id' => $mainShift->id, 'user_id' => $worker->id]);
+    $template = ChecklistTemplate::create(['name' => 'Handover', 'is_active' => true]);
+    $this->actingAs($admin)->deleteJson("/api/shift-groups/{$old->id}")->assertOk();
+    $groupError = 'The selected shift group does not exist or is archived.';
+    $shiftError = 'This shift belongs to the archived shift group "Old desk". Restore the group to change its schedule.';
+
+    foreach ([
+        ['putJson', "/api/schedule/shifts/{$shift->id}/checklist", ['checklists' => [['checklist_template_id' => $template->id, 'is_required' => true]]]],
+        ['putJson', "/api/schedule/shifts/{$shift->id}/color", ['color' => '#ff0000']],
+        ['putJson', "/api/schedule/shifts/{$shift->id}/type", ['shift_type' => 'night']],
+        ['putJson', "/api/schedule/shifts/{$shift->id}/work-mode", ['work_mode' => 'remote']],
+        // Moving out of it (its assignment as the source) and into it (its shift as the target).
+        ['postJson', '/api/schedule/assign', ['shift_id' => $mainShift->id, 'user_id' => $worker->id, 'move_from_assignment_id' => $oldAssignment->id]],
+        ['postJson', '/api/schedule/assign', ['shift_id' => $shift->id, 'user_id' => $worker->id, 'move_from_assignment_id' => $mainAssignment->id]],
+    ] as [$method, $url, $body]) {
+        $this->actingAs($admin)->{$method}($url, $body)->assertStatus(422)->assertJsonPath('message', $shiftError);
+    }
+    foreach ([
+        ['putJson', '/api/schedule/shift-types', ['shift_group_id' => $old->id, 'month' => '2026-10', 'shift_number' => 1, 'shift_type' => 'night']],
+        ['deleteJson', '/api/schedule/clear-month', ['month' => '2026-10', 'shift_group_id' => $old->id]],
+        ['postJson', '/api/schedule/auto-assign/rotating', ['month' => '2026-10', 'shift_group_id' => $old->id, 'users_per_shift_weekday' => 1, 'users_per_shift_weekend' => 1, 'rotation_days' => 2]],
+        ['postJson', '/api/schedule/auto-assign/polish-law', ['month' => '2026-10', 'shift_group_id' => $old->id, 'users_per_shift_weekday' => 1, 'users_per_shift_weekend' => 1, 'rotation_days' => 2]],
+    ] as [$method, $url, $body]) {
+        $this->actingAs($admin)->{$method}($url, $body)->assertStatus(422)->assertJsonPath('errors.shift_group_id.0', $groupError);
+    }
+
+    $fresh = $shift->fresh();
+    expect($fresh->color)->toBeNull()
+        ->and($fresh->shift_type)->toBeNull()
+        ->and($fresh->work_mode ?? 'office')->toBe('office')
+        ->and(ShiftChecklist::where('shift_id', $shift->id)->count())->toBe(0)
+        ->and($oldAssignment->fresh())->not->toBeNull()
+        ->and($mainAssignment->fresh())->not->toBeNull()
+        ->and(ShiftAssignment::count())->toBe(2);
+});
+
+it('counts a shift tomorrow as future work and leaves today\'s alone', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $worker = User::factory()->create(['role' => 'employee']);
+    $group = ShiftGroup::create(['name' => 'Edge desk', 'is_default' => false, 'sort_order' => 1]);
+    $today = ShiftAssignment::create([
+        'shift_id' => Shift::create(['date' => '2026-10-09', 'shift_number' => 1, 'shift_group_id' => $group->id])->id,
+        'user_id' => $worker->id,
+    ]);
+    $tomorrow = ShiftAssignment::create([
+        'shift_id' => Shift::create(['date' => '2026-10-10', 'shift_number' => 1, 'shift_group_id' => $group->id])->id,
+        'user_id' => $worker->id,
+    ]);
+
+    $this->actingAs($admin)->deleteJson("/api/shift-groups/{$group->id}")
+        ->assertStatus(409)
+        ->assertJsonCount(1, 'assignments')
+        ->assertJsonPath('assignments.0.id', $tomorrow->id);
+
+    $this->actingAs($admin)->deleteJson("/api/shift-groups/{$group->id}", ['remove_future_assignments' => true])
+        ->assertOk()->assertJsonPath('removed_assignments', 1);
+    expect($tomorrow->fresh())->toBeNull()
+        ->and($today->fresh())->not->toBeNull();
+});
+
+it('keeps a restored group\'s place in the tab order', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $group = ShiftGroup::create(['name' => 'Ordered desk', 'is_default' => false, 'sort_order' => 5]);
+    $this->actingAs($admin)->deleteJson("/api/shift-groups/{$group->id}")->assertOk();
+    $this->actingAs($admin)->postJson("/api/shift-groups/{$group->id}/restore")->assertOk()
+        ->assertJsonPath('group.sort_order', 5);
+
+    expect($group->fresh()->sort_order)->toBe(5);
+});
+
+it('says "or is archived" only where archived groups are refused', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    $old = ShiftGroup::create(['name' => 'Old desk', 'is_default' => false, 'sort_order' => 1]);
+    $old->forceFill(['archived_at' => now()])->save();
+
+    // Reads accept an archived group; an unknown id gets the plain message.
+    $this->actingAs($maintainer)->getJson("/api/on-call-assignments?shift_group_id={$old->id}&month=2026-10")->assertOk();
+    $this->actingAs($maintainer)->getJson("/api/settlement-periods?shift_group_id={$old->id}")->assertOk();
+    $this->actingAs($maintainer)->getJson('/api/settlement-periods?shift_group_id=999999')
+        ->assertStatus(422)
+        ->assertJsonPath('errors.shift_group_id.0', 'The selected shift group id is invalid.');
+    $this->actingAs($maintainer)->getJson('/api/on-call-assignments?shift_group_id=999999&month=2026-10')
+        ->assertStatus(422)
+        ->assertJsonPath('errors.shift_group_id.0', 'The selected shift group id is invalid.');
+    // Planning refuses it with the archived wording.
+    $this->actingAs($maintainer)->postJson('/api/schedule/generate', ['month' => '2026-11', 'shift_group_id' => $old->id])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.shift_group_id.0', 'The selected shift group does not exist or is archived.');
+});

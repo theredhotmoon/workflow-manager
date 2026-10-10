@@ -63,3 +63,28 @@ it('deletes a delegation nobody has joined, with its pending and rejected reques
         ->and(DelegationLog::where('delegation_id', $delegation->id)->count())->toBe(0)
         ->and($admin->fresh())->not->toBeNull();
 });
+
+it('answers 404, not a server error, when the delegation is deleted while a member is approved or added', function (string $action) {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $member = User::factory()->create(['role' => 'employee']);
+    $delegation = Delegation::create([
+        'name' => 'Trip', 'destination' => 'Berlin', 'created_by' => $admin->id,
+        'start_datetime' => '2026-11-01 08:00:00', 'end_datetime' => '2026-11-02 18:00:00',
+    ]);
+    $delegation->users()->attach($member->id, ['status' => 'pending']);
+    // Deterministic stand-in for a concurrent delete: it lands right after route binding found the row.
+    $fired = false;
+    DB::listen(function ($query) use (&$fired, $delegation) {
+        if ($fired || !str_contains($query->sql, 'from "delegations"')) {
+            return;
+        }
+        $fired = true;
+        DB::table('delegations')->where('id', $delegation->id)->delete();
+    });
+
+    $this->actingAs($admin)->postJson("/api/delegations/{$delegation->id}/{$action}", ['user_id' => $member->id])
+        ->assertNotFound()
+        ->assertJsonPath('message', 'This delegation no longer exists.');
+
+    expect(DelegationLog::where('delegation_id', $delegation->id)->count())->toBe(0);
+})->with(['approve-user', 'add-user']);

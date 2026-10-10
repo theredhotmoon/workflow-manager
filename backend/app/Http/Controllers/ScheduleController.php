@@ -127,47 +127,52 @@ class ScheduleController extends Controller
         $end = $start->copy()->endOfMonth();
 
         $created = 0;
-        $current = $start->copy();
+        // One transaction, with the group locked first (see ShiftGroup's lock order): an archive
+        // that lands after validation is seen here and refused, and the month is created whole or not at all.
+        DB::transaction(function () use ($start, $end, $groupId, $shiftsPerDay, $shiftTimes, $workModeWeekday, $workModeWeekend, &$created) {
+            ShiftGroup::lockActiveOrFail($groupId);
+            $current = $start->copy();
 
-        while ($current <= $end) {
-            $dateStr = $current->toDateString();
-            $existing = Shift::where('date', $dateStr)->where('shift_group_id', $groupId)->count();
+            while ($current <= $end) {
+                $dateStr = $current->toDateString();
+                $existing = Shift::where('date', $dateStr)->where('shift_group_id', $groupId)->count();
 
-            // Only create slots that don't exist yet
-            for ($i = $existing + 1; $i <= $shiftsPerDay; $i++) {
-                $times = $shiftTimes[$i - 1] ?? $this->defaultShiftTimes($shiftsPerDay)[$i - 1] ?? [];
-                $isWeekend = $current->isWeekend();
-                $shift = Shift::firstOrCreate(
-                    ['date' => $dateStr, 'shift_number' => $i, 'shift_group_id' => $groupId],
-                    [
-                        'start_time' => $times['start_time'] ?? null,
-                        'end_time' => $times['end_time'] ?? null,
-                        'work_mode' => $isWeekend ? $workModeWeekend : $workModeWeekday,
-                        'color' => $times['color'] ?? null,
-                        'color_label' => $times['color_label'] ?? null,
-                        'shift_type' => $times['shift_type'] ?? null,
-                    ]
-                );
+                // Only create slots that don't exist yet
+                for ($i = $existing + 1; $i <= $shiftsPerDay; $i++) {
+                    $times = $shiftTimes[$i - 1] ?? $this->defaultShiftTimes($shiftsPerDay)[$i - 1] ?? [];
+                    $isWeekend = $current->isWeekend();
+                    $shift = Shift::firstOrCreate(
+                        ['date' => $dateStr, 'shift_number' => $i, 'shift_group_id' => $groupId],
+                        [
+                            'start_time' => $times['start_time'] ?? null,
+                            'end_time' => $times['end_time'] ?? null,
+                            'work_mode' => $isWeekend ? $workModeWeekend : $workModeWeekday,
+                            'color' => $times['color'] ?? null,
+                            'color_label' => $times['color_label'] ?? null,
+                            'shift_type' => $times['shift_type'] ?? null,
+                        ]
+                    );
 
-                // Create checklist assignments from template
-                if ($shift->wasRecentlyCreated && !empty($times['checklists'])) {
-                    foreach ($times['checklists'] as $order => $cl) {
-                        ShiftChecklist::create([
-                            'shift_id' => $shift->id,
-                            'checklist_template_id' => $cl['checklist_template_id'],
-                            'is_required' => $cl['is_required'] ?? false,
-                            'deadline_minutes' => $cl['deadline_minutes'] ?? null,
-                            'deadline_reference' => $cl['deadline_reference'] ?? 'shift_start',
-                            'sort_order' => $order,
-                        ]);
+                    // Create checklist assignments from template
+                    if ($shift->wasRecentlyCreated && !empty($times['checklists'])) {
+                        foreach ($times['checklists'] as $order => $cl) {
+                            ShiftChecklist::create([
+                                'shift_id' => $shift->id,
+                                'checklist_template_id' => $cl['checklist_template_id'],
+                                'is_required' => $cl['is_required'] ?? false,
+                                'deadline_minutes' => $cl['deadline_minutes'] ?? null,
+                                'deadline_reference' => $cl['deadline_reference'] ?? 'shift_start',
+                                'sort_order' => $order,
+                            ]);
+                        }
                     }
+
+                    $created++;
                 }
 
-                $created++;
+                $current->addDay();
             }
-
-            $current->addDay();
-        }
+        });
 
         return response()->json([
             'message' => "Generated {$created} shift slots for {$request->month}.",
@@ -219,6 +224,8 @@ class ScheduleController extends Controller
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
 
         $refusal = DB::transaction(function () use ($request, $date, $desiredCount, $groupId, $janitor) {
+            // The group first (ShiftGroup's lock order): an archive after validation is refused here.
+            ShiftGroup::lockActiveOrFail($groupId);
             // Locked so a concurrent assign or count change waits for this one.
             $currentShifts = Shift::where('date', $date)->where('shift_group_id', $groupId)
                 ->orderBy('shift_number')->lockForUpdate()->get();
@@ -275,6 +282,9 @@ class ScheduleController extends Controller
             }
 
             $userIds = $toRemove->flatMap(fn (Shift $shift) => $shift->assignments->pluck('user_id'))->unique()->values()->all();
+            // Their assignment rows are locked first, so a change request being filed for one waits and
+            // then finds it gone (instead of being left pending on a removed assignment).
+            ShiftAssignment::whereIn('shift_id', $toRemove->pluck('id'))->orderBy('id')->lockForUpdate()->get(['id']);
             // Removing the slot settles its pending change requests, which stay on record.
             ShiftChangeRequest::whereIn('shift_id', $toRemove->pluck('id'))
                 ->where('status', 'pending')
@@ -287,6 +297,9 @@ class ScheduleController extends Controller
             foreach ($kept as $index => $shift) {
                 if ((int) $shift->shift_number !== $index + 1) {
                     $shift->update(['shift_number' => $index + 1]);
+                    // The requests' slot snapshot follows the shift, so if the shift is removed
+                    // later the request names the slot the schedule last showed it as.
+                    ShiftChangeRequest::where('shift_id', $shift->id)->update(['shift_number' => $index + 1]);
                 }
             }
 
@@ -344,6 +357,11 @@ class ScheduleController extends Controller
         $sourceId = (int) $request->input('move_from_assignment_id');
 
         return DB::transaction(function () use ($request, $streakReplay, $janitor, $sourceId) {
+            // Both groups first, in id order (ShiftGroup's lock order), then the source row: an
+            // archive of either group that landed after the checks above is seen and refused.
+            $sourceShift = ShiftAssignment::with('shift:id,shift_group_id')->find($sourceId)?->shift;
+            $targetShift = Shift::find($request->input('shift_id'), ['id', 'shift_group_id']);
+            $this->lockGroupsOrRefuse(array_filter([$sourceShift, $targetShift]));
             // Locked so two concurrent moves of the same chip can't both succeed.
             $source = ShiftAssignment::lockForUpdate()->find($sourceId);
             if (!$source) {
@@ -363,7 +381,6 @@ class ScheduleController extends Controller
                 throw ValidationException::withMessages(['move_from_assignment_id' => 'The assignment is already on this shift.']);
             }
 
-            $this->refuseArchivedGroup($source->shift);
             $this->removeAssignment($source, $janitor);
             $response = $this->placeAssignment($request, $streakReplay, $janitor);
             if ($response->getStatusCode() >= 400) {
@@ -468,6 +485,9 @@ class ScheduleController extends Controller
             : [];
 
         $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor) {
+            // The group first (ShiftGroup's lock order), re-checked: an archive since the check
+            // above is refused here instead of leaving future work in an archived group.
+            $this->lockGroupsOrRefuse([$shift]);
             // Re-checked under a row lock: a concurrent day-count reduction may have deleted the
             // slot since it was looked up (that removal holds the lock until it commits). Without
             // this the insert fails on the foreign key with a 500.
@@ -604,10 +624,32 @@ class ScheduleController extends Controller
     private function refuseArchivedGroup(?Shift $shift): void
     {
         if ($shift?->shiftGroup?->isArchived()) {
-            throw new HttpResponseException(response()->json([
-                'message' => "This shift belongs to the archived shift group \"{$shift->shiftGroup->name}\". Restore the group to change its schedule.",
-            ], 422));
+            $this->throwArchivedGroup($shift->shiftGroup);
         }
+    }
+
+    /**
+     * Inside a write's transaction: locks the shifts' groups FOR SHARE (ShiftGroup's lock order:
+     * first, in id order) and refuses as refuseArchivedGroup() does if one was archived since the
+     * request checked it.
+     *
+     * @param  array<Shift>  $shifts
+     */
+    private function lockGroupsOrRefuse(array $shifts): void
+    {
+        $groups = ShiftGroup::lockShared(array_map(fn (Shift $shift) => $shift->shift_group_id, $shifts));
+        foreach ($groups as $group) {
+            if ($group->isArchived()) {
+                $this->throwArchivedGroup($group);
+            }
+        }
+    }
+
+    private function throwArchivedGroup(ShiftGroup $group): never
+    {
+        throw new HttpResponseException(response()->json([
+            'message' => "This shift belongs to the archived shift group \"{$group->name}\". Restore the group to change its schedule.",
+        ], 422));
     }
 
     /**
@@ -617,6 +659,12 @@ class ScheduleController extends Controller
     {
         $group = $assignment->shift?->shiftGroup;
         DB::transaction(function () use ($assignment, $group, $janitor) {
+            // Group, then the assignment row (ShiftGroup's lock order). The row lock makes a change
+            // request being filed for it wait, and then find it gone, instead of being left pending.
+            $this->lockGroupsOrRefuse(array_filter([$assignment->shift]));
+            if (!ShiftAssignment::whereKey($assignment->id)->lockForUpdate()->first(['id'])) {
+                return;
+            }
             // Pending change requests on this assignment are settled; they stay on record with
             // their assignment link nulled (FK nullOnDelete).
             ShiftChangeRequest::where('shift_assignment_id', $assignment->id)

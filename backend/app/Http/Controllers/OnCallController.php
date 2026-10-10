@@ -48,6 +48,8 @@ class OnCallController extends Controller
         ]);
 
         $assignment = DB::transaction(function () use ($validated) {
+            // The group first (ShiftGroup's lock order): an archive since validation is refused.
+            ShiftGroup::lockActiveOrFail($validated['shift_group_id']);
             // The user's row is locked so two overlapping requests can't both pass the check.
             $user = User::lockForUpdate()->findOrFail($validated['user_id']);
             $startsAt = Carbon::parse($validated['starts_at']);

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\ProcedureHtmlSanitizer;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class Procedure extends Model
 {
@@ -42,6 +43,25 @@ class Procedure extends Model
     public function isArchived(): bool
     {
         return $this->archived_at !== null;
+    }
+
+    public const ARCHIVED_MESSAGE = 'This procedure is archived. Restore it before changing it.';
+
+    /**
+     * An archived procedure is frozen: no FAQ, reply, outdated toggle, feedback or response template
+     * changes. Admins (who can see it) get 409 with ARCHIVED_MESSAGE; everyone else 404, as for the
+     * procedure itself. Reads are not affected.
+     */
+    public function refuseWritesIfArchived(?User $user): void
+    {
+        if (!$this->isArchived()) {
+            return;
+        }
+        if (!$user?->isAdmin()) {
+            abort(404);
+        }
+
+        throw new HttpResponseException(response()->json(['message' => self::ARCHIVED_MESSAGE], 409));
     }
 
     /**

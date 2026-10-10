@@ -166,10 +166,6 @@ return [
         'attribute-name' => [
             'rule-name' => 'custom-message',
         ],
-        // Planning endpoints only accept groups that aren't archived (ShiftGroup::activeExistsRule).
-        'shift_group_id' => [
-            'exists' => 'The selected shift group does not exist or is archived.',
-        ],
     ],
 
     /*

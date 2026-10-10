@@ -198,9 +198,13 @@ it('applies the unassign side effects to the source of a successful move', funct
 
     schMove($this, $source, $target)->assertCreated();
 
-    // As after DELETE /schedule/unassign: the pending request no longer stands (the FK cascades it
-    // away after the acknowledgement) and 01-03, out of rest now, loses its policy.
-    expect(ShiftChangeRequest::where('id', $request->id)->where('status', 'pending')->exists())->toBeFalse()
+    // As after DELETE /schedule/unassign: the pending request is settled and kept on record (its
+    // assignment link nulled, its shift still named), and 01-03, out of rest now, loses its policy.
+    $kept = $request->fresh();
+    expect($kept)->not->toBeNull()
+        ->and($kept->status)->toBe('acknowledged')
+        ->and($kept->shift_assignment_id)->toBeNull()
+        ->and($kept->shift_id)->toBe($source->shift_id)
         ->and($stamped->fresh()->rest_policy)->toBeNull();
 });
 

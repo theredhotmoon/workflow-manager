@@ -18,18 +18,11 @@ return new class extends Migration {
             $table->unsignedSmallInteger('shift_number')->nullable();
         });
 
-        DB::table('shift_change_requests')
-            ->join('shifts', 'shifts.id', '=', 'shift_change_requests.shift_id')
-            ->select('shift_change_requests.id', 'shifts.date', 'shifts.shift_number')
-            ->orderBy('shift_change_requests.id')
-            ->chunk(500, function ($rows) {
-                foreach ($rows as $row) {
-                    DB::table('shift_change_requests')->where('id', $row->id)->update([
-                        'shift_date' => $row->date,
-                        'shift_number' => $row->shift_number,
-                    ]);
-                }
-            });
+        // One statement (PostgreSQL UPDATE ... FROM): every existing request takes its shift's date and slot.
+        DB::statement(
+            'UPDATE shift_change_requests SET shift_date = shifts.date, shift_number = shifts.shift_number '
+            . 'FROM shifts WHERE shifts.id = shift_change_requests.shift_id'
+        );
 
         Schema::table('shift_change_requests', function (Blueprint $table) {
             $table->dropForeign(['shift_assignment_id']);

@@ -66,41 +66,55 @@ test.describe('Need-to-know privacy', () => {
       email: `ntk-approved-${stamp}@example.test`,
     });
     const applicantEmail = `ntk-pending-${stamp}@example.test`;
-    await createUser(admin, { name: `NTK Pending ${stamp}`, email: applicantEmail });
-    const name = `NTK Trip ${stamp}`;
-    const delegation = await createDelegation(admin, {
-      name,
-      destination: 'Kraków',
-      start: '2097-03-10',
-      end: '2097-03-11',
-      userIds: [approved.id],
+    const pending = await createUser(admin, {
+      name: `NTK Pending ${stamp}`,
+      email: applicantEmail,
     });
+    // Deactivated afterwards: active users are listed on the Schedule roster (by name, above
+    // "Regular Employee"), and later specs drag from that roster.
+    try {
+      const name = `NTK Trip ${stamp}`;
+      const delegation = await createDelegation(admin, {
+        name,
+        destination: 'Kraków',
+        start: '2097-03-10',
+        end: '2097-03-11',
+        userIds: [approved.id],
+      });
 
-    // A colleague applies (pending).
-    const applicant = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
-    await loginAs(applicant, applicantEmail, 'password123');
-    const reg = await applicant.request.post(`/api/delegations/${delegation.id}/self-register`, {
-      headers: { Accept: 'application/json', ...(await getXsrfHeader(applicant)) },
-    });
-    expect(reg.ok()).toBeTruthy();
-    await applicant.close();
+      // A colleague applies (pending).
+      const applicant = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
+      await loginAs(applicant, applicantEmail, 'password123');
+      const reg = await applicant.request.post(`/api/delegations/${delegation.id}/self-register`, {
+        headers: { Accept: 'application/json', ...(await getXsrfHeader(applicant)) },
+      });
+      expect(reg.ok()).toBeTruthy();
+      await applicant.close();
 
-    await employeePage.goto('/delegations');
-    const card = employeePage.locator('div.rounded-2xl').filter({
-      has: employeePage.getByRole('heading', { name }),
-    });
-    await expect(card).toBeVisible();
-    await expect(card.getByText('1 confirmed')).toBeVisible();
-    await expect(card.getByText(`NTK Approved ${stamp}`)).toBeVisible();
-    await expect(card.getByText(`NTK Pending ${stamp}`)).toHaveCount(0);
+      await employeePage.goto('/delegations');
+      const card = employeePage.locator('div.rounded-2xl').filter({
+        has: employeePage.getByRole('heading', { name }),
+      });
+      await expect(card).toBeVisible();
+      await expect(card.getByText('1 confirmed')).toBeVisible();
+      await expect(card.getByText(`NTK Approved ${stamp}`)).toBeVisible();
+      await expect(card.getByText(`NTK Pending ${stamp}`)).toHaveCount(0);
 
-    // The admin's management screen still lists the pending applicant.
-    await adminPage.goto('/delegations-manage');
-    const manageCard = adminPage.locator('div.rounded-2xl').filter({
-      has: adminPage.getByRole('heading', { name }),
-    });
-    await manageCard.getByRole('heading', { name }).click(); // expands the card
-    await expect(manageCard.getByText(`NTK Pending ${stamp}`)).toBeVisible();
+      // The admin's management screen still lists the pending applicant.
+      await adminPage.goto('/delegations-manage');
+      const manageCard = adminPage.locator('div.rounded-2xl').filter({
+        has: adminPage.getByRole('heading', { name }),
+      });
+      await manageCard.getByRole('heading', { name }).click(); // expands the card
+      await expect(manageCard.getByText(`NTK Pending ${stamp}`)).toBeVisible();
+    } finally {
+      for (const user of [approved, pending]) {
+        const res = await admin.request.post(`/api/users/${user.id}/deactivate`, {
+          headers: await getXsrfHeader(admin),
+        });
+        expect(res.ok()).toBe(true);
+      }
+    }
   });
 
   test('procedure access log: offered to admins, not to an employee who does not own it', async ({

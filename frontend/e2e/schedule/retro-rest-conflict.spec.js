@@ -43,6 +43,16 @@ async function dropEmployeeOn(page, groupName, month, day) {
   await loaded;
   const zone = page.locator(`[data-date="${month}-${day}"]`).locator('[data-shift-id]').first();
   await expect(zone).toBeVisible();
+  // The roster is sticky and lists every active employee by name, so how far down this chip sits
+  // depends on how many users earlier specs created. Sorting by shifts (most first) puts the seeded
+  // employee, the only one with shifts in this new group, at the top whatever the run left behind.
+  const sortByShifts = page
+    .getByText('Sort:')
+    .locator('..')
+    .getByRole('button', { name: /Shifts/ });
+  await sortByShifts.click(); // ascending
+  await sortByShifts.click(); // descending
+  await expect(sortByShifts).toContainText('▼');
   const chip = page.locator('div.cursor-grab.rounded-xl', { hasText: EMPLOYEE });
   await expect(chip).toBeVisible();
   // An occasional drag only registers as a click on the chip (it opens the availability preview and

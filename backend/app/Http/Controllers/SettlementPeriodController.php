@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
+use App\Services\BusyIntervals;
 use App\Services\SettlementPeriodCalculator;
 use App\Services\StreakReplay;
 use Illuminate\Http\Request;
@@ -69,8 +70,10 @@ class SettlementPeriodController extends Controller
             $employeeNames[$userId] = $userCallbacks->first()->onCallAssignment->user->name;
             foreach (self::mergeIntervals($userCallbacks) as [$start, $end]) {
                 $match = $calculator->weekFor($period, $start->copy()->startOfDay());
+                // Elapsed time, as for shifts: the stored wall-clock times are read in the business
+                // timezone, so a callback across a DST change counts the hour gained or lost.
                 // Whole minutes (Carbon 3 returns a float), then hours with the fraction kept: 1:30 is 1.5.
-                $durationHours = ((int) $start->diffInMinutes($end, true)) / 60;
+                $durationHours = ((int) BusyIntervals::wallClock($start)->diffInMinutes(BusyIntervals::wallClock($end), true)) / 60;
                 $employeeWeekHours[$userId][$match['index']] =
                     ($employeeWeekHours[$userId][$match['index']] ?? 0) + $durationHours;
             }

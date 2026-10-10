@@ -89,7 +89,11 @@ class BusyIntervals
         return $callback->starts_at->format('Y-m-d');
     }
 
-    private static function wallClock(Carbon $stored): Carbon
+    /**
+     * A stored on-call time (Warsaw wall clock in a UTC-typed column) as the instant it names, so
+     * differences between two of them are elapsed time across DST changes.
+     */
+    public static function wallClock(Carbon $stored): Carbon
     {
         return Carbon::parse($stored->format('Y-m-d H:i:s'), BusinessDate::timezone());
     }

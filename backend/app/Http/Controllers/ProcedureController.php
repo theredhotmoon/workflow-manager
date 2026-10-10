@@ -9,18 +9,29 @@ use App\Models\ProcedureUserRead;
 use App\Models\ProcedureVersion;
 use App\Models\User;
 use App\Services\ProcedureHtmlSanitizer;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ProcedureController extends Controller
 {
     /** Fields that make up a published version (and its ProcedureVersion snapshot). */
     private const VERSIONED_FIELDS = ['title', 'purpose', 'requirements', 'content'];
 
+    /**
+     * Paginated procedure list (search, tags, dates, tree node). Archived procedures are left out;
+     * an admin passing archived=1 gets only the archived ones instead (the Archived list).
+     */
     public function index(Request $request)
     {
-        $query = Procedure::with(['owner:id,name', 'tags:id,name,color']);
+        $archived = $request->boolean('archived');
+        if ($archived && !$request->user()->isAdmin()) {
+            abort(403, 'Only admins can list archived procedures.');
+        }
+        $query = Procedure::with(['owner:id,name', 'tags:id,name,color'])
+            ->when($archived, fn ($q) => $q->whereNotNull('archived_at'), fn ($q) => $q->notArchived());
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -173,7 +184,7 @@ class ProcedureController extends Controller
 
         // Editing (update, draft, publish, delete) is admin-only: every write route sits in the admin
         // route group, so an owner who isn't an admin must not be offered the editor.
-        $procedure->can_edit = $request->user()->isAdmin();
+        $procedure->can_edit = $request->user()->isAdmin() && !$procedure->isArchived();
 
         // Include latest version's change_reason
         $latestVersion = $procedure->versions()->where('version', $procedure->version)->first();
@@ -193,6 +204,9 @@ class ProcedureController extends Controller
      */
     public function update(Request $request, Procedure $procedure)
     {
+        if ($refusal = $this->archivedRefusal($procedure)) {
+            return $refusal;
+        }
         $validated = $request->validate([
             'title' => ['sometimes', 'string', 'max:255'],
             'purpose' => ['sometimes', 'nullable', 'string'],
@@ -281,6 +295,9 @@ class ProcedureController extends Controller
      */
     public function saveDraft(Request $request, Procedure $procedure)
     {
+        if ($refusal = $this->archivedRefusal($procedure)) {
+            return $refusal;
+        }
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'purpose' => ['sometimes', 'nullable', 'string'],
@@ -311,6 +328,9 @@ class ProcedureController extends Controller
      */
     public function publishDraft(Request $request, Procedure $procedure)
     {
+        if ($refusal = $this->archivedRefusal($procedure)) {
+            return $refusal;
+        }
         if (!$procedure->has_draft) {
             return response()->json(['message' => 'No draft to publish.'], 422);
         }
@@ -363,6 +383,9 @@ class ProcedureController extends Controller
      */
     public function discardDraft(Request $request, Procedure $procedure)
     {
+        if ($refusal = $this->archivedRefusal($procedure)) {
+            return $refusal;
+        }
         $procedure->update([
             'has_draft' => false,
             'draft_title' => null,
@@ -388,14 +411,85 @@ class ProcedureController extends Controller
         return response()->json(['message' => 'Marked as read.']);
     }
 
+    /**
+     * "Delete" archives the procedure (DELETE is kept for older clients). It leaves the tree,
+     * search, lists, pickers and unread counts; its versions, FAQ, feedback, read receipts, access
+     * log, owner changes, tags and checklist links stay. A procedure with sub-procedures that
+     * aren't archived is refused (409 has_children, listing them): archiving it would leave them
+     * hanging under a hidden parent, and silently moving them would rearrange the tree.
+     */
     public function destroy(Procedure $procedure)
     {
-        $procedure->delete();
-        return response()->json(['message' => 'Procedure deleted.']);
+        return DB::transaction(function () use ($procedure) {
+            // Lock order with move(): move locks the new parent FOR SHARE before updating the moved
+            // row; archiving locks the procedure FOR UPDATE before reading its children. So a move
+            // under it either commits first (its child is seen and refused below) or waits and then
+            // sees the parent archived.
+            $procedure->newQuery()->whereKey($procedure->id)->lockForUpdate()->first(['id']);
+            $procedure->refresh();
+            if ($procedure->isArchived()) {
+                return response()->json(['message' => 'This procedure is already archived.'], 422);
+            }
+
+            $children = $procedure->children()->notArchived()->get(['id', 'identifier', 'title']);
+            if ($children->isNotEmpty()) {
+                $list = $children->map(fn (Procedure $child) => "{$child->identifier} {$child->title}")->implode(', ');
+
+                return response()->json([
+                    'code' => 'has_children',
+                    'message' => "Move or archive its sub-procedures first: {$list}.",
+                    'children' => $children->map->only(['id', 'identifier', 'title'])->values()->all(),
+                ], 409);
+            }
+
+            $procedure->forceFill(['archived_at' => now()])->save();
+
+            return response()->json(['message' => 'Procedure archived.']);
+        });
+    }
+
+    /**
+     * Bring an archived procedure back, with all its history. It returns to its old place in the
+     * tree when that parent is still there (not archived); otherwise it is restored at the top level.
+     */
+    public function restore(Procedure $procedure)
+    {
+        if (!$procedure->isArchived()) {
+            return response()->json(['message' => 'This procedure is not archived.'], 422);
+        }
+
+        $parent = $procedure->parent_id ? Procedure::find($procedure->parent_id) : null;
+        $movedToRoot = $procedure->parent_id !== null && ($parent === null || $parent->isArchived());
+
+        $procedure->forceFill([
+            'archived_at' => null,
+            'parent_id' => $movedToRoot ? null : $procedure->parent_id,
+        ])->save();
+
+        return response()->json([
+            'message' => $movedToRoot
+                ? 'Procedure restored at the top level of the tree (its old parent is archived).'
+                : 'Procedure restored.',
+            'moved_to_root' => $movedToRoot,
+            'procedure' => $procedure->only(['id', 'identifier', 'title', 'parent_id', 'archived_at']),
+        ]);
+    }
+
+    /** Archived procedures are read-only until restored (409). */
+    private function archivedRefusal(Procedure $procedure): ?JsonResponse
+    {
+        if (!$procedure->isArchived()) {
+            return null;
+        }
+
+        return response()->json(['message' => Procedure::ARCHIVED_MESSAGE], 409);
     }
 
     public function syncTags(Request $request, Procedure $procedure)
     {
+        if ($refusal = $this->archivedRefusal($procedure)) {
+            return $refusal;
+        }
         $validated = $request->validate([
             'tag_ids' => ['required', 'array'],
             'tag_ids.*' => ['exists:procedure_tags,id'],
@@ -467,6 +561,7 @@ class ProcedureController extends Controller
     public function tree()
     {
         $all = Procedure::select('id', 'identifier', 'title', 'parent_id', 'sort_order')
+            ->notArchived()
             ->orderBy('sort_order')
             ->orderBy('title')
             ->get();
@@ -494,8 +589,11 @@ class ProcedureController extends Controller
      */
     public function move(Request $request, Procedure $procedure)
     {
+        if ($refusal = $this->archivedRefusal($procedure)) {
+            return $refusal;
+        }
         $validated = $request->validate([
-            'parent_id' => ['nullable', 'exists:procedures,id'],
+            'parent_id' => ['nullable', Rule::exists('procedures', 'id')->whereNull('archived_at')],
         ]);
 
         // Prevent circular references
@@ -510,15 +608,31 @@ class ProcedureController extends Controller
             }
         }
 
-        $procedure->update([
-            'parent_id' => $validated['parent_id'],
-        ]);
+        $moved = DB::transaction(function () use ($procedure, $validated) {
+            // The new parent is locked FOR SHARE and re-checked (see destroy() for the lock order):
+            // an archive of it since validation is refused instead of hiding this procedure under it.
+            if ($validated['parent_id']) {
+                $parent = Procedure::whereKey($validated['parent_id'])->sharedLock()->first(['id', 'archived_at']);
+                if (!$parent || $parent->isArchived()) {
+                    return false;
+                }
+            }
+            $procedure->update(['parent_id' => $validated['parent_id']]);
+
+            return true;
+        });
+        if (!$moved) {
+            throw ValidationException::withMessages(['parent_id' => 'The selected parent procedure is archived or no longer exists.']);
+        }
 
         return response()->json(['message' => 'Procedure moved.']);
     }
 
     public function changeOwner(Request $request, Procedure $procedure)
     {
+        if ($refusal = $this->archivedRefusal($procedure)) {
+            return $refusal;
+        }
         $validated = $request->validate([
             'new_owner_id' => ['required', User::activeExistsRule()],
             'reason' => ['required', 'string', 'max:5000'],
@@ -562,6 +676,7 @@ class ProcedureController extends Controller
         $procedureIds = array_unique($request->input('procedure_ids'));
 
         $procedures = Procedure::whereIn('id', $procedureIds)
+            ->notArchived()
             ->select('id', 'identifier', 'title', 'version')
             ->get();
 

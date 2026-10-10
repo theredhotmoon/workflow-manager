@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\ChecklistTemplate;
 use App\Models\ChecklistGroup;
 use App\Models\ChecklistItem;
+use App\Models\Procedure;
 use App\Models\ShiftChecklist;
 use App\Support\BusinessDate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ChecklistTemplateController extends Controller
 {
@@ -34,7 +36,10 @@ class ChecklistTemplateController extends Controller
     {
         $templates = ChecklistTemplate::where('is_active', true)
             ->notArchived()
-            ->with(['groups.items.procedure:id,identifier,title'])
+            ->with([
+                // An archived procedure is no longer offered from the form (its link stays on the item).
+                'groups.items.procedure' => fn ($q) => $q->select('id', 'identifier', 'title')->whereNull('archived_at'),
+            ])
             ->orderBy('name')
             ->get();
 
@@ -46,7 +51,7 @@ class ChecklistTemplateController extends Controller
      */
     public function show(ChecklistTemplate $checklistTemplate)
     {
-        $checklistTemplate->load(['groups.items.procedure:id,identifier,title']);
+        $checklistTemplate->load(['groups.items.procedure:id,identifier,title,archived_at']);
         return response()->json($checklistTemplate);
     }
 
@@ -69,6 +74,7 @@ class ChecklistTemplateController extends Controller
             'groups.*.items.*.min_value' => ['sometimes', 'nullable', 'numeric'],
             'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric', 'gte:groups.*.items.*.min_value'],
         ]);
+        $this->refuseNewArchivedLinks($request, []);
 
         $template = DB::transaction(function () use ($request) {
             $template = ChecklistTemplate::create([
@@ -100,7 +106,7 @@ class ChecklistTemplateController extends Controller
             return $template;
         });
 
-        $template->load(['groups.items.procedure:id,identifier,title']);
+        $template->load(['groups.items.procedure:id,identifier,title,archived_at']);
         return response()->json($template, 201);
     }
 
@@ -135,6 +141,8 @@ class ChecklistTemplateController extends Controller
             'groups.*.items.*.min_value' => ['sometimes', 'nullable', 'numeric'],
             'groups.*.items.*.max_value' => ['sometimes', 'nullable', 'numeric', 'gte:groups.*.items.*.min_value'],
         ]);
+        // An item that already links an archived procedure may keep that link; nothing may newly link one.
+        $this->refuseNewArchivedLinks($request, ChecklistItem::whereIn('id', $itemIds)->pluck('procedure_id', 'id')->all());
 
         DB::transaction(function () use ($request, $checklistTemplate, $groupIds, $itemIds) {
             $fields = [
@@ -191,7 +199,7 @@ class ChecklistTemplateController extends Controller
                 ->update(['archived_at' => $now]);
         });
 
-        $checklistTemplate->load(['groups.items.procedure:id,identifier,title']);
+        $checklistTemplate->load(['groups.items.procedure:id,identifier,title,archived_at']);
         return response()->json($checklistTemplate);
     }
 
@@ -214,5 +222,42 @@ class ChecklistTemplateController extends Controller
         });
 
         return response()->json(['message' => 'Template archived.']);
+    }
+
+    /**
+     * Archived procedures can't be newly linked. An item keeps a link it already has (same item id,
+     * same procedure), so re-saving a template doesn't drop it; any other item linking an archived
+     * procedure — a new one, or an existing one switching to it — is refused (422 on that item).
+     *
+     * @param  array<int, int|null>  $currentLinks  item id => its procedure_id now
+     */
+    private function refuseNewArchivedLinks(Request $request, array $currentLinks): void
+    {
+        $requested = collect($request->input('groups', []))
+            ->flatMap(fn ($group) => collect($group['items'] ?? [])->pluck('procedure_id'))
+            ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $archived = Procedure::whereIn('id', $requested)->whereNotNull('archived_at')->pluck('id')->flip();
+        if ($archived->isEmpty()) {
+            return;
+        }
+
+        $errors = [];
+        foreach ($request->input('groups', []) as $gi => $group) {
+            foreach ($group['items'] ?? [] as $ii => $item) {
+                $procedureId = isset($item['procedure_id']) ? (int) $item['procedure_id'] : null;
+                if ($procedureId === null || !$archived->has($procedureId)) {
+                    continue;
+                }
+                $itemId = isset($item['id']) ? (int) $item['id'] : null;
+                if ($itemId !== null && (int) ($currentLinks[$itemId] ?? 0) === $procedureId) {
+                    continue;
+                }
+                $errors["groups.{$gi}.items.{$ii}.procedure_id"] = 'This procedure is archived and can\'t be newly linked.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 }

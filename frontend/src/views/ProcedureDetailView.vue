@@ -39,6 +39,18 @@
           </div>
         </div>
 
+        <!-- Archived banner (only admins can open an archived procedure) -->
+        <div v-if="procedure.archived_at" role="status"
+          class="mb-4 p-3 bg-slate-500/10 border border-slate-400/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <p class="text-sm text-slate-300">
+            <strong>Archived.</strong> Hidden from the tree, search and lists; its versions, FAQ, feedback and read history are kept.
+          </p>
+          <button v-if="isAdmin" @click="restoreProcedure" :disabled="restoring"
+            class="px-3 py-1.5 text-sm font-medium text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition-all disabled:opacity-40 shrink-0">
+            Restore
+          </button>
+        </div>
+
         <!-- Old version warning banner -->
         <div v-if="isViewingOldVersion" class="mb-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between">
           <p class="text-sm text-amber-300">
@@ -51,7 +63,7 @@
           :procedure="displayProcedure"
           :user-id="currentUserId"
           :is-admin="isAdmin"
-          :editable="isAdmin && !isViewingOldVersion"
+          :editable="isAdmin && !isViewingOldVersion && !procedure.archived_at"
           :users="users"
           :change-reason="displayData.change_reason"
           :publisher="displayData.publisher"
@@ -506,10 +518,30 @@ function copyLink() {
   });
 }
 
+const restoring = ref(false);
+
+async function restoreProcedure() {
+  restoring.value = true;
+  try {
+    const res = await api.post(`/api/procedures/${procedure.value.id}/restore`);
+    procedure.value = {
+      ...procedure.value,
+      archived_at: null,
+      can_edit: true,
+      parent_id: res.data.procedure?.parent_id ?? null,
+    };
+    showToast(res.data.message || 'Procedure restored.');
+  } catch (err) {
+    toastError(err, 'Could not restore the procedure, try again');
+  } finally {
+    restoring.value = false;
+  }
+}
+
 async function onEditorSaved(id) {
   showEditor.value = false;
   if (id === null) {
-    // Procedure was deleted
+    // Procedure was archived
     router.push('/procedures');
   } else {
     await fetchProcedure();

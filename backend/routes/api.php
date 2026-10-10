@@ -257,7 +257,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         // Shift group management
         Route::post('/shift-groups', [ShiftGroupController::class, 'store']);
         Route::put('/shift-groups/{shiftGroup}', [ShiftGroupController::class, 'update']);
+        // DELETE archives the group (kept for older clients); restore brings it back.
         Route::delete('/shift-groups/{shiftGroup}', [ShiftGroupController::class, 'destroy']);
+        Route::post('/shift-groups/{shiftGroup}/restore', [ShiftGroupController::class, 'restore']);
         Route::post('/shift-groups/reorder', [ShiftGroupController::class, 'reorder']);
         Route::put('/shift-groups/{shiftGroup}/streak-rules', [ShiftGroupController::class, 'syncStreakRules']);
 
@@ -310,7 +312,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         // no per-owner check, so these routes must stay inside the admin group.
         Route::post('/procedures', [ProcedureController::class, 'store']);
         Route::put('/procedures/{procedure}', [ProcedureController::class, 'update']);
+        // DELETE archives the procedure (kept for older clients); restore brings it back.
         Route::delete('/procedures/{procedure}', [ProcedureController::class, 'destroy']);
+        Route::post('/procedures/{procedure}/restore', [ProcedureController::class, 'restore']);
         Route::put('/procedures/{procedure}/tags', [ProcedureController::class, 'syncTags']);
         Route::put('/procedures/{procedure}/draft', [ProcedureController::class, 'saveDraft']);
         Route::post('/procedures/{procedure}/publish', [ProcedureController::class, 'publishDraft']);

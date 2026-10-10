@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use App\Support\Month;
 
@@ -157,13 +158,17 @@ class DelegationController extends Controller
         if ($request->has('custom_end'))
             $pivotData['custom_end'] = self::dateOnly($request->custom_end);
 
-        $delegation->users()->syncWithoutDetaching([$request->user_id => $pivotData]);
+        DB::transaction(function () use ($request, $delegation, $pivotData) {
+            // Locked like destroy(), so a delete can't miss a member added at the same moment.
+            Delegation::lockOrGone($delegation->id);
+            $delegation->users()->syncWithoutDetaching([$request->user_id => $pivotData]);
 
-        // If user already existed with different status, update it
-        $delegation->users()->updateExistingPivot($request->user_id, $pivotData);
+            // If user already existed with different status, update it
+            $delegation->users()->updateExistingPivot($request->user_id, $pivotData);
 
-        $userName = User::find($request->user_id)?->name ?? $request->user_id;
-        $this->log($delegation->id, $request->user()->id, 'user_added', "Added {$userName} (approved by admin)");
+            $userName = User::find($request->user_id)?->name ?? $request->user_id;
+            $this->log($delegation->id, $request->user()->id, 'user_added', "Added {$userName} (approved by admin)");
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
         return response()->json($delegation);
@@ -199,10 +204,14 @@ class DelegationController extends Controller
     {
         $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
 
-        $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'approved']);
+        DB::transaction(function () use ($request, $delegation) {
+            // Locked like destroy(), so a delete can't miss a member approved at the same moment.
+            Delegation::lockOrGone($delegation->id);
+            $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'approved']);
 
-        $userName = User::find($request->user_id)?->name ?? $request->user_id;
-        $this->log($delegation->id, $request->user()->id, 'user_approved', "Approved {$userName}");
+            $userName = User::find($request->user_id)?->name ?? $request->user_id;
+            $this->log($delegation->id, $request->user()->id, 'user_approved', "Approved {$userName}");
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
         return response()->json($delegation);
@@ -240,12 +249,30 @@ class DelegationController extends Controller
     }
 
     /**
-     * Delete a delegation — admin.
+     * Delete a delegation — admin. Only while nobody has joined it: once a member is approved
+     * (status "approved", whether added by an admin or accepted after a request) the delegation is
+     * history and is archived instead (409). Pending requests and rejected ones don't count as
+     * joined; they are deleted with it, as is its log.
      */
     public function destroy(Delegation $delegation)
     {
-        $delegation->delete();
-        return response()->json(['message' => 'Delegation deleted.']);
+        return DB::transaction(function () use ($delegation) {
+            // The delegation row is locked here and by addUser()/approveUser(), so a member added
+            // or approved meanwhile is seen (and blocks the delete) rather than deleted with it.
+            Delegation::lockOrGone($delegation->id);
+            $joined = $delegation->users()->wherePivot('status', 'approved')->orderBy('name')->pluck('name');
+            if ($joined->isNotEmpty()) {
+                return response()->json([
+                    'code' => 'has_members',
+                    'message' => 'This delegation has members (' . $joined->implode(', ') . '), so it can\'t be deleted. Archive it instead.',
+                    'members' => $joined->values()->all(),
+                ], 409);
+            }
+
+            $delegation->delete();
+
+            return response()->json(['message' => 'Delegation deleted.']);
+        });
     }
 
     /**

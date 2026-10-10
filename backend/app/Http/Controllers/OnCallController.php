@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OnCallAssignment;
 use App\Models\OnCallCallback;
+use App\Models\ShiftGroup;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -39,13 +40,16 @@ class OnCallController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'shift_group_id' => ['required', 'integer', 'exists:shift_groups,id'],
+            // New duties only in groups that aren't archived; an archived group's history stays listable.
+            'shift_group_id' => ['required', 'integer', ShiftGroup::activeExistsRule()],
             'user_id' => ['required', 'integer', User::activeExistsRule()],
             'starts_at' => ['required', 'date'],
             'ends_at' => ['required', 'date', 'after:starts_at'],
         ]);
 
         $assignment = DB::transaction(function () use ($validated) {
+            // The group first (ShiftGroup's lock order): an archive since validation is refused.
+            ShiftGroup::lockActiveOrFail($validated['shift_group_id']);
             // The user's row is locked so two overlapping requests can't both pass the check.
             $user = User::lockForUpdate()->findOrFail($validated['user_id']);
             $startsAt = Carbon::parse($validated['starts_at']);

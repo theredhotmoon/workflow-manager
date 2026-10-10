@@ -134,9 +134,9 @@
 
                 <!-- Actions -->
                 <div class="flex items-center justify-between pt-2">
-                  <button v-if="isEdit" type="button" @click="deleteProcedure"
+                  <button v-if="isEdit" type="button" @click="archiveProcedure"
                     class="px-4 py-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition-all">
-                    Delete Procedure
+                    Archive Procedure
                   </button>
                   <div></div>
                   <div class="flex items-center gap-3">
@@ -618,20 +618,23 @@ async function publishOrCreate() {
   }
 }
 
-async function deleteProcedure() {
+async function archiveProcedure() {
   const ok = await confirm({
-    title: 'Delete Procedure',
-    message: 'Delete this procedure permanently? This cannot be undone.',
-    confirmLabel: 'Delete',
+    title: 'Archive Procedure',
+    message:
+      'Archive this procedure? It leaves the tree, search, lists and pickers, and nobody is asked to read it.\n\n' +
+      'Kept: its versions, FAQ, feedback, read receipts, access log, owner changes and tags. An admin can restore it from the Archived list.',
+    confirmLabel: 'Archive',
     danger: true,
   });
   if (!ok) return;
   try {
     await api.delete(`/api/procedures/${props.procedureId}`);
-    showToast('Procedure deleted');
-    emit('saved', null); // null signals deletion
+    showToast('Procedure archived');
+    emit('saved', null); // null signals it is gone from the lists
   } catch (err) {
-    showActionError(err, 'Could not delete the procedure, try again');
+    // e.g. 409 has_children: the message lists the sub-procedures to move or archive first.
+    showActionError(err, 'Could not archive the procedure, try again');
   }
 }
 

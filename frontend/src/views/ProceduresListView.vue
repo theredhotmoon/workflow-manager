@@ -24,12 +24,47 @@
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
             </button>
           </div>
+          <button v-if="isAdmin" @click="openArchived"
+            class="px-4 py-2 text-sm font-medium text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all whitespace-nowrap">
+            Archived
+          </button>
           <button v-if="isAdmin" @click="showEditor = true"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all whitespace-nowrap">
             + New Procedure
           </button>
         </div>
       </div>
+
+      <!-- Archived procedures (admin): history kept, restore brings one back to the tree -->
+      <BaseModal v-if="archived.show"
+        overlay-class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        panel-class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
+        @close="archived.show = false"
+        v-slot="{ titleId }">
+        <div class="p-6 pb-3 border-b border-white/10">
+          <h3 :id="titleId" class="text-lg font-bold text-white">Archived procedures</h3>
+          <p class="text-slate-400 text-sm mt-1">Hidden from the tree, search and lists. Their versions, FAQ, feedback and read history are kept.</p>
+        </div>
+        <div class="p-6 pt-4 overflow-y-auto">
+          <p v-if="archived.loading" class="text-slate-400 text-sm">Loading...</p>
+          <p v-else-if="archived.items.length === 0" class="text-slate-400 text-sm">No archived procedures.</p>
+          <ul v-else class="flex flex-col gap-2">
+            <li v-for="proc in archived.items" :key="proc.id" class="flex items-center gap-2 text-sm">
+              <router-link :to="`/procedures/${proc.id}`" class="text-slate-200 hover:text-white min-w-0 truncate">
+                <span class="text-indigo-400 text-xs font-semibold mr-1">{{ proc.identifier }}</span>{{ proc.title }}
+              </router-link>
+              <button @click="restoreArchived(proc)" :disabled="archived.restoringId === proc.id"
+                class="ml-auto shrink-0 px-2.5 py-1 text-xs font-medium text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition-all disabled:opacity-40">
+                Restore {{ proc.identifier }}
+              </button>
+            </li>
+          </ul>
+        </div>
+        <div class="p-6 pt-0 flex justify-end">
+          <button @click="archived.show = false"
+            class="px-4 py-2 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Close</button>
+        </div>
+      </BaseModal>
 
       <!-- Two-column layout -->
       <div class="flex gap-6">
@@ -331,12 +366,16 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
 import ProcedureTreeNode from '../components/procedure/ProcedureTreeNode.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { useToast } from '../composables/useToast.js';
+import { fetchAllPages } from '../fetchAllPages.js';
 import { isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser as authUser } from '../router/index.js';
 
@@ -362,6 +401,7 @@ const selectedTags = ref([]);
 const selectedNodeId = ref(null);
 const rootExpanded = ref(true);
 const isAdmin = computed(() => userIsAdmin(authUser.value));
+const { showToast } = useToast();
 const showEditor = ref(false);
 
 function onProcedureCreated(id) {
@@ -369,6 +409,45 @@ function onProcedureCreated(id) {
   if (id) {
     router.push(`/procedures/${id}`);
   }
+}
+
+// Archived procedures (admin): listed on request, restored one by one.
+const archived = reactive({ show: false, loading: false, items: [], restoringId: null });
+
+async function openArchived() {
+  archived.show = true;
+  archived.loading = true;
+  try {
+    archived.items = await fetchAllPages((url, config) => api.get(url, config), '/api/procedures', {
+      archived: 1,
+      sort_by: 'title',
+      sort_dir: 'asc',
+    });
+  } catch (err) {
+    archived.show = false;
+    toastError(err, 'Could not load the archived procedures, try again');
+  } finally {
+    archived.loading = false;
+  }
+}
+
+async function restoreArchived(proc) {
+  archived.restoringId = proc.id;
+  try {
+    const res = await api.post(`/api/procedures/${proc.id}/restore`);
+    archived.items = archived.items.filter((p) => p.id !== proc.id);
+    showToast(res.data.message || 'Procedure restored.');
+    await Promise.all([fetchTree(), fetchProcedures()]);
+  } catch (err) {
+    toastError(err, 'Could not restore the procedure, try again');
+  } finally {
+    archived.restoringId = null;
+  }
+}
+
+function toastError(err, fallback) {
+  const e = describeApiError(err, fallback);
+  if (!e.silent) showToast(e.message, 'error', 6000);
 }
 
 // Accordion state

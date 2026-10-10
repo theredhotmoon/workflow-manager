@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\ProcedureHtmlSanitizer;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 class Procedure extends Model
 {
@@ -27,7 +28,52 @@ class Procedure extends Model
 
     protected $casts = [
         'has_draft' => 'boolean',
+        'archived_at' => 'datetime',
     ];
+
+    /**
+     * Procedures people read and plan with. An archived one keeps its versions, FAQ, feedback, reads
+     * and access log, but is left out of the tree, search, lists, pickers and unread counts.
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
+
+    public const ARCHIVED_MESSAGE = 'This procedure is archived. Restore it before changing it.';
+
+    /**
+     * An archived procedure is frozen: no FAQ, reply, outdated toggle, feedback or response template
+     * changes. Admins (who can see it) get 409 with ARCHIVED_MESSAGE; everyone else 404, as for the
+     * procedure itself. Reads are not affected.
+     */
+    public function refuseWritesIfArchived(?User $user): void
+    {
+        if (!$this->isArchived()) {
+            return;
+        }
+        if (!$user?->isAdmin()) {
+            abort(404);
+        }
+
+        throw new HttpResponseException(response()->json(['message' => self::ARCHIVED_MESSAGE], 409));
+    }
+
+    /**
+     * {procedure} in a route: an archived procedure is found for admins only (they see it with an
+     * Archived banner and can restore it); everyone else gets 404, as if it didn't exist.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        return $this->resolveRouteBindingQuery($this->newQuery(), $value, $field)
+            ->when(!request()->user()?->isAdmin(), fn ($query) => $query->whereNull('archived_at'))
+            ->first();
+    }
 
     public function owner()
     {

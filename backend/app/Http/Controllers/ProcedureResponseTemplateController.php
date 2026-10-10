@@ -17,6 +17,7 @@ class ProcedureResponseTemplateController extends Controller
 
     public function store(Request $request, Procedure $procedure)
     {
+        $procedure->refuseWritesIfArchived($request->user());
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'body' => ['required', 'string'],
@@ -29,6 +30,7 @@ class ProcedureResponseTemplateController extends Controller
 
     public function update(Request $request, ProcedureResponseTemplate $template)
     {
+        $template->procedure->refuseWritesIfArchived($request->user());
         $validated = $request->validate([
             'title' => ['sometimes', 'string', 'max:255'],
             'body' => ['sometimes', 'string'],
@@ -39,8 +41,9 @@ class ProcedureResponseTemplateController extends Controller
         return response()->json($template);
     }
 
-    public function destroy(ProcedureResponseTemplate $template)
+    public function destroy(Request $request, ProcedureResponseTemplate $template)
     {
+        $template->procedure->refuseWritesIfArchived($request->user());
         $template->delete();
         return response()->json(['message' => 'Template deleted.']);
     }

@@ -22,6 +22,22 @@ class Delegation extends Model
         'registration_open' => 'boolean',
     ];
 
+    /**
+     * Locks the delegation's row FOR UPDATE for the caller's transaction and returns it freshly read.
+     * Delete, archive, approve and add-member all take this lock (it is the only row they lock, so
+     * there is no lock order to get wrong): a member approved meanwhile is seen, not lost. 404 when
+     * the delegation was deleted or archived in the meantime.
+     */
+    public static function lockOrGone(int $id): self
+    {
+        $delegation = static::whereKey($id)->lockForUpdate()->first();
+        if (!$delegation) {
+            abort(404, 'This delegation no longer exists.');
+        }
+
+        return $delegation;
+    }
+
     public function users()
     {
         return $this->belongsToMany(User::class, 'delegation_user')

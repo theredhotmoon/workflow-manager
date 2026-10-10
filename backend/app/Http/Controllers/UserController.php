@@ -3,11 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\OnCallAssignment;
-use App\Models\ShiftAssignment;
-use App\Models\ShiftChangeRequest;
-use App\Models\ShiftGroup;
 use App\Models\User;
-use App\Services\RestPolicyJanitor;
+use App\Services\FutureWorkRemover;
 use App\Support\BusinessDate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -120,7 +117,7 @@ class UserController extends Controller
      * and on-call duties from tomorrow on (today's may already be worked). Delegation memberships
      * and newbie periods are left as they are.
      */
-    public function deactivate(Request $request, User $user, RestPolicyJanitor $janitor)
+    public function deactivate(Request $request, User $user, FutureWorkRemover $remover)
     {
         $request->validate([
             'remove_future_assignments' => ['sometimes', 'boolean'],
@@ -132,7 +129,7 @@ class UserController extends Controller
             ], 422);
         }
 
-        $result = DB::transaction(function () use ($request, $user, $janitor) {
+        $result = DB::transaction(function () use ($request, $user, $remover) {
             $locked = $this->lockedAdmins();
             $user->refresh();
             if ($user->isAdmin() && $this->noOtherActiveAdmin($locked, $user)) {
@@ -146,23 +143,15 @@ class UserController extends Controller
                 return [0, 0];
             }
 
+            // On-call duties first, then assignments: group archive removes in the same order (see
+            // ShiftGroup's lock-order note), so the two can't deadlock over a member's rows.
             $removedOnCall = $this->futureOnCall($user)->delete();
 
-            $assignments = $this->futureAssignments($user)->with('shift:id,shift_group_id')->get();
-            if ($assignments->isNotEmpty()) {
-                // As when a manager unassigns: pending change requests are settled, then the rest
-                // policies this user's removed shifts held in place are cleared.
-                ShiftChangeRequest::whereIn('shift_assignment_id', $assignments->pluck('id'))
-                    ->where('status', 'pending')
-                    ->update(['status' => 'acknowledged']);
-                ShiftAssignment::whereIn('id', $assignments->pluck('id'))->delete();
-                $groupIds = $assignments->pluck('shift.shift_group_id')->filter()->unique();
-                foreach (ShiftGroup::whereIn('id', $groupIds)->get() as $group) {
-                    $janitor->clearUncovered($group, [$user->id]);
-                }
-            }
+            // As when a manager unassigns: pending change requests are settled (and kept), then the
+            // rest policies this user's removed shifts held in place are cleared.
+            $removedAssignments = $remover->removeAssignments($this->futureAssignments($user)->get());
 
-            return [$assignments->count(), $removedOnCall];
+            return [$removedAssignments, $removedOnCall];
         });
 
         if ($result === null) {

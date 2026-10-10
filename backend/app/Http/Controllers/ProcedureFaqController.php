@@ -23,6 +23,7 @@ class ProcedureFaqController extends Controller
 
     public function storeItem(Request $request, Procedure $procedure)
     {
+        $procedure->refuseWritesIfArchived($request->user());
         $validated = $request->validate([
             'question' => ['required', 'string', 'max:2000'],
         ]);
@@ -57,6 +58,7 @@ class ProcedureFaqController extends Controller
         ]);
 
         $procedure = $item->procedure;
+        $procedure->refuseWritesIfArchived($request->user());
 
         $reply = $item->replies()->create([
             'body' => $validated['body'],
@@ -84,6 +86,7 @@ class ProcedureFaqController extends Controller
     public function toggleOutdatedItem(Request $request, ProcedureFaqItem $item)
     {
         $procedure = $item->procedure;
+        $procedure->refuseWritesIfArchived($request->user());
         if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
@@ -95,6 +98,7 @@ class ProcedureFaqController extends Controller
     public function toggleOutdatedReply(Request $request, ProcedureFaqReply $reply)
     {
         $procedure = $reply->faqItem->procedure;
+        $procedure->refuseWritesIfArchived($request->user());
         if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
@@ -105,6 +109,7 @@ class ProcedureFaqController extends Controller
 
     public function destroyItem(Request $request, ProcedureFaqItem $item)
     {
+        $item->procedure->refuseWritesIfArchived($request->user());
         if ($item->created_by !== $request->user()->id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
@@ -114,6 +119,7 @@ class ProcedureFaqController extends Controller
 
     public function destroyReply(Request $request, ProcedureFaqReply $reply)
     {
+        $reply->faqItem->procedure->refuseWritesIfArchived($request->user());
         if ($reply->created_by !== $request->user()->id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }

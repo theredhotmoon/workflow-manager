@@ -12,7 +12,8 @@ use Illuminate\Support\Carbon;
  * The change-request flow as built: an employee says they cannot attend one of their own shifts
  * (store), schedule managers see the month's requests (index) and acknowledge them; the employee
  * sees their own (mine). There is no approve/reject/cancel step and no swap between two people:
- * a manager acts on a request by editing the schedule, and removing the assignment settles it.
+ * a manager acts on a request by editing the schedule, and removing the assignment settles it
+ * (the request stays on record, its assignment link nulled).
  */
 
 beforeEach(function () {
@@ -140,9 +141,7 @@ it('answers 404 when acknowledging an unknown request', function () {
     $this->actingAs($admin)->putJson('/api/shift-change-requests/999999/acknowledge')->assertNotFound();
 });
 
-it('deletes the change requests with the assignment when the shift is reassigned (cascade)', function () {
-    // Current behaviour: cascades; see follow-up. Unassigning acknowledges the pending request and
-    // then the shift_assignments FK cascade deletes it, so no record of the request remains.
+it('keeps the change requests, settled, when the assignment is removed and the shift reassigned', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $replacement = User::factory()->create(['role' => 'employee']);
     $assignment = scrAssign($this->employee, '2026-10-20');
@@ -154,23 +153,120 @@ it('deletes the change requests with the assignment when the shift is reassigned
         'shift_id' => $assignment->shift_id, 'user_id' => $replacement->id,
     ])->assertCreated();
 
-    expect($request->fresh())->toBeNull()
-        ->and($acknowledged->fresh())->toBeNull();
+    foreach ([$request, $acknowledged] as $kept) {
+        $fresh = $kept->fresh();
+        expect($fresh)->not->toBeNull()
+            ->and($fresh->status)->toBe('acknowledged')
+            ->and($fresh->shift_assignment_id)->toBeNull()
+            ->and($fresh->shift_id)->toBe($assignment->shift_id)
+            ->and($fresh->user_id)->toBe($this->employee->id);
+    }
     expect(ShiftAssignment::where('shift_id', $assignment->shift_id)->pluck('user_id')->all())->toBe([$replacement->id]);
-    $this->actingAs($this->employee)->getJson('/api/shift-change-requests/mine')->assertOk()->assertJsonCount(0);
+
+    // Both lists still show them, flagged, with their shift.
+    $mine = $this->actingAs($this->employee)->getJson('/api/shift-change-requests/mine')->assertOk()->assertJsonCount(2);
+    expect($mine->json('0.assignment_removed'))->toBeTrue()
+        ->and($mine->json('0.shift.date'))->toBe('2026-10-20')
+        ->and($mine->json('0.shift_date'))->toBe('2026-10-20');
+    $index = $this->actingAs($maintainer)->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->assertJsonCount(2);
+    expect($index->json('0.assignment_removed'))->toBeTrue()
+        ->and($index->json('0.assignment'))->toBeNull()
+        ->and($index->json('0.user.id'))->toBe($this->employee->id);
+    // The replacement doesn't inherit the old request.
     $this->actingAs($replacement)->getJson('/api/my-shifts?month=2026-10')
         ->assertOk()
         ->assertJsonPath('2026-10-20.0.has_change_request', false);
 });
 
-it('drops the request with its shift when the shift itself is deleted', function () {
-    // Current behaviour: cascades; see follow-up. shift_change_requests.shift_id cascades.
-    $assignment = scrAssign($this->employee, '2026-10-20');
+it('keeps the request with its date and slot when the shift itself is deleted', function () {
+    $assignment = scrAssign($this->employee, '2026-10-20', 2);
     $request = scrRequest($assignment);
+    expect($request->fresh()->shift_date->toDateString())->toBe('2026-10-20')
+        ->and($request->fresh()->shift_number)->toBe(2);
 
     $assignment->shift->delete();
 
-    expect($request->fresh())->toBeNull();
-    $this->actingAs(User::factory()->create(['role' => 'admin']))
-        ->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->assertJsonCount(0);
+    $fresh = $request->fresh();
+    expect($fresh)->not->toBeNull()
+        ->and($fresh->shift_id)->toBeNull()
+        ->and($fresh->shift_assignment_id)->toBeNull();
+    $index = $this->actingAs(User::factory()->create(['role' => 'admin']))
+        ->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->assertJsonCount(1);
+    expect($index->json('0.shift_removed'))->toBeTrue()
+        ->and($index->json('0.shift_date'))->toBe('2026-10-20')
+        ->and($index->json('0.shift_number'))->toBe(2);
+});
+
+it('settles and keeps the requests of slots removed by a day-count reduction', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    scrAssign(User::factory()->create(), '2026-10-20', 1);
+    $assignment = scrAssign($this->employee, '2026-10-20', 2);
+    $request = scrRequest($assignment);
+
+    $this->actingAs($maintainer)->putJson('/api/schedule/day-shifts', [
+        'date' => '2026-10-20', 'count' => 1, 'shift_group_id' => $this->group->id,
+        'confirm_remove_staffed' => true,
+    ])->assertOk();
+
+    $fresh = $request->fresh();
+    expect($fresh)->not->toBeNull()
+        ->and($fresh->status)->toBe('acknowledged')
+        ->and($fresh->shift_id)->toBeNull()
+        ->and($fresh->shift_date->toDateString())->toBe('2026-10-20')
+        ->and($fresh->shift_number)->toBe(2);
+});
+
+it('migrates existing requests: backfills date and slot, then nulls links instead of deleting', function () {
+    $migration = require database_path('migrations/2026_10_10_100100_keep_shift_change_requests_when_work_is_removed.php');
+    $migration->down();
+    $assignment = scrAssign($this->employee, '2026-10-20', 3);
+    $id = \Illuminate\Support\Facades\DB::table('shift_change_requests')->insertGetId([
+        'shift_assignment_id' => $assignment->id, 'user_id' => $this->employee->id, 'shift_id' => $assignment->shift_id,
+        'reason' => 'Doctor', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $migration->up();
+
+    $request = ShiftChangeRequest::find($id);
+    expect($request->shift_date->toDateString())->toBe('2026-10-20')
+        ->and($request->shift_number)->toBe(3);
+    $assignment->delete();
+    expect($request->fresh()->shift_assignment_id)->toBeNull()
+        ->and($request->fresh()->shift_id)->toBe($assignment->shift_id);
+});
+
+it('keeps a request\'s slot number in step when a day-count reduction renumbers its shift', function () {
+    $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
+    scrAssign(User::factory()->create(), '2026-10-20', 1);
+    Shift::create(['date' => '2026-10-20', 'shift_number' => 2, 'shift_group_id' => $this->group->id]);
+    $assignment = scrAssign($this->employee, '2026-10-20', 3);
+    $request = scrRequest($assignment);
+
+    // The empty slot 2 goes; slot 3 becomes slot 2.
+    $this->actingAs($maintainer)->putJson('/api/schedule/day-shifts', [
+        'date' => '2026-10-20', 'count' => 2, 'shift_group_id' => $this->group->id,
+    ])->assertOk();
+
+    expect($assignment->shift->fresh()->shift_number)->toBe(2)
+        ->and($request->fresh()->shift_number)->toBe(2)
+        ->and($request->fresh()->status)->toBe('pending');
+});
+
+it('answers 404 with a clear message when the assignment is removed while the request is being filed', function () {
+    $assignment = scrAssign($this->employee, '2026-10-20');
+    // Deterministic stand-in for a concurrent unassign: it lands right after validation found the row.
+    $fired = false;
+    \Illuminate\Support\Facades\DB::listen(function ($query) use (&$fired, $assignment) {
+        if ($fired || !str_contains($query->sql, 'from "shift_assignments"')) {
+            return;
+        }
+        $fired = true;
+        \Illuminate\Support\Facades\DB::table('shift_assignments')->where('id', $assignment->id)->delete();
+    });
+
+    $this->actingAs($this->employee)->postJson('/api/shift-change-requests', [
+        'shift_assignment_id' => $assignment->id, 'reason' => 'Doctor appointment',
+    ])->assertNotFound()->assertJsonPath('message', 'This assignment no longer exists.');
+
+    expect(ShiftChangeRequest::count())->toBe(0);
 });

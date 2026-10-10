@@ -64,6 +64,43 @@ test.describe('Modals: keyboard', () => {
     await adminPage.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(opener).toBeFocused();
+
+    // Like the other dialogs, a click on the backdrop closes it.
+    await opener.click();
+    await expect(dialog).toBeVisible();
+    await adminPage.mouse.click(5, 5);
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test('Schedule "Delete Schedule": step 2 is its own alertdialog and takes focus', async ({
+    adminPage,
+  }) => {
+    await createShiftGroupWithStreakRule(adminPage.context(), {
+      group: { name: 'A11y Delete Team' },
+    });
+    await adminPage.goto(`/schedule/${MONTH}`);
+    await adminPage.getByRole('button', { name: /A11y Delete Team/ }).click();
+
+    const opener = adminPage.getByRole('button', { name: 'Delete Schedule' });
+    await opener.focus();
+    await adminPage.keyboard.press('Enter');
+    const step1 = adminPage.getByRole('alertdialog', { name: /Schedule\?$/ });
+    await expect(step1).toBeVisible();
+    await expect(step1.getByRole('button', { name: 'Cancel' })).toBeFocused();
+
+    await adminPage.keyboard.press('Tab');
+    await expect(step1.getByRole('button', { name: 'Yes, continue' })).toBeFocused();
+    await adminPage.keyboard.press('Enter');
+
+    const step2 = adminPage.getByRole('alertdialog', { name: 'This cannot be undone!' });
+    await expect(step2).toBeVisible();
+    await expect(step2).toHaveAccessibleDescription(/permanently deleted/);
+    // Focus moved into step 2 instead of dropping to <body> with step 1's buttons.
+    await expect(step2.getByRole('button', { name: 'Cancel' })).toBeFocused();
+
+    await adminPage.keyboard.press('Escape');
+    await expect(step2).toHaveCount(0);
+    await expect(opener).toBeFocused();
   });
 });
 
@@ -91,6 +128,10 @@ test.describe('Toasts: live regions', () => {
 
     await expect(alertRegion).toContainText('Failed to load users. Please refresh.');
     await expect(statusRegion).not.toContainText('Failed to load users');
+    // Only the message is announced: the Dismiss button is outside the region.
+    await expect(alertRegion).toHaveText('Failed to load users. Please refresh.');
+    await expect(alertRegion.getByRole('button')).toHaveCount(0);
+    await expect(adminPage.getByRole('button', { name: 'Dismiss notification' })).toBeVisible();
     // Announcing does not move focus into the toast.
     expect(await focusIsInside(alertRegion)).toBe(false);
   });

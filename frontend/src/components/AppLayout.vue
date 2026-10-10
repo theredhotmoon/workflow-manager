@@ -10,7 +10,7 @@
             <button v-if="isAdmin" @click="sidebarOpen = !sidebarOpen"
               aria-label="Toggle sidebar"
               :aria-expanded="sidebarOpen"
-              aria-controls="admin-sidebar"
+              :aria-controls="sidebarOpen ? 'admin-sidebar' : undefined"
               class="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 transition-all text-slate-400 hover:text-white"
               title="Toggle sidebar">
               <svg class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -29,9 +29,10 @@
           </div>
 
           <!-- Center: Top nav links (non-admin items). On a narrow screen they scroll sideways in
-               their own strip, so the bell and the account menu stay on screen. -->
+               their own strip, so the bell and the account menu stay on screen; below xl, where
+               they can overflow, the strip's right edge fades out to hint that it scrolls. -->
           <div class="flex items-center gap-1 min-w-0">
-            <div class="flex items-center gap-1 min-w-0 overflow-x-auto">
+            <div class="flex items-center gap-1 min-w-0 overflow-x-auto max-xl:pr-6 max-xl:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
               <router-link v-for="link in topLinks" :key="link.to" :to="link.to"
                 :aria-current="$route.path === link.to ? 'page' : undefined"
                 :class="[
@@ -50,7 +51,7 @@
                 aria-label="Notifications"
                 :aria-expanded="alarmDropdownOpen"
                 aria-haspopup="true"
-                aria-controls="alarm-dropdown"
+                :aria-controls="alarmDropdownOpen ? 'alarm-dropdown' : undefined"
                 class="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 transition-all text-slate-400 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -114,7 +115,7 @@
                 :aria-label="`${currentUser?.name ?? 'User'} — account menu`"
                 :aria-expanded="userMenuOpen"
                 aria-haspopup="true"
-                aria-controls="user-menu"
+                :aria-controls="userMenuOpen ? 'user-menu' : undefined"
                 class="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/10 transition-all duration-200 group">
                 <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-indigo-500/20 ring-2 ring-white/10 group-hover:ring-indigo-500/40 transition-all">
                   {{ userInitials }}
@@ -318,7 +319,12 @@ const canManageSchedule = computed(() => userCanManageSchedule(currentUser.value
 
 // Focus trap for the Change Password modal
 const passwordModalRef = ref(null);
-useFocusTrap(passwordModalRef, showPasswordModal, { onEscape: closePasswordModal });
+// It is opened from the account menu, which is gone by the time it closes: focus goes back to the
+// account button instead.
+useFocusTrap(passwordModalRef, showPasswordModal, {
+  onEscape: closePasswordModal,
+  returnFocus: () => userMenuButtonRef.value,
+});
 
 // Alarm state
 const alarmDropdownOpen = ref(false);

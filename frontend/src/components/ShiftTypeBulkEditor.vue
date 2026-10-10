@@ -3,6 +3,7 @@
   <BaseModal
     overlay-class="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm"
     panel-class="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl"
+    :busy="saving"
     @close="emit('close')"
     v-slot="{ titleId }">
     <h2 :id="titleId" class="text-lg font-semibold text-white mb-1">Set shift types</h2>

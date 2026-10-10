@@ -3,7 +3,8 @@ import { resolve as resolvePath } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 // BaseModal runs in a real browser: focus, Tab and Escape are what is under test. A throwaway
-// Vite server (middleware mode, its own cache dir) compiles BaseModal.harness.js for the page.
+// Vite server (middleware mode, its own cache dir, no file watcher, dependency scan limited to the
+// harness) compiles BaseModal.harness.js for the page.
 const root = resolvePath(__dirname, '../..');
 const HARNESS =
   '<!doctype html><html><body><div id="app"></div>' +
@@ -15,7 +16,19 @@ let baseURL;
 
 test.describe.configure({ mode: 'serial' });
 
+async function closeServers() {
+  const server = http;
+  http = null;
+  if (server?.listening) await new Promise((resolve) => server.close(() => resolve()));
+  const devServer = vite;
+  vite = null;
+  await devServer?.close();
+}
+
 test.beforeAll(async () => {
+  // A cold cache (fresh `npm ci`) pre-bundles vue first: allow this hook more than the default
+  // 30 s (test.setTimeout inside a hook sets the hook's timeout).
+  test.setTimeout(120_000);
   // Vite and its Vue plugin are ESM-only: import() them rather than let the runner require() them.
   const { createServer: createViteServer } = await import('vite');
   const { default: vue } = await import('@vitejs/plugin-vue');
@@ -26,7 +39,9 @@ test.beforeAll(async () => {
     appType: 'custom',
     cacheDir: 'node_modules/.vite-unit-base-modal',
     plugins: [vue()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, watch: null },
+    // Scan only the harness, not index.html and the whole app; vue is the one dependency.
+    optimizeDeps: { entries: ['src/components/BaseModal.harness.js'], include: ['vue'] },
   });
   http = createHttpServer((req, res) => {
     if (req.url === '/') {
@@ -36,14 +51,19 @@ test.beforeAll(async () => {
     }
     vite.middlewares(req, res);
   });
-  await new Promise((resolve) => http.listen(0, '127.0.0.1', resolve));
+  try {
+    await new Promise((resolve, reject) => {
+      http.once('error', reject);
+      http.listen(0, '127.0.0.1', resolve);
+    });
+  } catch (error) {
+    await closeServers();
+    throw error;
+  }
   baseURL = `http://127.0.0.1:${http.address().port}/`;
 });
 
-test.afterAll(async () => {
-  await new Promise((resolve) => (http ? http.close(resolve) : resolve()));
-  await vite?.close();
-});
+test.afterAll(closeServers);
 
 const focusedId = (page) => page.evaluate(() => document.activeElement?.id || '');
 
@@ -79,11 +99,33 @@ test('Tab wraps from the last element to the first, Shift+Tab from the first to 
 
   // A full lap stays inside and skips the hidden button.
   const seen = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 7; i++) {
     await page.keyboard.press('Tab');
     seen.push(await focusedId(page));
   }
-  expect(seen).toEqual(['open-inner', 'outer-last', 'outer-first', 'open-inner']);
+  expect(seen).toEqual([
+    'open-inner',
+    'open-sticky-over',
+    'outer-extra-toggle',
+    'outer-busy',
+    'outer-last',
+    'outer-first',
+    'open-inner',
+  ]);
+});
+
+test('a control that appears while the dialog is open joins the Tab cycle', async ({ page }) => {
+  await openOuterWithKeyboard(page);
+  await page.locator('#outer-extra-toggle').check();
+  await expect(page.locator('#outer-extra')).toBeVisible();
+
+  await page.locator('#outer-last').focus();
+  await page.keyboard.press('Tab');
+  expect(await focusedId(page)).toBe('outer-extra');
+  await page.keyboard.press('Tab');
+  expect(await focusedId(page)).toBe('outer-first');
+  await page.keyboard.press('Shift+Tab');
+  expect(await focusedId(page)).toBe('outer-extra');
 });
 
 test('focus that left the dialog comes back in on the next Tab', async ({ page }) => {
@@ -138,4 +180,63 @@ test('a backdrop click closes; with close-on-backdrop and close-on-escape off ne
   await page.keyboard.press('Enter');
   await expect(sticky).toHaveCount(0);
   expect(await focusedId(page)).toBe('open-sticky');
+});
+
+test('Escape on a top dialog that ignores it is swallowed: the dialog below stays open', async ({
+  page,
+}) => {
+  const outer = await openOuterWithKeyboard(page);
+  await page.locator('#open-sticky-over').focus();
+  await page.keyboard.press('Enter');
+  const sticky = page.getByRole('dialog', { name: 'Sticky dialog' });
+  await expect(sticky).toBeVisible();
+  await expect.poll(() => focusedId(page)).toBe('sticky-close');
+
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(sticky).toBeVisible();
+  await expect(outer).toBeVisible();
+
+  await page.keyboard.press('Enter');
+  await expect(sticky).toHaveCount(0);
+  expect(await focusedId(page)).toBe('open-sticky-over');
+  // Now the outer dialog is on top again and Escape reaches it.
+  await page.keyboard.press('Escape');
+  await expect(outer).toHaveCount(0);
+});
+
+test('while busy, neither Escape nor a backdrop click closes the dialog', async ({ page }) => {
+  const outer = await openOuterWithKeyboard(page);
+  await page.locator('#outer-busy').check();
+  await page.keyboard.press('Escape');
+  await page.locator('.backdrop').dispatchEvent('click');
+  await expect(outer).toBeVisible();
+
+  await page.locator('#outer-busy').uncheck();
+  await page.keyboard.press('Escape');
+  await expect(outer).toHaveCount(0);
+});
+
+test('when the opener is gone, focus goes to return-focus, else to <main>, not <body>', async ({
+  page,
+}) => {
+  await page.goto(baseURL);
+  const dialog = page.getByRole('dialog', { name: 'Vanish dialog' });
+
+  // No return-focus: the page's <main> takes it.
+  await page.locator('#vanish-default').focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('#vanish-default')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('MAIN');
+
+  // return-focus="#after" wins.
+  await page.locator('#vanish-custom').focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  expect(await focusedId(page)).toBe('after');
 });

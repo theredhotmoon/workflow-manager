@@ -315,7 +315,7 @@
       overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
       backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
       panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6"
-      :close-on-backdrop="false"
+      :busy="saving"
       @close="closeUserModal"
       v-slot="{ titleId }">
       <div class="flex items-center justify-between mb-6">
@@ -393,7 +393,7 @@
       overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
       backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
       panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6"
-      :close-on-backdrop="false"
+      :busy="savingPassword"
       @close="closePasswordModal"
       v-slot="{ titleId }">
       <div class="flex items-center justify-between mb-6">
@@ -401,7 +401,7 @@
           <h2 :id="titleId" class="text-lg font-semibold text-white">Change Password</h2>
           <p class="text-slate-400 text-sm mt-1">For: {{ passwordUser?.name }}</p>
         </div>
-        <button @click="closePasswordModal" aria-label="Close" class="text-slate-400 hover:text-white transition-colors">
+        <button @click="closePasswordModal" :disabled="savingPassword" aria-label="Close" class="disabled:opacity-50 text-slate-400 hover:text-white transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -427,8 +427,8 @@
         </div>
 
         <div class="flex items-center gap-3 pt-2">
-          <button type="button" @click="closePasswordModal"
-            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+          <button type="button" @click="closePasswordModal" :disabled="savingPassword"
+            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200 disabled:opacity-50">
             Cancel
           </button>
           <button type="submit" :disabled="savingPassword"
@@ -450,7 +450,7 @@
       overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
       backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
       panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6"
-      :close-on-backdrop="false"
+      :busy="deactivating"
       @close="closeDeactivateModal"
       v-slot="{ titleId, descriptionId }">
       <div class="text-center mb-6">
@@ -476,8 +476,8 @@
       </div>
 
       <div class="flex items-center gap-3">
-        <button @click="closeDeactivateModal"
-          class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+        <button @click="closeDeactivateModal" :disabled="deactivating"
+          class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200 disabled:opacity-50">
           Cancel
         </button>
         <button @click="deactivateUserConfirmed" :disabled="deactivating || futureWork === null"
@@ -500,7 +500,7 @@
         overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
         backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
         panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6"
-        :close-on-backdrop="false"
+        :busy="savingGroup"
         @close="closeGroupModal"
         v-slot="{ titleId }">
         <div class="flex items-center justify-between mb-5">
@@ -560,7 +560,7 @@
       overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
       backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
       panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6"
-      :close-on-backdrop="false"
+      :busy="deletingGroupLoading"
       @close="showGroupDeleteModal = false"
       v-slot="{ titleId, descriptionId }">
       <div class="text-center mb-6">
@@ -602,6 +602,7 @@
         overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
         backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
         panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+        :busy="savingDelegation || assigningDelegationId !== null"
         @close="closeDelegationModal"
         v-slot="{ titleId }">
         <div class="flex items-center justify-between mb-4">
@@ -678,6 +679,7 @@
         overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
         backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
         panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-yellow-500/25 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6"
+        :busy="savingNewbie"
         @close="closeNewbieModal()"
         v-slot="{ titleId }">
         <div class="flex items-center gap-3 mb-5">
@@ -1014,14 +1016,16 @@ function closePasswordModal() {
 }
 
 async function changePassword() {
+  // Captured before the request: the dialog's state must not be read after the await.
+  const user = passwordUser.value;
   savingPassword.value = true;
   passwordError.value = '';
   try {
-    await api.put(`/api/users/${passwordUser.value.id}/password`, {
+    await api.put(`/api/users/${user.id}/password`, {
       password: passwordForm.password,
       password_confirmation: passwordForm.password_confirmation,
     });
-    showToast(`Password for "${passwordUser.value.name}" changed successfully.`);
+    showToast(`Password for "${user.name}" changed successfully.`);
     closePasswordModal();
   } catch (err) {
     const data = err.response?.data;
@@ -1065,13 +1069,15 @@ function closeDeactivateModal() {
 }
 
 async function deactivateUserConfirmed() {
+  // Captured before the request: the dialog's state must not be read after the await.
+  const target = deactivateTarget.value;
   deactivating.value = true;
   deactivateError.value = '';
   try {
-    await api.post(`/api/users/${deactivateTarget.value.id}/deactivate`, {
+    await api.post(`/api/users/${target.id}/deactivate`, {
       remove_future_assignments: futureWorkTotal.value > 0 && removeFutureAssignments.value,
     });
-    showToast(`User "${deactivateTarget.value.name}" deactivated.`);
+    showToast(`User "${target.name}" deactivated.`);
     closeDeactivateModal();
     await fetchUsers();
   } catch (err) {

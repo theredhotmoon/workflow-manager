@@ -73,6 +73,7 @@
           overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
           backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
           panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+          :busy="savingAssignment"
           @close="showAddModal = false"
           v-slot="{ titleId }">
           <h3 :id="titleId" class="text-white font-bold text-lg mb-5">Add On-Call Period</h3>
@@ -115,6 +116,7 @@
           overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
           backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
           panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+          :busy="savingCallback"
           @close="showCallbackModal = false"
           v-slot="{ titleId }">
           <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Log Callback</h3>

@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* Programmatic focus targets (a dialog panel, <main> after a dialog whose opener is gone
+   closes) take focus for screen readers and the keyboard, but are not controls: no ring. */
+[tabindex="-1"]:focus {
+  outline: none;
+}

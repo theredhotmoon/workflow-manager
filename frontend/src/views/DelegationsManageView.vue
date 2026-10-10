@@ -210,6 +210,7 @@
         <BaseModal v-if="showModal"
           overlay-class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm"
           panel-class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg mx-4"
+          :busy="saving"
           @close="showModal = false"
           v-slot="{ titleId }">
           <div class="p-6 pb-3 border-b border-white/10">

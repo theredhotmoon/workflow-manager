@@ -8,7 +8,8 @@
   gets `titleId` (and `descriptionId`) to put on its heading (and description).
 
   Closing is the caller's: `close` fires on Escape (unless `close-on-escape` is false) and on a
-  backdrop click (unless `close-on-backdrop` is false); the caller decides what that means.
+  backdrop click (unless `close-on-backdrop` is false), never while `busy`; the caller decides
+  what that means.
 -->
 <template>
   <div :class="overlayClass" @click.self="onBackdropClick">
@@ -55,6 +56,16 @@ const props = defineProps({
   closeOnEscape: { type: Boolean, default: true },
   /** CSS selector (inside the panel) of the element to focus on open; else the first focusable. */
   initialFocus: { type: String, default: '' },
+  /**
+   * Where focus goes on close if the opener has left the page: a CSS selector (document-wide) or
+   * a function returning the element. Default: the dialog the opener was in, else <main>.
+   */
+  returnFocus: { type: [String, Function], default: '' },
+  /**
+   * A request is in flight: Escape and backdrop clicks do not close the dialog (the caller should
+   * also disable its own Cancel / close buttons), so a save can't finish against a closed form.
+   */
+  busy: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['close']);
@@ -64,14 +75,20 @@ const descriptionId = useId();
 const panelRef = ref(null);
 
 function onBackdropClick() {
-  if (props.closeOnBackdrop) emit('close');
+  if (props.closeOnBackdrop && !props.busy) emit('close');
+}
+
+function resolveReturnFocus() {
+  if (typeof props.returnFocus === 'function') return props.returnFocus();
+  return props.returnFocus ? document.querySelector(props.returnFocus) : null;
 }
 
 // Escape is swallowed even when it does not close: it must not reach a layer underneath.
 const trap = createFocusTrap(panelRef, {
   onEscape: () => {
-    if (props.closeOnEscape) emit('close');
+    if (props.closeOnEscape && !props.busy) emit('close');
   },
+  returnFocus: resolveReturnFocus,
   initialFocus: () =>
     props.initialFocus ? panelRef.value?.querySelector(props.initialFocus) : null,
 });

@@ -72,6 +72,7 @@
             overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
             backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
             panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-orange-500/25 rounded-2xl shadow-2xl p-6"
+            :busy="submittingFeedback"
             @close="showFeedbackModal = false"
             v-slot="{ titleId }">
             <h3 :id="titleId" class="text-white font-bold text-lg mb-4">Report Procedure Issue</h3>
@@ -108,6 +109,7 @@
             overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
             backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
             panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-violet-500/25 rounded-2xl shadow-2xl p-6"
+            :busy="savingTemplate"
             @close="showTemplateModal = false"
             v-slot="{ titleId }">
             <h3 :id="titleId" class="text-white font-bold text-lg mb-4">{{ templateForm.id ? 'Edit Template' : 'New Template' }}</h3>

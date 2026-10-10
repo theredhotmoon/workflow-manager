@@ -573,6 +573,7 @@
         overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
         backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
         panel-class="relative w-full max-w-lg bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+        :busy="savingChecklist"
         @close="showChecklistModal = false"
         v-slot="{ titleId }">
         <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Shift Checklists</h3>
@@ -655,6 +656,7 @@
         overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
         backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
         panel-class="relative w-full max-w-sm bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+        :busy="savingTimes"
         @close="showTimeModal = false"
         v-slot="{ titleId }">
         <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Shift Times</h3>
@@ -735,6 +737,7 @@
         overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
         backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
         panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+        :busy="savingGroupSettings"
         @close="showGroupSettingsModal = false"
         v-slot="{ titleId }">
         <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Settlement Period Settings</h3>
@@ -1027,6 +1030,7 @@
       <BaseModal v-if="showGenerateModal"
         overlay-class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
         panel-class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[85vh] flex flex-col"
+        :busy="generating"
         @close="showGenerateModal = false"
         v-slot="{ titleId }">
         <!-- Modal Header -->
@@ -1247,11 +1251,14 @@
       leave-active-class="transition-all duration-200 ease-in"
       leave-from-class="opacity-100"
       leave-to-class="opacity-0">
-      <BaseModal v-if="deleteStep > 0"
+      <!-- Keyed by step: step 2 is a new alertdialog (focused and announced), not a re-render
+           that would drop focus with step 1's removed buttons. -->
+      <BaseModal v-if="deleteStep > 0" :key="deleteStep"
         role="alertdialog"
         overlay-class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm"
         panel-class="bg-slate-800/95 border border-red-500/20 rounded-2xl shadow-2xl w-full max-w-sm mx-4"
         described
+        :busy="deleting"
         @close="deleteStep = 0"
         v-slot="{ titleId, descriptionId }">
         <!-- Step 1 -->
@@ -1307,6 +1314,7 @@
       <BaseModal v-if="changeRequestModal.show"
         overlay-class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
         panel-class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md mx-4"
+        :busy="changeRequestModal.submitting"
         @close="changeRequestModal.show = false"
         v-slot="{ titleId }">
         <div class="p-6 pb-3 border-b border-white/10">

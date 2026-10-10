@@ -19,9 +19,13 @@ export function handleModalKeydown(event) {
   layers[layers.length - 1]?.(event);
 }
 
-/** Puts a layer on top of the stack. Returns a function that removes it (idempotent). */
-export function pushModalLayer(onKeydown) {
+/**
+ * Puts a layer on top of the stack. Returns a function that removes it (idempotent).
+ * `getContainer` (optional) returns the layer's dialog element, for topModalContainer().
+ */
+export function pushModalLayer(onKeydown, getContainer) {
   const layer = (event) => onKeydown(event);
+  layer.getContainer = getContainer;
   layers.push(layer);
   if (layers.length === 1 && typeof document !== 'undefined') {
     document.addEventListener('keydown', handleModalKeydown);
@@ -40,6 +44,11 @@ export function modalLayerCount() {
   return layers.length;
 }
 
+/** The dialog element of the top open layer, if it told us one. */
+export function topModalContainer() {
+  return layers[layers.length - 1]?.getContainer?.() ?? null;
+}
+
 function isFocusable(element) {
   // Skip what can't take focus right now: hidden by v-show / display:none, or not rendered.
   return element.getClientRects().length > 0;
@@ -55,10 +64,15 @@ function isFocusable(element) {
  * @param {() => void} [options.onEscape] - called on Escape while this is the top layer
  * @param {() => (HTMLElement|null|undefined)} [options.initialFocus] - element to focus on open;
  *        defaults to the first focusable element, then the container itself
+ * @param {() => (HTMLElement|null|undefined)} [options.returnFocus] - where focus goes on close
+ *        when the opener is no longer on the page (a menu item that was unmounted, a re-rendered
+ *        row); defaults to the dialog the opener was in, else the dialog still open below, else
+ *        the page's <main>
  */
 export function createFocusTrap(containerRef, options = {}) {
-  const { onEscape, initialFocus } = options;
+  const { onEscape, initialFocus, returnFocus } = options;
   let triggerElement = null;
+  let triggerDialog = null;
   let releaseLayer = null;
 
   function getFocusableElements() {
@@ -114,8 +128,9 @@ export function createFocusTrap(containerRef, options = {}) {
   async function activate() {
     // Remember where focus was before the modal opened so we can restore it
     triggerElement = document.activeElement;
+    triggerDialog = triggerElement?.closest?.('[aria-modal="true"]') ?? null;
     releaseLayer?.();
-    releaseLayer = pushModalLayer(handleKeydown);
+    releaseLayer = pushModalLayer(handleKeydown, () => containerRef.value);
     // Move focus inside the modal after Vue renders it
     await nextTick();
     if (releaseLayer) focusInitial();
@@ -125,11 +140,31 @@ export function createFocusTrap(containerRef, options = {}) {
     if (!releaseLayer) return;
     releaseLayer();
     releaseLayer = null;
-    // Restore focus to the element that opened the modal, if it is still on the page
-    if (triggerElement instanceof HTMLElement && triggerElement.isConnected) {
-      triggerElement.focus();
+    // Restore focus to the element that opened the modal; if it is gone (or focus was on <body>
+    // when it opened, e.g. its menu item was removed in the same update), to a stand-in rather
+    // than let focus drop to <body>.
+    const opener = triggerElement;
+    if (opener instanceof HTMLElement && opener !== document.body && opener.isConnected) {
+      opener.focus();
+    } else {
+      focusFallback();
     }
     triggerElement = null;
+    triggerDialog = null;
+  }
+
+  function focusFallback() {
+    const target =
+      returnFocus?.() ||
+      (triggerDialog?.isConnected ? triggerDialog : null) ||
+      topModalContainer() ||
+      document.querySelector('main');
+    if (!(target instanceof HTMLElement)) return;
+    // A dialog or <main> is not focusable by itself: make it a programmatic focus target only.
+    if (!target.matches(FOCUSABLE_SELECTORS) && !target.hasAttribute('tabindex')) {
+      target.setAttribute('tabindex', '-1');
+    }
+    target.focus({ preventScroll: true });
   }
 
   return { activate, deactivate, handleKeydown };
@@ -143,6 +178,7 @@ export function createFocusTrap(containerRef, options = {}) {
  * @param {object}                               options
  * @param {() => void}                           [options.onEscape] - callback invoked when the user presses Escape
  *                                                    while this modal is the top one
+ * @param {() => (HTMLElement|null|undefined)}   [options.returnFocus] - see createFocusTrap
  */
 export function useFocusTrap(containerRef, isOpen, options = {}) {
   const trap = createFocusTrap(containerRef, options);

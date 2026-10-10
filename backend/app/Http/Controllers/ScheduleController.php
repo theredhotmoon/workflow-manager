@@ -15,6 +15,7 @@ use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -142,6 +143,8 @@ class ScheduleController extends Controller
                 for ($i = $existing + 1; $i <= $shiftsPerDay; $i++) {
                     $times = $shiftTimes[$i - 1] ?? $this->defaultShiftTimes($shiftsPerDay)[$i - 1] ?? [];
                     $isWeekend = $current->isWeekend();
+                    // firstOrCreate falls back to createOrFirst: a slot a concurrent generate created
+                    // first (unique on date, slot and group) is found, not a 500.
                     $shift = Shift::firstOrCreate(
                         ['date' => $dateStr, 'shift_number' => $i, 'shift_group_id' => $groupId],
                         [
@@ -168,7 +171,10 @@ class ScheduleController extends Controller
                         }
                     }
 
-                    $created++;
+                    // Only slots this run created count (a concurrent run's are reported by that run).
+                    if ($shift->wasRecentlyCreated) {
+                        $created++;
+                    }
                 }
 
                 $current->addDay();
@@ -407,7 +413,7 @@ class ScheduleController extends Controller
 
         if ($existing) {
             return response()->json([
-                'message' => 'User is already assigned to this shift.',
+                'message' => self::ALREADY_ASSIGNED_MESSAGE,
                 'assignment' => $existing,
             ], 422);
         }
@@ -485,7 +491,32 @@ class ScheduleController extends Controller
             ? $timeline->cascadePolicy($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy, $laterPolicy)
             : [];
 
-        $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor) {
+        try {
+            $assignment = $this->createAssignment($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor);
+        } catch (UniqueConstraintViolationException) {
+            // A concurrent assign of the same person to this shift committed between the check above
+            // and this insert (shift_id + user_id is unique): the same answer as the check gives.
+            return response()->json(['message' => self::ALREADY_ASSIGNED_MESSAGE], 422);
+        }
+        $assignment->load('user:id,name');
+
+        return response()->json([
+            'id' => $assignment->id,
+            'shift_id' => $assignment->shift_id,
+            'user_id' => $assignment->user_id,
+            'user_name' => $assignment->user->name,
+            'rest_policy' => $assignment->rest_policy,
+            'updated_assignment_ids' => $updatedIds,
+            'updated_rest_policy' => $laterPolicy,
+        ], 201);
+    }
+
+    private const ALREADY_ASSIGNED_MESSAGE = 'User is already assigned to this shift.';
+
+    /** The insert of placeAssignment(), with its locks and the later shifts' policy stamps. */
+    private function createAssignment(Shift $shift, int $userId, ?string $restPolicy, array $updatedIds, ?string $laterPolicy, RestPolicyJanitor $janitor): ShiftAssignment
+    {
+        return DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor) {
             // The group first (ShiftGroup's lock order), re-checked: an archive since the check
             // above is refused here instead of leaving future work in an archived group.
             $this->lockGroupsOrRefuse([$shift]);
@@ -510,17 +541,6 @@ class ScheduleController extends Controller
 
             return $created;
         });
-        $assignment->load('user:id,name');
-
-        return response()->json([
-            'id' => $assignment->id,
-            'shift_id' => $assignment->shift_id,
-            'user_id' => $assignment->user_id,
-            'user_name' => $assignment->user->name,
-            'rest_policy' => $assignment->rest_policy,
-            'updated_assignment_ids' => $updatedIds,
-            'updated_rest_policy' => $laterPolicy,
-        ], 201);
     }
 
     /**

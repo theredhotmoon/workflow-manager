@@ -6,11 +6,13 @@ use App\Models\OnCallAssignment;
 use App\Models\User;
 use App\Services\FutureWorkRemover;
 use App\Support\BusinessDate;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
@@ -47,12 +49,18 @@ class UserController extends Controller
             'is_admin' => ['prohibited'],
         ], self::ROLE_MESSAGES);
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'role' => $validated['role'] ?? User::ROLE_EMPLOYEE,
-        ]);
+        try {
+            // In a transaction (savepoint), so the failed insert can't poison an outer one.
+            $user = DB::transaction(fn () => User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'role' => $validated['role'] ?? User::ROLE_EMPLOYEE,
+            ]));
+        } catch (UniqueConstraintViolationException) {
+            // The same email was taken by a concurrent create after the unique rule checked it.
+            throw ValidationException::withMessages(['email' => __('validation.unique', ['attribute' => 'email'])]);
+        }
 
         return response()->json($user, 201);
     }

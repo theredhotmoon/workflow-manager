@@ -7,6 +7,7 @@ use App\Models\DelegationLog;
 use App\Models\User;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -315,7 +316,13 @@ class DelegationController extends Controller
             return response()->json(['message' => 'You have already applied for this delegation.'], 422);
         }
 
-        $delegation->users()->attach($request->user()->id, ['status' => 'pending']);
+        try {
+            // In a transaction (savepoint) so a racing duplicate's failed insert can't poison an outer one.
+            DB::transaction(fn () => $delegation->users()->attach($request->user()->id, ['status' => 'pending']));
+        } catch (UniqueConstraintViolationException) {
+            // A concurrent request (double click, second tab) applied first: delegation + user is unique.
+            return response()->json(['message' => 'You have already applied for this delegation.'], 422);
+        }
         $this->log($delegation->id, $request->user()->id, 'self_registered', "{$request->user()->name} requested to join");
 
         $delegation->load([...Delegation::membersFor($request->user()), 'creator:id,name']);

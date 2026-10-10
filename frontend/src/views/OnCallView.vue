@@ -69,73 +69,79 @@
       <Transition
         enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showAddModal = false">
-          <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showAddModal = false"></div>
-          <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
-            <h3 class="text-white font-bold text-lg mb-5">Add On-Call Period</h3>
+        <BaseModal v-if="showAddModal"
+          overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+          backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+          :busy="savingAssignment"
+          @close="showAddModal = false"
+          v-slot="{ titleId }">
+          <h3 :id="titleId" class="text-white font-bold text-lg mb-5">Add On-Call Period</h3>
 
-            <div class="mb-4">
-              <label for="oncall-add-employee" class="block text-sm font-medium text-slate-300 mb-1.5">Employee</label>
-              <select id="oncall-add-employee" v-model.number="addForm.user_id"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-                <option v-for="u in employees" :key="u.id" :value="u.id">{{ u.name }}</option>
-              </select>
-            </div>
-
-            <div class="mb-4">
-              <label for="oncall-add-starts" class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
-              <input id="oncall-add-starts" v-model="addForm.starts_at" type="datetime-local"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
-
-            <div class="mb-5">
-              <label for="oncall-add-ends" class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
-              <input id="oncall-add-ends" v-model="addForm.ends_at" type="datetime-local"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
-
-            <div class="flex items-center justify-end gap-3">
-              <button @click="showAddModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
-              <button @click="saveAssignment" :disabled="savingAssignment"
-                class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                Save
-              </button>
-            </div>
+          <div class="mb-4">
+            <label for="oncall-add-employee" class="block text-sm font-medium text-slate-300 mb-1.5">Employee</label>
+            <select id="oncall-add-employee" v-model.number="addForm.user_id"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+              <option v-for="u in employees" :key="u.id" :value="u.id">{{ u.name }}</option>
+            </select>
           </div>
-        </div>
+
+          <div class="mb-4">
+            <label for="oncall-add-starts" class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
+            <input id="oncall-add-starts" v-model="addForm.starts_at" type="datetime-local"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+          </div>
+
+          <div class="mb-5">
+            <label for="oncall-add-ends" class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
+            <input id="oncall-add-ends" v-model="addForm.ends_at" type="datetime-local"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+          </div>
+
+          <div class="flex items-center justify-end gap-3">
+            <button @click="showAddModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
+            <button @click="saveAssignment" :disabled="savingAssignment"
+              class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              Save
+            </button>
+          </div>
+        </BaseModal>
       </Transition>
 
       <!-- Log Callback Modal -->
       <Transition
         enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showCallbackModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showCallbackModal = false">
-          <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showCallbackModal = false"></div>
-          <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
-            <h3 class="text-white font-bold text-lg mb-1">Log Callback</h3>
-            <p class="text-slate-400 text-sm mb-5">{{ callbackTarget?.user?.name }}</p>
+        <BaseModal v-if="showCallbackModal"
+          overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+          backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+          :busy="savingCallback"
+          @close="showCallbackModal = false"
+          v-slot="{ titleId }">
+          <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Log Callback</h3>
+          <p class="text-slate-400 text-sm mb-5">{{ callbackTarget?.user?.name }}</p>
 
-            <div class="mb-4">
-              <label for="oncall-callback-starts" class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
-              <input id="oncall-callback-starts" v-model="callbackForm.starts_at" type="datetime-local"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
-
-            <div class="mb-5">
-              <label for="oncall-callback-ends" class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
-              <input id="oncall-callback-ends" v-model="callbackForm.ends_at" type="datetime-local"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
-
-            <div class="flex items-center justify-end gap-3">
-              <button @click="showCallbackModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
-              <button @click="saveCallback" :disabled="savingCallback"
-                class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                Save
-              </button>
-            </div>
+          <div class="mb-4">
+            <label for="oncall-callback-starts" class="block text-sm font-medium text-slate-300 mb-1.5">Starts</label>
+            <input id="oncall-callback-starts" v-model="callbackForm.starts_at" type="datetime-local"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
-        </div>
+
+          <div class="mb-5">
+            <label for="oncall-callback-ends" class="block text-sm font-medium text-slate-300 mb-1.5">Ends</label>
+            <input id="oncall-callback-ends" v-model="callbackForm.ends_at" type="datetime-local"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+          </div>
+
+          <div class="flex items-center justify-end gap-3">
+            <button @click="showCallbackModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
+            <button @click="saveCallback" :disabled="savingCallback"
+              class="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              Save
+            </button>
+          </div>
+        </BaseModal>
       </Transition>
 
       <AppToast />
@@ -148,6 +154,7 @@ import { computed, onMounted, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';

@@ -52,7 +52,8 @@ test.describe('My Shifts: failed loads', () => {
     await employeePage.route(isMyShifts, fail500);
     await employeePage.goto('/my-shifts');
 
-    const error = employeePage.getByRole('alert');
+    // Scoped to the page body: the toast's live regions (role alert/status) are always present.
+    const error = employeePage.locator('main').getByRole('alert');
     await expect(error).toContainText('Could not load your shifts');
     await expect(employeePage.getByText('No shifts or delegations for this month.')).toHaveCount(0);
 
@@ -60,7 +61,7 @@ test.describe('My Shifts: failed loads', () => {
     await error.getByRole('button', { name: 'Retry' }).click();
 
     await expect(shiftCard).toBeVisible();
-    await expect(employeePage.getByRole('alert')).toHaveCount(0);
+    await expect(employeePage.locator('main').getByRole('alert')).toHaveCount(0);
   });
 
   test('when only delegations fail, shifts still show with a notice', async ({ employeePage }) => {
@@ -68,6 +69,8 @@ test.describe('My Shifts: failed loads', () => {
     await employeePage.goto('/my-shifts');
 
     await expect(shiftCard).toBeVisible();
-    await expect(employeePage.getByRole('status')).toContainText("Delegations couldn't be loaded");
+    await expect(employeePage.locator('main').getByRole('status')).toContainText(
+      "Delegations couldn't be loaded",
+    );
   });
 });

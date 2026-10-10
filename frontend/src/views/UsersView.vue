@@ -311,264 +311,282 @@
     <!-- ── MODALS ── -->
 
     <!-- Create/Edit User Modal -->
-    <div v-if="showUserModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeUserModal">
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-      <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-lg font-semibold text-white">{{ editingUser ? 'Edit User' : 'Create New User' }}</h2>
-          <button @click="closeUserModal" class="text-slate-400 hover:text-white transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <form @submit.prevent="saveUser" class="space-y-4">
-          <div v-if="formError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-            <span class="text-red-300 text-sm">{{ formError }}</span>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Full Name</label>
-            <input v-model="userForm.name" type="text" required
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
-              placeholder="John Doe" />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Email Address</label>
-            <input v-model="userForm.email" type="email" required
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
-              placeholder="john@example.com" />
-          </div>
-
-          <template v-if="!editingUser">
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
-              <input v-model="userForm.password" type="password" required minlength="8"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
-                placeholder="Minimum 8 characters" />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Confirm Password</label>
-              <input v-model="userForm.password_confirmation" type="password" required minlength="8"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
-                placeholder="Re-enter password" />
-            </div>
-          </template>
-
-          <div>
-            <label for="user-role" class="block text-sm font-medium text-slate-300 mb-1.5">Role</label>
-            <!-- An admin can't change their own role (the server refuses it too). -->
-            <select id="user-role" v-model="userForm.role" :disabled="editingOwnAccount"
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
-              <option v-for="option in ROLE_OPTIONS" :key="option.value" :value="option.value" class="bg-slate-800">{{ option.label }}</option>
-            </select>
-            <p class="mt-1 text-xs text-slate-500">{{ editingOwnAccount ? 'You cannot change your own role.' : roleHint }}</p>
-          </div>
-
-          <div class="flex items-center gap-3 pt-2">
-            <button type="button" @click="closeUserModal"
-              class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
-              Cancel
-            </button>
-            <button type="submit" :disabled="saving"
-              class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-              <svg v-if="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-              {{ saving ? 'Saving...' : (editingUser ? 'Update' : 'Create') }}
-            </button>
-          </div>
-        </form>
+    <BaseModal v-if="showUserModal"
+      overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+      panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6"
+      :busy="saving"
+      @close="closeUserModal"
+      v-slot="{ titleId }">
+      <div class="flex items-center justify-between mb-6">
+        <h2 :id="titleId" class="text-lg font-semibold text-white">{{ editingUser ? 'Edit User' : 'Create New User' }}</h2>
+        <button @click="closeUserModal" aria-label="Close" class="text-slate-400 hover:text-white transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
-    </div>
 
-    <!-- Password Change Modal -->
-    <div v-if="showPasswordModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closePasswordModal">
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-      <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6">
-        <div class="flex items-center justify-between mb-6">
-          <div>
-            <h2 class="text-lg font-semibold text-white">Change Password</h2>
-            <p class="text-slate-400 text-sm mt-1">For: {{ passwordUser?.name }}</p>
-          </div>
-          <button @click="closePasswordModal" class="text-slate-400 hover:text-white transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+      <form @submit.prevent="saveUser" class="space-y-4">
+        <div v-if="formError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+          <span class="text-red-300 text-sm">{{ formError }}</span>
         </div>
 
-        <form @submit.prevent="changePassword" class="space-y-4">
-          <div v-if="passwordError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-            <span class="text-red-300 text-sm">{{ passwordError }}</span>
-          </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">Full Name</label>
+          <input v-model="userForm.name" type="text" required
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
+            placeholder="John Doe" />
+        </div>
 
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">Email Address</label>
+          <input v-model="userForm.email" type="email" required
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
+            placeholder="john@example.com" />
+        </div>
+
+        <template v-if="!editingUser">
           <div>
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">New Password</label>
-            <input v-model="passwordForm.password" type="password" required minlength="8"
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+            <input v-model="userForm.password" type="password" required minlength="8"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
               placeholder="Minimum 8 characters" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Confirm New Password</label>
-            <input v-model="passwordForm.password_confirmation" type="password" required minlength="8"
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Confirm Password</label>
+            <input v-model="userForm.password_confirmation" type="password" required minlength="8"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
-              placeholder="Re-enter new password" />
+              placeholder="Re-enter password" />
           </div>
+        </template>
 
-          <div class="flex items-center gap-3 pt-2">
-            <button type="button" @click="closePasswordModal"
-              class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
-              Cancel
-            </button>
-            <button type="submit" :disabled="savingPassword"
-              class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-              <svg v-if="savingPassword" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-              {{ savingPassword ? 'Changing...' : 'Change Password' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- Deactivate User Modal -->
-    <div v-if="showDeactivateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDeactivateModal"
-      role="dialog" aria-modal="true" aria-labelledby="deactivate-modal-title">
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-      <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
-        <div class="text-center mb-6">
-          <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <h2 id="deactivate-modal-title" class="text-lg font-semibold text-white mb-2">Deactivate User</h2>
-          <p class="text-slate-400 text-sm">Deactivate <span class="text-white font-medium">{{ deactivateTarget?.name }}</span>? They will no longer be able to log in or be picked for shifts. Their history (shifts worked, handovers, procedures they own) is kept, and they can be reactivated later.</p>
+        <div>
+          <label for="user-role" class="block text-sm font-medium text-slate-300 mb-1.5">Role</label>
+          <!-- An admin can't change their own role (the server refuses it too). -->
+          <select id="user-role" v-model="userForm.role" :disabled="editingOwnAccount"
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+            <option v-for="option in ROLE_OPTIONS" :key="option.value" :value="option.value" class="bg-slate-800">{{ option.label }}</option>
+          </select>
+          <p class="mt-1 text-xs text-slate-500">{{ editingOwnAccount ? 'You cannot change your own role.' : roleHint }}</p>
         </div>
 
-        <div v-if="futureWork === null" class="mb-4 text-center text-slate-500 text-sm">Checking upcoming shifts…</div>
-        <label v-else-if="futureWorkTotal > 0" class="mb-4 flex items-start gap-2 text-sm text-slate-300 cursor-pointer select-none">
-          <input v-model="removeFutureAssignments" type="checkbox"
-            class="mt-0.5 w-4 h-4 rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/40" />
-          <span>Also remove them from these {{ futureWorkLabel }} from tomorrow on</span>
-        </label>
-        <p v-else class="mb-4 text-center text-slate-500 text-sm">They have no shifts or on-call duties from tomorrow on.</p>
-
-        <div v-if="deactivateError" class="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-          <span class="text-red-300 text-sm">{{ deactivateError }}</span>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <button @click="closeDeactivateModal"
+        <div class="flex items-center gap-3 pt-2">
+          <button type="button" @click="closeUserModal"
             class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
             Cancel
           </button>
-          <button @click="deactivateUserConfirmed" :disabled="deactivating || futureWork === null"
-            class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
-            <svg v-if="deactivating" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+          <button type="submit" :disabled="saving"
+            class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            <svg v-if="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
             </svg>
-            {{ deactivating ? 'Deactivating...' : 'Deactivate' }}
+            {{ saving ? 'Saving...' : (editingUser ? 'Update' : 'Create') }}
           </button>
         </div>
+      </form>
+    </BaseModal>
+
+    <!-- Password Change Modal -->
+    <BaseModal v-if="showPasswordModal"
+      overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+      panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-6"
+      :busy="savingPassword"
+      @close="closePasswordModal"
+      v-slot="{ titleId }">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 :id="titleId" class="text-lg font-semibold text-white">Change Password</h2>
+          <p class="text-slate-400 text-sm mt-1">For: {{ passwordUser?.name }}</p>
+        </div>
+        <button @click="closePasswordModal" aria-label="Close" class="text-slate-400 hover:text-white transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
-    </div>
+
+      <form @submit.prevent="changePassword" class="space-y-4">
+        <div v-if="passwordError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+          <span class="text-red-300 text-sm">{{ passwordError }}</span>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">New Password</label>
+          <input v-model="passwordForm.password" type="password" required minlength="8"
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
+            placeholder="Minimum 8 characters" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">Confirm New Password</label>
+          <input v-model="passwordForm.password_confirmation" type="password" required minlength="8"
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all duration-200 text-sm"
+            placeholder="Re-enter new password" />
+        </div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="button" @click="closePasswordModal"
+            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+            Cancel
+          </button>
+          <button type="submit" :disabled="savingPassword"
+            class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            <svg v-if="savingPassword" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            {{ savingPassword ? 'Changing...' : 'Change Password' }}
+          </button>
+        </div>
+      </form>
+    </BaseModal>
+
+    <!-- Deactivate User Modal -->
+    <BaseModal v-if="showDeactivateModal"
+      role="alertdialog"
+      described
+      overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+      panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6"
+      :busy="deactivating"
+      @close="closeDeactivateModal"
+      v-slot="{ titleId, descriptionId }">
+      <div class="text-center mb-6">
+        <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+        </div>
+        <h2 :id="titleId" class="text-lg font-semibold text-white mb-2">Deactivate User</h2>
+        <p :id="descriptionId" class="text-slate-400 text-sm">Deactivate <span class="text-white font-medium">{{ deactivateTarget?.name }}</span>? They will no longer be able to log in or be picked for shifts. Their history (shifts worked, handovers, procedures they own) is kept, and they can be reactivated later.</p>
+      </div>
+
+      <div v-if="futureWork === null" class="mb-4 text-center text-slate-500 text-sm">Checking upcoming shifts…</div>
+      <label v-else-if="futureWorkTotal > 0" class="mb-4 flex items-start gap-2 text-sm text-slate-300 cursor-pointer select-none">
+        <input v-model="removeFutureAssignments" type="checkbox"
+          class="mt-0.5 w-4 h-4 rounded border-white/20 bg-white/5 text-violet-500 focus:ring-violet-500/40" />
+        <span>Also remove them from these {{ futureWorkLabel }} from tomorrow on</span>
+      </label>
+      <p v-else class="mb-4 text-center text-slate-500 text-sm">They have no shifts or on-call duties from tomorrow on.</p>
+
+      <div v-if="deactivateError" class="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+        <span class="text-red-300 text-sm">{{ deactivateError }}</span>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button @click="closeDeactivateModal"
+          class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+          Cancel
+        </button>
+        <button @click="deactivateUserConfirmed" :disabled="deactivating || futureWork === null"
+          class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
+          <svg v-if="deactivating" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          {{ deactivating ? 'Deactivating...' : 'Deactivate' }}
+        </button>
+      </div>
+    </BaseModal>
 
     <!-- Create/Edit Group Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100"
       leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
-      <div v-if="showGroupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeGroupModal">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-        <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
-          <div class="flex items-center justify-between mb-5">
-            <h2 class="text-base font-semibold text-white">{{ editingGroup ? 'Edit Group' : 'New Group' }}</h2>
-            <button @click="closeGroupModal" class="text-slate-400 hover:text-white transition-colors">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+      <BaseModal v-if="showGroupModal"
+        overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6"
+        :busy="savingGroup"
+        @close="closeGroupModal"
+        v-slot="{ titleId }">
+        <div class="flex items-center justify-between mb-5">
+          <h2 :id="titleId" class="text-base font-semibold text-white">{{ editingGroup ? 'Edit Group' : 'New Group' }}</h2>
+          <button @click="closeGroupModal" aria-label="Close" class="text-slate-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form @submit.prevent="saveGroup" class="space-y-4">
+          <div v-if="groupFormError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+            <span class="text-red-300 text-sm">{{ groupFormError }}</span>
           </div>
 
-          <form @submit.prevent="saveGroup" class="space-y-4">
-            <div v-if="groupFormError" class="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-              <span class="text-red-300 text-sm">{{ groupFormError }}</span>
-            </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Group Name</label>
+            <input v-model="groupForm.name" type="text" required
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all duration-200 text-sm"
+              placeholder="e.g. Operators" />
+          </div>
 
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Group Name</label>
-              <input v-model="groupForm.name" type="text" required
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all duration-200 text-sm"
-                placeholder="e.g. Operators" />
-            </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1">
+              Enum
+              <span class="text-slate-500 font-normal ml-1">(URL suffix)</span>
+            </label>
+            <input v-model="groupForm.enum" type="text" required
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all duration-200 text-sm font-mono"
+              placeholder="e.g. operators" />
+            <p class="text-xs text-slate-500 mt-1.5">Lowercase letters, numbers, hyphens and underscores only.</p>
+          </div>
 
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1">
-                Enum
-                <span class="text-slate-500 font-normal ml-1">(URL suffix)</span>
-              </label>
-              <input v-model="groupForm.enum" type="text" required
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500/50 transition-all duration-200 text-sm font-mono"
-                placeholder="e.g. operators" />
-              <p class="text-xs text-slate-500 mt-1.5">Lowercase letters, numbers, hyphens and underscores only.</p>
-            </div>
-
-            <div class="flex items-center gap-3 pt-1">
-              <button type="button" @click="closeGroupModal"
-                class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
-                Cancel
-              </button>
-              <button type="submit" :disabled="savingGroup"
-                class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                <svg v-if="savingGroup" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
-                {{ savingGroup ? 'Saving...' : (editingGroup ? 'Update' : 'Create') }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
+          <div class="flex items-center gap-3 pt-1">
+            <button type="button" @click="closeGroupModal"
+              class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+              Cancel
+            </button>
+            <button type="submit" :disabled="savingGroup"
+              class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-lg shadow-violet-500/25 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+              <svg v-if="savingGroup" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              {{ savingGroup ? 'Saving...' : (editingGroup ? 'Update' : 'Create') }}
+            </button>
+          </div>
+        </form>
+      </BaseModal>
     </Transition>
 
     <!-- Delete Group Modal -->
-    <div v-if="showGroupDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showGroupDeleteModal = false">
-      <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-      <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6">
-        <div class="text-center mb-6">
-          <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <h2 class="text-lg font-semibold text-white mb-2">Delete Group</h2>
-          <p class="text-slate-400 text-sm">Delete <span class="text-white font-medium">{{ deletingGroup?.name }}</span>? All member assignments will be removed.</p>
+    <BaseModal v-if="showGroupDeleteModal"
+      role="alertdialog"
+      described
+      overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+      panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-sm p-6"
+      :busy="deletingGroupLoading"
+      @close="showGroupDeleteModal = false"
+      v-slot="{ titleId, descriptionId }">
+      <div class="text-center mb-6">
+        <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
         </div>
-        <div class="flex items-center gap-3">
-          <button @click="showGroupDeleteModal = false"
-            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
-            Cancel
-          </button>
-          <button @click="deleteGroupConfirmed" :disabled="deletingGroupLoading"
-            class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
-            <svg v-if="deletingGroupLoading" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-            </svg>
-            {{ deletingGroupLoading ? 'Deleting...' : 'Delete' }}
-          </button>
-        </div>
+        <h2 :id="titleId" class="text-lg font-semibold text-white mb-2">Delete Group</h2>
+        <p :id="descriptionId" class="text-slate-400 text-sm">Delete <span class="text-white font-medium">{{ deletingGroup?.name }}</span>? All member assignments will be removed.</p>
       </div>
-    </div>
+      <div class="flex items-center gap-3">
+        <button @click="showGroupDeleteModal = false"
+          class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all duration-200">
+          Cancel
+        </button>
+        <button @click="deleteGroupConfirmed" :disabled="deletingGroupLoading"
+          class="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2">
+          <svg v-if="deletingGroupLoading" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          {{ deletingGroupLoading ? 'Deleting...' : 'Delete' }}
+        </button>
+      </div>
+    </BaseModal>
 
     <AppToast />
 
@@ -580,121 +598,127 @@
       leave-active-class="transition-all duration-200 ease-in"
       leave-from-class="opacity-100"
       leave-to-class="opacity-0">
-      <div v-if="showDelegationModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="closeDelegationModal">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeDelegationModal"></div>
-        <div class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-white font-bold text-lg flex items-center gap-2">
-              <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Delegation — {{ delegationUser?.name }}
-            </h2>
-            <button @click="closeDelegationModal" class="p-1 text-slate-400 hover:text-white transition-colors">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
+      <BaseModal v-if="showDelegationModal"
+        overlay-class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        panel-class="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+        :busy="savingDelegation || assigningDelegationId !== null"
+        @close="closeDelegationModal"
+        v-slot="{ titleId }">
+        <div class="flex items-center justify-between mb-4">
+          <h2 :id="titleId" class="text-white font-bold text-lg flex items-center gap-2">
+            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Delegation — {{ delegationUser?.name }}
+          </h2>
+          <button @click="closeDelegationModal" aria-label="Close" class="p-1 text-slate-400 hover:text-white transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
 
-          <div class="flex gap-1 mb-5 bg-white/5 rounded-xl p-1">
-            <button @click="delegationMode = 'create'"
-              :class="['flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all',
-                delegationMode === 'create' ? 'bg-purple-500/20 text-purple-300 shadow-sm' : 'text-slate-400 hover:text-white']">
-              Create New
-            </button>
-            <button @click="delegationMode = 'assign'"
-              :class="['flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all',
-                delegationMode === 'assign' ? 'bg-purple-500/20 text-purple-300 shadow-sm' : 'text-slate-400 hover:text-white']">
-              Assign Existing
-            </button>
-          </div>
+        <div class="flex gap-1 mb-5 bg-white/5 rounded-xl p-1">
+          <button @click="delegationMode = 'create'"
+            :class="['flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all',
+              delegationMode === 'create' ? 'bg-purple-500/20 text-purple-300 shadow-sm' : 'text-slate-400 hover:text-white']">
+            Create New
+          </button>
+          <button @click="delegationMode = 'assign'"
+            :class="['flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all',
+              delegationMode === 'assign' ? 'bg-purple-500/20 text-purple-300 shadow-sm' : 'text-slate-400 hover:text-white']">
+            Assign Existing
+          </button>
+        </div>
 
-          <p v-if="delegationError" class="text-red-400 text-sm mb-3">{{ delegationError }}</p>
+        <p v-if="delegationError" class="text-red-400 text-sm mb-3">{{ delegationError }}</p>
 
-          <!-- v-show, not v-if: a look at "Assign Existing" must not lose what was typed here. -->
-          <DelegationForm v-show="delegationMode === 'create'"
-            :initial="delegationInitial"
-            :saving="savingDelegation"
-            :server-errors="delegationFieldErrors"
-            :show-details="false"
-            submit-label="Create & Assign"
-            @submit="createDelegation"
-            @cancel="closeDelegationModal" />
+        <!-- v-show, not v-if: a look at "Assign Existing" must not lose what was typed here. -->
+        <DelegationForm v-show="delegationMode === 'create'"
+          :initial="delegationInitial"
+          :saving="savingDelegation"
+          :server-errors="delegationFieldErrors"
+          :show-details="false"
+          submit-label="Create & Assign"
+          @submit="createDelegation"
+          @cancel="closeDelegationModal" />
 
-          <div v-if="delegationMode === 'assign'" class="space-y-4">
-            <div v-if="allDelegations.length === 0" class="text-center py-8 text-slate-500 text-sm">No delegations exist yet. Create one first.</div>
-            <div v-else class="space-y-2 max-h-[300px] overflow-y-auto">
-              <div v-for="del in allDelegations" :key="del.id"
-                class="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl hover:border-purple-500/30 transition-all">
-                <div class="min-w-0 flex-1">
-                  <p class="text-sm font-medium text-white truncate">{{ del.name }}</p>
-                  <p class="text-xs text-slate-400">📍 {{ del.destination }}</p>
-                  <p class="text-[10px] text-slate-500">{{ formatDT(del.start_datetime) }} → {{ formatDT(del.end_datetime) }}</p>
-                  <div v-if="del.users?.length" class="flex items-center gap-1 mt-1 flex-wrap">
-                    <span v-for="u in del.users" :key="u.id"
-                      class="px-1.5 py-0.5 text-[9px] bg-purple-500/15 text-purple-300 rounded-md">{{ u.name }}</span>
-                  </div>
+        <div v-if="delegationMode === 'assign'" class="space-y-4">
+          <div v-if="allDelegations.length === 0" class="text-center py-8 text-slate-500 text-sm">No delegations exist yet. Create one first.</div>
+          <div v-else class="space-y-2 max-h-[300px] overflow-y-auto">
+            <div v-for="del in allDelegations" :key="del.id"
+              class="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl hover:border-purple-500/30 transition-all">
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-white truncate">{{ del.name }}</p>
+                <p class="text-xs text-slate-400">📍 {{ del.destination }}</p>
+                <p class="text-[10px] text-slate-500">{{ formatDT(del.start_datetime) }} → {{ formatDT(del.end_datetime) }}</p>
+                <div v-if="del.users?.length" class="flex items-center gap-1 mt-1 flex-wrap">
+                  <span v-for="u in del.users" :key="u.id"
+                    class="px-1.5 py-0.5 text-[9px] bg-purple-500/15 text-purple-300 rounded-md">{{ u.name }}</span>
                 </div>
-                <button @click="assignToExisting(del)"
-                  :disabled="del.users?.some(u => u.id === delegationUser?.id) || assigningDelegationId !== null"
-                  :class="['px-3 py-1.5 text-xs font-medium rounded-lg transition-all shrink-0 ml-3',
-                    del.users?.some(u => u.id === delegationUser?.id)
-                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 cursor-default'
-                      : 'bg-purple-500/15 text-purple-300 border border-purple-500/20 hover:bg-purple-500/25']">
-                  {{ del.users?.some(u => u.id === delegationUser?.id) ? '✓ Assigned' : 'Assign' }}
-                </button>
               </div>
+              <button @click="assignToExisting(del)"
+                :disabled="del.users?.some(u => u.id === delegationUser?.id) || assigningDelegationId !== null"
+                :class="['px-3 py-1.5 text-xs font-medium rounded-lg transition-all shrink-0 ml-3',
+                  del.users?.some(u => u.id === delegationUser?.id)
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 cursor-default'
+                    : 'bg-purple-500/15 text-purple-300 border border-purple-500/20 hover:bg-purple-500/25']">
+                {{ del.users?.some(u => u.id === delegationUser?.id) ? '✓ Assigned' : 'Assign' }}
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      </BaseModal>
     </Transition>
 
     <!-- Newbie Period Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="showNewbieModal" class="fixed inset-0 z-50 flex items-center justify-center px-4">
-        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="closeNewbieModal()"></div>
-        <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-yellow-500/25 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6">
-          <div class="flex items-center gap-3 mb-5">
-            <div class="w-10 h-10 rounded-xl bg-yellow-500/15 flex items-center justify-center text-yellow-400 text-lg">⭐</div>
-            <div>
-              <h3 class="text-white font-bold text-lg">Newbie Period</h3>
-              <p class="text-slate-400 text-sm">{{ newbieUser?.name }}</p>
-            </div>
+      <BaseModal v-if="showNewbieModal"
+        overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-yellow-500/25 rounded-2xl shadow-2xl shadow-yellow-500/10 p-6"
+        :busy="savingNewbie"
+        @close="closeNewbieModal()"
+        v-slot="{ titleId }">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-10 h-10 rounded-xl bg-yellow-500/15 flex items-center justify-center text-yellow-400 text-lg">⭐</div>
+          <div>
+            <h3 :id="titleId" class="text-white font-bold text-lg">Newbie Period</h3>
+            <p class="text-slate-400 text-sm">{{ newbieUser?.name }}</p>
           </div>
-
-          <div v-if="userNewbiePeriods.length" class="mb-4 space-y-1.5">
-            <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2">Current periods</p>
-            <div v-for="p in userNewbiePeriods" :key="p.id"
-              class="flex items-center justify-between px-3 py-2 bg-yellow-500/8 border border-yellow-500/15 rounded-lg">
-              <span class="text-sm text-yellow-300">{{ p.start_date?.substring(0,10) }} → {{ p.end_date?.substring(0,10) }}</span>
-              <button @click="deleteNewbiePeriod(p)" class="text-slate-500 hover:text-red-400 text-xs px-2 py-1 transition-colors">✕</button>
-            </div>
-          </div>
-
-          <form @submit.prevent="createNewbiePeriod" class="space-y-3">
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs text-slate-500 uppercase tracking-wide mb-1">Start Date</label>
-                <input v-model="newbieForm.start_date" type="date" required
-                  class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/50" />
-              </div>
-              <div>
-                <label class="block text-xs text-slate-500 uppercase tracking-wide mb-1">End Date</label>
-                <input v-model="newbieForm.end_date" type="date" required :min="newbieForm.start_date"
-                  class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/50" />
-              </div>
-            </div>
-            <div class="flex items-center justify-end gap-3">
-              <button type="button" @click="closeNewbieModal()" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Close</button>
-              <button type="submit" :disabled="savingNewbie || !newbieForm.start_date || !newbieForm.end_date"
-                class="px-5 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-yellow-500/25 transition-all text-sm disabled:opacity-50">Add Period</button>
-            </div>
-          </form>
         </div>
-      </div>
+
+        <div v-if="userNewbiePeriods.length" class="mb-4 space-y-1.5">
+          <p class="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2">Current periods</p>
+          <div v-for="p in userNewbiePeriods" :key="p.id"
+            class="flex items-center justify-between px-3 py-2 bg-yellow-500/8 border border-yellow-500/15 rounded-lg">
+            <span class="text-sm text-yellow-300">{{ p.start_date?.substring(0,10) }} → {{ p.end_date?.substring(0,10) }}</span>
+            <button @click="deleteNewbiePeriod(p)" class="text-slate-500 hover:text-red-400 text-xs px-2 py-1 transition-colors">✕</button>
+          </div>
+        </div>
+
+        <form @submit.prevent="createNewbiePeriod" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-500 uppercase tracking-wide mb-1">Start Date</label>
+              <input v-model="newbieForm.start_date" type="date" required
+                class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/50" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 uppercase tracking-wide mb-1">End Date</label>
+              <input v-model="newbieForm.end_date" type="date" required :min="newbieForm.start_date"
+                class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500/50" />
+            </div>
+          </div>
+          <div class="flex items-center justify-end gap-3">
+            <button type="button" @click="closeNewbieModal()" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Close</button>
+            <button type="submit" :disabled="savingNewbie || !newbieForm.start_date || !newbieForm.end_date"
+              class="px-5 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-yellow-500/25 transition-all text-sm disabled:opacity-50">Add Period</button>
+          </div>
+        </form>
+      </BaseModal>
     </Transition>
   </AppLayout>
 </template>
@@ -705,6 +729,7 @@ import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import DelegationForm from '../components/DelegationForm.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
@@ -990,21 +1015,33 @@ function closePasswordModal() {
   passwordUser.value = null;
 }
 
+// Cancel stays usable while a save runs, so the dialog may be closed or reopened for another user
+// before the response arrives: results only touch the dialog if it still shows that user.
+function passwordDialogIsFor(user) {
+  return showPasswordModal.value && passwordUser.value === user;
+}
+
 async function changePassword() {
+  // Captured before the request: the dialog's state must not be read after the await.
+  const user = passwordUser.value;
   savingPassword.value = true;
   passwordError.value = '';
   try {
-    await api.put(`/api/users/${passwordUser.value.id}/password`, {
+    await api.put(`/api/users/${user.id}/password`, {
       password: passwordForm.password,
       password_confirmation: passwordForm.password_confirmation,
     });
-    showToast(`Password for "${passwordUser.value.name}" changed successfully.`);
-    closePasswordModal();
+    showToast(`Password for "${user.name}" changed successfully.`);
+    if (passwordDialogIsFor(user)) closePasswordModal();
   } catch (err) {
     const data = err.response?.data;
-    passwordError.value = data?.errors
+    const message = data?.errors
       ? Object.values(data.errors).flat().join(' ')
       : data?.message || 'An error occurred.';
+    // Closed (or reopened for someone else) while the request ran: say so in a toast rather than
+    // leave the error on a form that is no longer this request's.
+    if (passwordDialogIsFor(user)) passwordError.value = message;
+    else showToast(`Password for "${user.name}" was not changed: ${message}`, 'error');
   } finally {
     savingPassword.value = false;
   }
@@ -1041,18 +1078,28 @@ function closeDeactivateModal() {
   deactivateTarget.value = null;
 }
 
+// As for the password dialog: Cancel works mid-request, so results check the dialog still shows
+// this user before touching it.
+function deactivateDialogIsFor(user) {
+  return showDeactivateModal.value && deactivateTarget.value === user;
+}
+
 async function deactivateUserConfirmed() {
+  // Captured before the request: the dialog's state must not be read after the await.
+  const target = deactivateTarget.value;
   deactivating.value = true;
   deactivateError.value = '';
   try {
-    await api.post(`/api/users/${deactivateTarget.value.id}/deactivate`, {
+    await api.post(`/api/users/${target.id}/deactivate`, {
       remove_future_assignments: futureWorkTotal.value > 0 && removeFutureAssignments.value,
     });
-    showToast(`User "${deactivateTarget.value.name}" deactivated.`);
-    closeDeactivateModal();
+    showToast(`User "${target.name}" deactivated.`);
+    if (deactivateDialogIsFor(target)) closeDeactivateModal();
     await fetchUsers();
   } catch (err) {
-    deactivateError.value = err.response?.data?.message || 'An error occurred.';
+    const message = err.response?.data?.message || 'An error occurred.';
+    if (deactivateDialogIsFor(target)) deactivateError.value = message;
+    else showToast(`User "${target.name}" was not deactivated: ${message}`, 'error');
   } finally {
     deactivating.value = false;
   }

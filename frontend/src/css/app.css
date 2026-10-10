@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* Where useFocusTrap puts focus when a dialog closes and its opener is gone (usually <main>):
+   a stand-in focus target for screen readers and the keyboard, not a control, so no ring. */
+[data-focus-fallback]:focus {
+  outline: none;
+}

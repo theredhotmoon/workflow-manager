@@ -292,171 +292,175 @@
         leave-from-class="opacity-100"
         leave-to-class="opacity-0"
       >
-        <div v-if="detailData" class="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4" @click.self="closeDetail">
-          <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeDetail"></div>
-          <div class="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50">
-            <!-- Modal header -->
-            <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
-              <div>
-                <h2 class="text-lg font-bold text-white">{{ detailData.template?.name }}</h2>
-                <div class="flex items-center gap-3 mt-1">
-                  <span class="text-xs text-slate-400">{{ formatDate(detailData.date) }}</span>
-                  <span class="text-xs text-slate-600">·</span>
-                  <div class="flex items-center gap-1">
-                    <div class="w-4 h-4 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[7px] font-bold">
-                      {{ getInitials(detailData.outgoing_user?.name) }}
-                    </div>
-                    <span class="text-xs text-indigo-400">{{ detailData.outgoing_user?.name }}</span>
+        <BaseModal v-if="detailData"
+          overlay-class="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4"
+          backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          panel-class="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50"
+          @close="closeDetail"
+          v-slot="{ titleId }">
+          <!-- Modal header -->
+          <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
+            <div>
+              <h2 :id="titleId" class="text-lg font-bold text-white">{{ detailData.template?.name }}</h2>
+              <div class="flex items-center gap-3 mt-1">
+                <span class="text-xs text-slate-400">{{ formatDate(detailData.date) }}</span>
+                <span class="text-xs text-slate-600">·</span>
+                <div class="flex items-center gap-1">
+                  <div class="w-4 h-4 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-[7px] font-bold">
+                    {{ getInitials(detailData.outgoing_user?.name) }}
                   </div>
-                  <template v-if="detailData.incoming_user">
-                    <span class="text-xs text-slate-600">→</span>
-                    <div class="flex items-center gap-1">
-                      <div class="w-4 h-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-[7px] font-bold">
-                        {{ getInitials(detailData.incoming_user?.name) }}
-                      </div>
-                      <span class="text-xs text-amber-400">{{ detailData.incoming_user?.name }}</span>
-                    </div>
-                  </template>
-                  <span class="text-xs text-slate-600">·</span>
-                  <span :class="statusBadgeClass(detailData.status)">{{ statusLabel(detailData.status) }}</span>
+                  <span class="text-xs text-indigo-400">{{ detailData.outgoing_user?.name }}</span>
                 </div>
-                <!-- Only when someone (an admin) filed it on the outgoing employee's behalf. -->
-                <p v-if="detailData.submitted_by && detailData.submitted_by.id !== detailData.outgoing_user_id"
-                  class="text-xs text-slate-400 mt-1" data-testid="submitted-by">
-                  Submitted by <span class="text-slate-300">{{ detailData.submitted_by.name }}</span>
-                </p>
+                <template v-if="detailData.incoming_user">
+                  <span class="text-xs text-slate-600">→</span>
+                  <div class="flex items-center gap-1">
+                    <div class="w-4 h-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-[7px] font-bold">
+                      {{ getInitials(detailData.incoming_user?.name) }}
+                    </div>
+                    <span class="text-xs text-amber-400">{{ detailData.incoming_user?.name }}</span>
+                  </div>
+                </template>
+                <span class="text-xs text-slate-600">·</span>
+                <span :class="statusBadgeClass(detailData.status)">{{ statusLabel(detailData.status) }}</span>
               </div>
-              <button @click="closeDetail" class="text-slate-400 hover:text-white transition-colors p-1">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <!-- Only when someone (an admin) filed it on the outgoing employee's behalf. -->
+              <p v-if="detailData.submitted_by && detailData.submitted_by.id !== detailData.outgoing_user_id"
+                class="text-xs text-slate-400 mt-1" data-testid="submitted-by">
+                Submitted by <span class="text-slate-300">{{ detailData.submitted_by.name }}</span>
+              </p>
+            </div>
+            <button @click="closeDetail" class="text-slate-400 hover:text-white transition-colors p-1">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Modal body -->
+          <div class="px-6 py-5 space-y-4">
+            <!-- Timestamps bar -->
+            <div class="flex flex-wrap gap-4 text-xs text-slate-500 bg-white/[0.02] rounded-lg px-4 py-2.5">
+              <div v-if="detailData.submitted_at">
+                <span class="text-slate-600">Submitted:</span>
+                <span class="text-slate-400 ml-1">{{ formatDateTime(detailData.submitted_at) }}</span>
+              </div>
+              <div v-if="detailData.confirmed_at">
+                <span class="text-slate-600">Confirmed:</span>
+                <span class="text-emerald-400/70 ml-1">{{ formatDateTime(detailData.confirmed_at) }}</span>
+              </div>
             </div>
 
-            <!-- Modal body -->
-            <div class="px-6 py-5 space-y-4">
-              <!-- Timestamps bar -->
-              <div class="flex flex-wrap gap-4 text-xs text-slate-500 bg-white/[0.02] rounded-lg px-4 py-2.5">
-                <div v-if="detailData.submitted_at">
-                  <span class="text-slate-600">Submitted:</span>
-                  <span class="text-slate-400 ml-1">{{ formatDateTime(detailData.submitted_at) }}</span>
-                </div>
-                <div v-if="detailData.confirmed_at">
-                  <span class="text-slate-600">Confirmed:</span>
-                  <span class="text-emerald-400/70 ml-1">{{ formatDateTime(detailData.confirmed_at) }}</span>
-                </div>
-              </div>
+            <!-- Groups -->
+            <div v-for="(group, gi) in detailData.template?.groups || []" :key="group.id"
+              class="bg-white/[0.03] border border-white/10 rounded-xl p-4">
+              <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+                <span class="w-5 h-5 rounded bg-indigo-500/20 flex items-center justify-center text-[9px] text-indigo-400 font-bold">{{ gi + 1 }}</span>
+                {{ group.name }}
+              </h3>
+              <div class="space-y-2">
+                <div v-for="item in group.items" :key="item.id" class="flex items-center gap-3 text-sm py-1">
+                  <!-- Value indicator -->
+                  <div class="shrink-0 w-5 h-5 flex items-center justify-center">
+                    <template v-if="item.type === 'checkbox'">
+                      <div v-if="getDetailValue(item) === '✓ Yes'"
+                        class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center">
+                        <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <div v-else class="w-5 h-5 rounded bg-red-500/15 flex items-center justify-center">
+                        <svg class="w-3 h-3 text-red-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div class="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                    </template>
+                  </div>
 
-              <!-- Groups -->
-              <div v-for="(group, gi) in detailData.template?.groups || []" :key="group.id"
-                class="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-                <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-                  <span class="w-5 h-5 rounded bg-indigo-500/20 flex items-center justify-center text-[9px] text-indigo-400 font-bold">{{ gi + 1 }}</span>
-                  {{ group.name }}
-                </h3>
-                <div class="space-y-2">
-                  <div v-for="item in group.items" :key="item.id" class="flex items-center gap-3 text-sm py-1">
-                    <!-- Value indicator -->
-                    <div class="shrink-0 w-5 h-5 flex items-center justify-center">
-                      <template v-if="item.type === 'checkbox'">
-                        <div v-if="getDetailValue(item) === '✓ Yes'"
-                          class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center">
-                          <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                        <div v-else class="w-5 h-5 rounded bg-red-500/15 flex items-center justify-center">
-                          <svg class="w-3 h-3 text-red-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </div>
-                      </template>
-                      <template v-else>
-                        <div class="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
-                      </template>
-                    </div>
+                  <div class="flex-1 text-slate-300">
+                    {{ item.label }}
+                    <span v-if="item.requires_confirmation" class="ml-1.5 px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full">2-User</span>
+                    <button v-if="item.procedure" @click.stop="openProcedureModal(item.procedure.id)"
+                      class="inline-flex items-center ml-1.5 px-1.5 py-0.5 text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded hover:bg-indigo-500/20 transition-all cursor-pointer"
+                      :title="`Procedure: ${item.procedure.identifier} — ${item.procedure.title}`">
+                      📋 {{ item.procedure.identifier }}
+                    </button>
+                  </div>
 
-                    <div class="flex-1 text-slate-300">
-                      {{ item.label }}
-                      <span v-if="item.requires_confirmation" class="ml-1.5 px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full">2-User</span>
-                      <button v-if="item.procedure" @click.stop="openProcedureModal(item.procedure.id)"
-                        class="inline-flex items-center ml-1.5 px-1.5 py-0.5 text-[9px] font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded hover:bg-indigo-500/20 transition-all cursor-pointer"
-                        :title="`Procedure: ${item.procedure.identifier} — ${item.procedure.title}`">
-                        📋 {{ item.procedure.identifier }}
-                      </button>
-                    </div>
-
-                    <!-- Value display -->
-                    <div class="text-right flex items-center gap-1.5">
-                      <span v-if="item.type !== 'checkbox'" class="text-indigo-300 text-sm">{{ getDetailRawValue(item) || '—' }}</span>
-                      <span v-if="item.requires_confirmation && getDetailConfirmed(item)"
-                        class="px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full">
-                        Confirmed
-                      </span>
-                      <span v-else-if="item.requires_confirmation && !getDetailConfirmed(item)"
-                        class="px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-slate-500/15 text-slate-500 border border-slate-500/20 rounded-full">
-                        Not confirmed
-                      </span>
-                    </div>
+                  <!-- Value display -->
+                  <div class="text-right flex items-center gap-1.5">
+                    <span v-if="item.type !== 'checkbox'" class="text-indigo-300 text-sm">{{ getDetailRawValue(item) || '—' }}</span>
+                    <span v-if="item.requires_confirmation && getDetailConfirmed(item)"
+                      class="px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full">
+                      Confirmed
+                    </span>
+                    <span v-else-if="item.requires_confirmation && !getDetailConfirmed(item)"
+                      class="px-1.5 py-0.5 text-[8px] font-semibold uppercase bg-slate-500/15 text-slate-500 border border-slate-500/20 rounded-full">
+                      Not confirmed
+                    </span>
                   </div>
                 </div>
-                <div v-if="getDetailGroupComment(group)" class="mt-3 pt-3 border-t border-white/5">
-                  <p class="text-[10px] text-slate-600 uppercase tracking-wider mb-1">Group Comment</p>
-                  <p class="text-xs text-slate-400 italic">{{ getDetailGroupComment(group) }}</p>
-                </div>
               </div>
+              <div v-if="getDetailGroupComment(group)" class="mt-3 pt-3 border-t border-white/5">
+                <p class="text-[10px] text-slate-600 uppercase tracking-wider mb-1">Group Comment</p>
+                <p class="text-xs text-slate-400 italic">{{ getDetailGroupComment(group) }}</p>
+              </div>
+            </div>
 
-              <!-- General Comments -->
-              <div v-if="detailData.general_comments" class="bg-white/[0.03] border border-white/10 rounded-xl p-4">
-                <h3 class="text-white font-semibold text-sm mb-2">General Comments</h3>
-                <p class="text-sm text-slate-400 leading-relaxed">{{ detailData.general_comments }}</p>
-              </div>
+            <!-- General Comments -->
+            <div v-if="detailData.general_comments" class="bg-white/[0.03] border border-white/10 rounded-xl p-4">
+              <h3 class="text-white font-semibold text-sm mb-2">General Comments</h3>
+              <p class="text-sm text-slate-400 leading-relaxed">{{ detailData.general_comments }}</p>
             </div>
           </div>
-        </div>
+        </BaseModal>
       </Transition>
 
       <!-- Procedure Preview Modal (stacks on top of detail modal) -->
       <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showProcedureModal" class="fixed inset-0 z-[70] flex items-start justify-center pt-4 px-4">
-          <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeProcedureModal"></div>
-          <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
-            <!-- Header -->
-            <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
-              <div v-if="procedurePreview" class="flex items-center gap-3 min-w-0">
-                <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full shrink-0">
-                  {{ procedurePreview.identifier }}
-                </span>
-                <h2 class="text-lg font-bold text-white truncate">{{ procedurePreview.title }}</h2>
-                <span class="text-[10px] text-slate-500 tabular-nums shrink-0">v{{ procedurePreview.version }}</span>
-              </div>
-              <div v-else class="text-slate-400 text-sm">Loading...</div>
-              <div class="flex items-center gap-2 shrink-0 ml-3">
-                <router-link v-if="procedurePreview" :to="`/procedures/${procedurePreview.id}`"
-                  class="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-all" title="Open full page">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                </router-link>
-                <button @click="closeProcedureModal" aria-label="Close procedure preview" class="p-2 text-slate-400 hover:text-white transition-colors">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
+        <BaseModal v-if="showProcedureModal"
+          overlay-class="fixed inset-0 z-[70] flex items-start justify-center pt-4 px-4"
+          backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          panel-class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl"
+          @close="closeProcedureModal"
+          v-slot="{ titleId }">
+          <!-- Header -->
+          <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
+            <div v-if="procedurePreview" class="flex items-center gap-3 min-w-0">
+              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full shrink-0">
+                {{ procedurePreview.identifier }}
+              </span>
+              <h2 :id="titleId" class="text-lg font-bold text-white truncate">{{ procedurePreview.title }}</h2>
+              <span class="text-[10px] text-slate-500 tabular-nums shrink-0">v{{ procedurePreview.version }}</span>
             </div>
-            <!-- Content -->
-            <div v-if="procedurePreview" class="px-6 py-5">
-              <ProcedureContent
-                ref="procedureContentRef"
-                :procedure="procedurePreview"
-                :change-reason="procedurePreview.change_reason"
-                :publisher="procedurePreview.publisher"
-                :published-at="procedurePreview.published_at"
-                :viewing-version="procedurePreview.version" />
-            </div>
-            <div v-else class="flex items-center justify-center py-16">
-              <svg class="animate-spin w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            <div v-else :id="titleId" class="text-slate-400 text-sm">Loading...</div>
+            <div class="flex items-center gap-2 shrink-0 ml-3">
+              <router-link v-if="procedurePreview" :to="`/procedures/${procedurePreview.id}`"
+                class="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-all" title="Open full page">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </router-link>
+              <button @click="closeProcedureModal" aria-label="Close procedure preview" class="p-2 text-slate-400 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
           </div>
-        </div>
+          <!-- Content -->
+          <div v-if="procedurePreview" class="px-6 py-5">
+            <ProcedureContent
+              ref="procedureContentRef"
+              :procedure="procedurePreview"
+              :change-reason="procedurePreview.change_reason"
+              :publisher="procedurePreview.publisher"
+              :published-at="procedurePreview.published_at"
+              :viewing-version="procedurePreview.version" />
+          </div>
+          <div v-else class="flex items-center justify-center py-16">
+            <svg class="animate-spin w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+          </div>
+        </BaseModal>
       </Transition>
     </main>
     <AppToast />
@@ -469,6 +473,7 @@ import { describeApiError, readBlobErrorBody } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';

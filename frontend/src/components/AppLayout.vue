@@ -3,46 +3,55 @@
     <!-- Top Navigation Bar -->
     <nav class="bg-white/5 backdrop-blur-xl border-b border-white/10 relative z-50">
       <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
+        <div class="flex items-center justify-between gap-3 h-16">
           <!-- Left: hamburger + logo -->
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 shrink-0">
             <!-- Sidebar toggle (admin only) -->
             <button v-if="isAdmin" @click="sidebarOpen = !sidebarOpen"
+              aria-label="Toggle sidebar"
+              :aria-expanded="sidebarOpen"
+              :aria-controls="sidebarOpen ? 'admin-sidebar' : undefined"
               class="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 transition-all text-slate-400 hover:text-white"
               title="Toggle sidebar">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
               </svg>
             </button>
 
-            <router-link to="/dashboard" class="flex items-center gap-3 group">
+            <router-link to="/dashboard" aria-label="Shift Changer home" class="flex items-center gap-3 group">
               <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:shadow-indigo-500/30 transition-all">
                 <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <span class="text-white font-bold text-lg tracking-tight">Shift Changer</span>
+              <span class="hidden sm:inline text-white font-bold text-lg tracking-tight">Shift Changer</span>
             </router-link>
           </div>
 
-          <!-- Center: Top nav links (non-admin items) -->
-          <div class="flex items-center gap-1">
-            <router-link v-for="link in topLinks" :key="link.to" :to="link.to"
-              :class="[
-                'px-3 py-2 text-sm rounded-lg transition-all duration-200',
-                $route.path === link.to
-                  ? 'text-white bg-white/10 font-medium'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10'
-              ]">
-              {{ link.label }}
-            </router-link>
+          <!-- Center: Top nav links (non-admin items). On a narrow screen they scroll sideways in
+               their own strip, so the bell and the account menu stay on screen; below xl, where
+               they can overflow, the strip's right edge fades out to hint that it scrolls. -->
+          <div class="flex items-center gap-1 min-w-0">
+            <div class="flex items-center gap-1 min-w-0 overflow-x-auto max-xl:pr-6 max-xl:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
+              <router-link v-for="link in topLinks" :key="link.to" :to="link.to"
+                :aria-current="$route.path === link.to ? 'page' : undefined"
+                :class="[
+                  'px-3 py-2 text-sm rounded-lg transition-all duration-200 whitespace-nowrap shrink-0',
+                  $route.path === link.to
+                    ? 'text-white bg-white/10 font-medium'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                ]">
+                {{ link.label }}
+              </router-link>
+            </div>
 
             <!-- Alarm Bell -->
-            <div class="relative ml-2">
-              <button @click="alarmDropdownOpen = !alarmDropdownOpen"
+            <div ref="alarmMenuRef" class="relative ml-2 shrink-0">
+              <button ref="alarmButtonRef" @click="alarmDropdownOpen = !alarmDropdownOpen"
                 aria-label="Notifications"
                 :aria-expanded="alarmDropdownOpen"
                 aria-haspopup="true"
+                :aria-controls="alarmDropdownOpen ? 'alarm-dropdown' : undefined"
                 class="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 transition-all text-slate-400 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -61,7 +70,7 @@
                 leave-active-class="transition-all duration-150 ease-in"
                 leave-from-class="opacity-100 scale-100"
                 leave-to-class="opacity-0 scale-95">
-                <div v-if="alarmDropdownOpen" class="absolute right-0 top-12 w-96 bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden">
+                <div v-if="alarmDropdownOpen" id="alarm-dropdown" class="absolute right-0 top-12 w-[min(24rem,calc(100vw-2rem))] bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden">
                   <div class="px-4 py-3 border-b border-white/10 flex items-center justify-between">
                     <h3 class="text-sm font-semibold text-white">Notifications</h3>
                     <button v-if="unreadAlarmCount > 0" @click="markAllAlarmsRead"
@@ -101,11 +110,12 @@
             </div>
 
             <!-- User Avatar Menu -->
-            <div class="relative ml-3 pl-3 border-l border-white/10">
-              <button @click="userMenuOpen = !userMenuOpen"
+            <div class="relative ml-3 pl-3 border-l border-white/10 shrink-0">
+              <button ref="userMenuButtonRef" @click="userMenuOpen = !userMenuOpen"
                 :aria-label="`${currentUser?.name ?? 'User'} — account menu`"
                 :aria-expanded="userMenuOpen"
                 aria-haspopup="true"
+                :aria-controls="userMenuOpen ? 'user-menu' : undefined"
                 class="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/10 transition-all duration-200 group">
                 <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-indigo-500/20 ring-2 ring-white/10 group-hover:ring-indigo-500/40 transition-all">
                   {{ userInitials }}
@@ -123,7 +133,7 @@
                 leave-active-class="transition-all duration-150 ease-in"
                 leave-from-class="opacity-100 scale-100 translate-y-0"
                 leave-to-class="opacity-0 scale-95 -translate-y-1">
-                <div v-if="userMenuOpen" class="absolute right-0 top-full mt-2 w-56 bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/40 py-1 z-50">
+                <div v-if="userMenuOpen" id="user-menu" class="absolute right-0 top-full mt-2 w-56 bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/40 py-1 z-50">
                   <!-- User header -->
                   <div class="px-4 py-3 border-b border-white/10">
                     <p class="text-sm font-semibold text-white truncate">{{ currentUser?.name }}</p>
@@ -203,7 +213,7 @@
     <!-- Left Sidebar -->
     <Transition enter-active-class="transition-transform duration-200 ease-out" leave-active-class="transition-transform duration-150 ease-in"
       enter-from-class="-translate-x-full" enter-to-class="translate-x-0" leave-from-class="translate-x-0" leave-to-class="-translate-x-full">
-      <aside v-if="sidebarOpen && isAdmin"
+      <aside v-if="sidebarOpen && isAdmin" id="admin-sidebar" aria-label="Administration"
         class="fixed left-0 top-16 bottom-0 w-56 bg-slate-900/95 backdrop-blur-xl border-r border-white/10 z-40 flex flex-col overflow-y-auto">
         <div class="p-3 space-y-0.5">
           <p class="px-3 pt-2 pb-1 text-[9px] text-slate-600 uppercase tracking-wider font-semibold">Administration</p>
@@ -213,7 +223,7 @@
               $route.path === item.to
                 ? 'text-white bg-indigo-500/15 border border-indigo-500/20 font-medium'
                 : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent']">
-            <span class="w-5 h-5 flex items-center justify-center text-slate-500" v-html="item.icon"></span>
+            <span class="w-5 h-5 flex items-center justify-center text-slate-500" aria-hidden="true" v-html="item.icon"></span>
             {{ item.label }}
           </router-link>
         </div>
@@ -287,7 +297,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../axios.js';
-import { useFocusTrap } from '../composables/useFocusTrap.js';
+import { modalLayerCount, useFocusTrap } from '../composables/useFocusTrap.js';
 import { isLoggedOut } from '../fetchCurrentUser.js';
 import { logoutFailureMessage, logoutWithRetry } from '../logout.js';
 import { canManageSchedule as userCanManageSchedule, isAdmin as userIsAdmin } from '../roles.js';
@@ -309,10 +319,37 @@ const canManageSchedule = computed(() => userCanManageSchedule(currentUser.value
 
 // Focus trap for the Change Password modal
 const passwordModalRef = ref(null);
-useFocusTrap(passwordModalRef, showPasswordModal, { onEscape: closePasswordModal });
+// It is opened from the account menu, which is gone by the time it closes: focus goes back to the
+// account button instead.
+useFocusTrap(passwordModalRef, showPasswordModal, {
+  onEscape: closePasswordModal,
+  returnFocus: () => userMenuButtonRef.value,
+});
 
 // Alarm state
 const alarmDropdownOpen = ref(false);
+const alarmMenuRef = ref(null);
+const alarmButtonRef = ref(null);
+const userMenuButtonRef = ref(null);
+
+// The two header menus close on a click anywhere else and on Escape, which hands focus back to
+// the button that opened the menu. While a modal is open, Escape belongs to the modal.
+function onDocumentPointerDown(event) {
+  if (alarmDropdownOpen.value && !alarmMenuRef.value?.contains(event.target)) {
+    alarmDropdownOpen.value = false;
+  }
+}
+
+function onDocumentKeydown(event) {
+  if (event.key !== 'Escape' || modalLayerCount() > 0) return;
+  if (alarmDropdownOpen.value) {
+    alarmDropdownOpen.value = false;
+    alarmButtonRef.value?.focus();
+  } else if (userMenuOpen.value) {
+    userMenuOpen.value = false;
+    userMenuButtonRef.value?.focus();
+  }
+}
 const latestAlarms = ref([]);
 const unreadAlarmCount = ref(0);
 let alarmPollTimer = null;
@@ -527,7 +564,13 @@ async function changePassword() {
 onMounted(() => {
   fetchAlarms();
   alarmPollTimer = setInterval(fetchAlarms, 60000);
+  document.addEventListener('pointerdown', onDocumentPointerDown);
+  document.addEventListener('keydown', onDocumentKeydown);
 });
 
-onUnmounted(stopAlarmPoll);
+onUnmounted(() => {
+  stopAlarmPoll();
+  document.removeEventListener('pointerdown', onDocumentPointerDown);
+  document.removeEventListener('keydown', onDocumentKeydown);
+});
 </script>

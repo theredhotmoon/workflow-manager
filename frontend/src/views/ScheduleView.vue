@@ -569,75 +569,78 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="showChecklistModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showChecklistModal = false">
-        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showChecklistModal = false"></div>
-        <div class="relative w-full max-w-lg bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
-          <h3 class="text-white font-bold text-lg mb-1">Shift Checklists</h3>
-          <p class="text-slate-400 text-sm mb-5">{{ checklistConfigDate }} · Shift {{ checklistConfigShift?.shift_number }}</p>
+      <BaseModal v-if="showChecklistModal"
+        overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        panel-class="relative w-full max-w-lg bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+        :busy="savingChecklist"
+        @close="showChecklistModal = false"
+        v-slot="{ titleId }">
+        <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Shift Checklists</h3>
+        <p class="text-slate-400 text-sm mb-5">{{ checklistConfigDate }} · Shift {{ checklistConfigShift?.shift_number }}</p>
 
-          <!-- Checklist rows -->
-          <div class="space-y-3 mb-4 max-h-[50vh] overflow-y-auto">
-            <div v-for="(item, idx) in checklistForm" :key="idx"
-              class="bg-white/[0.03] border border-white/10 rounded-xl p-3 space-y-2">
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] text-slate-500 font-bold w-5 shrink-0">#{{ idx + 1 }}</span>
-                <select v-model="item.checklist_template_id"
-                  class="flex-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer">
-                  <option :value="null" class="bg-slate-800 text-slate-400">Select template...</option>
-                  <option v-for="t in checklistTemplates" :key="t.id" :value="t.id" class="bg-slate-800">{{ t.name }}</option>
-                </select>
-                <button @click="checklistForm.splice(idx, 1)" class="p-1 text-slate-500 hover:text-red-400 transition-colors" title="Remove">
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                </button>
-              </div>
-              <div v-if="item.checklist_template_id" class="flex items-center gap-3 flex-wrap">
-                <!-- Required toggle -->
-                <label class="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" v-model="item.is_required"
-                    class="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/30" />
-                  <span class="text-[10px] text-slate-400 uppercase tracking-wide">Required</span>
-                </label>
-                <!-- Deadline -->
-                <div class="flex items-center gap-1.5">
-                  <span class="text-[10px] text-slate-500 uppercase">Deadline:</span>
-                  <input v-model.number="item.deadline_minutes" type="number" min="1" placeholder="min"
-                    class="w-16 px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-                  <select v-model="item.deadline_reference"
-                    class="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer">
-                    <option value="shift_start" class="bg-slate-800">after start</option>
-                    <option value="shift_end" class="bg-slate-800">before end</option>
-                  </select>
-                </div>
-              </div>
+        <!-- Checklist rows -->
+        <div class="space-y-3 mb-4 max-h-[50vh] overflow-y-auto">
+          <div v-for="(item, idx) in checklistForm" :key="idx"
+            class="bg-white/[0.03] border border-white/10 rounded-xl p-3 space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-slate-500 font-bold w-5 shrink-0">#{{ idx + 1 }}</span>
+              <select v-model="item.checklist_template_id"
+                class="flex-1 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer">
+                <option :value="null" class="bg-slate-800 text-slate-400">Select template...</option>
+                <option v-for="t in checklistTemplates" :key="t.id" :value="t.id" class="bg-slate-800">{{ t.name }}</option>
+              </select>
+              <button @click="checklistForm.splice(idx, 1)" class="p-1 text-slate-500 hover:text-red-400 transition-colors" title="Remove">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              </button>
             </div>
-            <div v-if="!checklistForm.length" class="text-center text-slate-500 text-sm py-4">
-              No checklists assigned. Click "Add Checklist" below.
+            <div v-if="item.checklist_template_id" class="flex items-center gap-3 flex-wrap">
+              <!-- Required toggle -->
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" v-model="item.is_required"
+                  class="w-3.5 h-3.5 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/30" />
+                <span class="text-[10px] text-slate-400 uppercase tracking-wide">Required</span>
+              </label>
+              <!-- Deadline -->
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] text-slate-500 uppercase">Deadline:</span>
+                <input v-model.number="item.deadline_minutes" type="number" min="1" placeholder="min"
+                  class="w-16 px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                <select v-model="item.deadline_reference"
+                  class="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer">
+                  <option value="shift_start" class="bg-slate-800">after start</option>
+                  <option value="shift_end" class="bg-slate-800">before end</option>
+                </select>
+              </div>
             </div>
           </div>
-
-          <!-- Add button -->
-          <button @click="checklistForm.push({ checklist_template_id: null, is_required: false, deadline_minutes: null, deadline_reference: 'shift_start' })"
-            class="w-full mb-5 px-3 py-2 text-sm text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl transition-all">
-            + Add Checklist
-          </button>
-
-          <!-- Actions -->
-          <div class="flex items-center justify-end gap-3">
-            <button @click="showChecklistModal = false"
-              class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
-              Cancel
-            </button>
-            <button @click="saveChecklistConfig" :disabled="savingChecklist"
-              class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-              <svg v-if="savingChecklist" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-              Save
-            </button>
+          <div v-if="!checklistForm.length" class="text-center text-slate-500 text-sm py-4">
+            No checklists assigned. Click "Add Checklist" below.
           </div>
         </div>
-      </div>
+
+        <!-- Add button -->
+        <button @click="checklistForm.push({ checklist_template_id: null, is_required: false, deadline_minutes: null, deadline_reference: 'shift_start' })"
+          class="w-full mb-5 px-3 py-2 text-sm text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl transition-all">
+          + Add Checklist
+        </button>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-end gap-3">
+          <button @click="showChecklistModal = false"
+            class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
+            Cancel
+          </button>
+          <button @click="saveChecklistConfig" :disabled="savingChecklist"
+            class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            <svg v-if="savingChecklist" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Save
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <!-- Time Editor Modal -->
@@ -649,343 +652,368 @@
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="showTimeModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showTimeModal = false">
-        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showTimeModal = false"></div>
-        <div class="relative w-full max-w-sm bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
-          <h3 class="text-white font-bold text-lg mb-1">Shift Times</h3>
-          <p class="text-slate-400 text-sm mb-5">{{ timeConfigDate }} · Shift {{ timeConfigShift?.shift_number }}</p>
+      <BaseModal v-if="showTimeModal"
+        overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        panel-class="relative w-full max-w-sm bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+        :busy="savingTimes"
+        @close="showTimeModal = false"
+        v-slot="{ titleId }">
+        <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Shift Times</h3>
+        <p class="text-slate-400 text-sm mb-5">{{ timeConfigDate }} · Shift {{ timeConfigShift?.shift_number }}</p>
 
-          <div class="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Start Time</label>
-              <input v-model="timeForm.start_time" type="time"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">End Time</label>
-              <input v-model="timeForm.end_time" type="time"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Start Time</label>
+            <input v-model="timeForm.start_time" type="time"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
-
-          <!-- Overnight indicator -->
-          <div v-if="timeForm.start_time && timeForm.end_time && timeForm.end_time < timeForm.start_time"
-            class="flex items-center gap-2 px-3 py-2 mb-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-            <span class="text-sm">🌙</span>
-            <span class="text-xs text-indigo-300">Overnight shift — ends the next day</span>
-          </div>
-
-          <!-- Color Picker -->
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-slate-300 mb-2">Shift Color</label>
-            <div class="flex flex-wrap gap-2 mb-2">
-              <button v-for="colorDef in shiftColors" :key="colorDef.id"
-                @click="timeForm.color = timeForm.color == colorDef.id ? null : String(colorDef.id)"
-                :class="['w-8 h-8 rounded-lg border-2 transition-all flex items-center justify-center text-[10px] font-bold',
-                  timeForm.color == colorDef.id ? 'border-white scale-110 shadow-lg' : 'border-transparent hover:border-white/30']"
-                :style="{ backgroundColor: colorDef.hex }"
-                :title="colorDef.name">
-                <span v-if="timeForm.color == colorDef.id" class="text-white drop-shadow">✓</span>
-              </button>
-              <button @click="timeForm.color = null; timeForm.color_label = ''"
-                :class="['w-8 h-8 rounded-lg border-2 transition-all flex items-center justify-center text-xs',
-                  !timeForm.color ? 'border-white/40 bg-white/10' : 'border-white/10 bg-white/5 hover:border-white/20']"
-                title="No color">
-                ✕
-              </button>
-            </div>
-            <input v-if="timeForm.color" v-model="timeForm.color_label" type="text" :placeholder="'Label (default: ' + (shiftColorById[timeForm.color]?.name || '') + ')'"
-              class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
-          </div>
-
-          <div class="mb-4">
-            <label for="shift-edit-type" class="block text-sm font-medium text-slate-300 mb-1.5">Shift type</label>
-            <input id="shift-edit-type" v-model="timeForm.shift_type" type="text" maxlength="50"
-              list="shift-type-suggestions" placeholder="e.g. night (used by streak rules)"
-              class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
-          </div>
-
-          <div class="flex items-center justify-end gap-3">
-            <button @click="showTimeModal = false"
-              class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
-              Cancel
-            </button>
-            <button @click="saveShiftTimes" :disabled="savingTimes"
-              class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-              <svg v-if="savingTimes" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-              Save
-            </button>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">End Time</label>
+            <input v-model="timeForm.end_time" type="time"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
           </div>
         </div>
-      </div>
+
+        <!-- Overnight indicator -->
+        <div v-if="timeForm.start_time && timeForm.end_time && timeForm.end_time < timeForm.start_time"
+          class="flex items-center gap-2 px-3 py-2 mb-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+          <span class="text-sm">🌙</span>
+          <span class="text-xs text-indigo-300">Overnight shift — ends the next day</span>
+        </div>
+
+        <!-- Color Picker -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Shift Color</label>
+          <div class="flex flex-wrap gap-2 mb-2">
+            <button v-for="colorDef in shiftColors" :key="colorDef.id"
+              @click="timeForm.color = timeForm.color == colorDef.id ? null : String(colorDef.id)"
+              :class="['w-8 h-8 rounded-lg border-2 transition-all flex items-center justify-center text-[10px] font-bold',
+                timeForm.color == colorDef.id ? 'border-white scale-110 shadow-lg' : 'border-transparent hover:border-white/30']"
+              :style="{ backgroundColor: colorDef.hex }"
+              :title="colorDef.name">
+              <span v-if="timeForm.color == colorDef.id" class="text-white drop-shadow">✓</span>
+            </button>
+            <button @click="timeForm.color = null; timeForm.color_label = ''"
+              :class="['w-8 h-8 rounded-lg border-2 transition-all flex items-center justify-center text-xs',
+                !timeForm.color ? 'border-white/40 bg-white/10' : 'border-white/10 bg-white/5 hover:border-white/20']"
+              title="No color">
+              ✕
+            </button>
+          </div>
+          <input v-if="timeForm.color" v-model="timeForm.color_label" type="text" :placeholder="'Label (default: ' + (shiftColorById[timeForm.color]?.name || '') + ')'"
+            class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+        </div>
+
+        <div class="mb-4">
+          <label for="shift-edit-type" class="block text-sm font-medium text-slate-300 mb-1.5">Shift type</label>
+          <input id="shift-edit-type" v-model="timeForm.shift_type" type="text" maxlength="50"
+            list="shift-type-suggestions" placeholder="e.g. night (used by streak rules)"
+            class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+        </div>
+
+        <div class="flex items-center justify-end gap-3">
+          <button @click="showTimeModal = false"
+            class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
+            Cancel
+          </button>
+          <button @click="saveShiftTimes" :disabled="savingTimes"
+            class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            <svg v-if="savingTimes" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Save
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <!-- Group Settlement Settings Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="showGroupSettingsModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showGroupSettingsModal = false">
-        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showGroupSettingsModal = false"></div>
-        <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
-          <h3 class="text-white font-bold text-lg mb-1">Settlement Period Settings</h3>
-          <p class="text-slate-400 text-sm mb-5">{{ groupSettingsTarget?.name }}</p>
+      <BaseModal v-if="showGroupSettingsModal"
+        overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+        :busy="savingGroupSettings"
+        @close="showGroupSettingsModal = false"
+        v-slot="{ titleId }">
+        <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Settlement Period Settings</h3>
+        <p class="text-slate-400 text-sm mb-5">{{ groupSettingsTarget?.name }}</p>
 
-          <div class="mb-4">
-            <label for="settlement-mode" class="block text-sm font-medium text-slate-300 mb-1.5">Mode</label>
-            <select id="settlement-mode" v-model="groupSettingsForm.settlement_mode"
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="custom">Custom</option>
-            </select>
-          </div>
+        <div class="mb-4">
+          <label for="settlement-mode" class="block text-sm font-medium text-slate-300 mb-1.5">Mode</label>
+          <select id="settlement-mode" v-model="groupSettingsForm.settlement_mode"
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
 
-          <div class="mb-4">
-            <label for="settlement-anchor-date" class="block text-sm font-medium text-slate-300 mb-1.5">Anchor Date</label>
-            <input id="settlement-anchor-date" v-model="groupSettingsForm.settlement_anchor_date" type="date"
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-          </div>
+        <div class="mb-4">
+          <label for="settlement-anchor-date" class="block text-sm font-medium text-slate-300 mb-1.5">Anchor Date</label>
+          <input id="settlement-anchor-date" v-model="groupSettingsForm.settlement_anchor_date" type="date"
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+        </div>
 
-          <div v-if="groupSettingsForm.settlement_mode === 'custom'" class="mb-4">
-            <label for="settlement-custom-length" class="block text-sm font-medium text-slate-300 mb-1.5">Custom Length (days)</label>
-            <input id="settlement-custom-length" v-model.number="groupSettingsForm.settlement_custom_length_days" type="number" min="1"
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-          </div>
+        <div v-if="groupSettingsForm.settlement_mode === 'custom'" class="mb-4">
+          <label for="settlement-custom-length" class="block text-sm font-medium text-slate-300 mb-1.5">Custom Length (days)</label>
+          <input id="settlement-custom-length" v-model.number="groupSettingsForm.settlement_custom_length_days" type="number" min="1"
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+        </div>
 
-          <div class="mb-5">
-            <label for="settlement-weekly-hour-cap" class="block text-sm font-medium text-slate-300 mb-1.5">Weekly Hour Cap</label>
-            <input id="settlement-weekly-hour-cap" v-model.number="groupSettingsForm.weekly_hour_cap" type="number" min="0" step="0.5"
-              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-          </div>
+        <div class="mb-5">
+          <label for="settlement-weekly-hour-cap" class="block text-sm font-medium text-slate-300 mb-1.5">Weekly Hour Cap</label>
+          <input id="settlement-weekly-hour-cap" v-model.number="groupSettingsForm.weekly_hour_cap" type="number" min="0" step="0.5"
+            class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+        </div>
 
-          <div class="mb-5">
-            <label class="block text-sm font-medium text-slate-300 mb-1.5">Shift Streak Rules</label>
-            <div v-for="(rule, idx) in groupSettingsForm.streak_rules" :key="idx" class="flex items-center gap-2 mb-2">
-              <input v-model="rule.shift_type" type="text" placeholder="shift type (e.g. night)"
-                class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
-              <input v-model.number="rule.streak_length" type="number" min="1" title="Streak length"
-                class="w-16 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-              <span class="text-slate-500 text-xs whitespace-nowrap">then rest</span>
-              <input v-model.number="rule.rest_days" type="number" min="1" title="Rest days"
-                class="w-16 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-              <span class="text-slate-500 text-xs whitespace-nowrap">days</span>
-              <button @click="groupSettingsForm.streak_rules.splice(idx, 1)"
-                class="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-red-400 transition-colors shrink-0" title="Remove rule">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-              </button>
-            </div>
-            <button @click="groupSettingsForm.streak_rules.push({ shift_type: '', streak_length: 3, rest_days: 2 })"
-              class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">+ Add streak rule</button>
-          </div>
-
-          <div class="flex items-center justify-end gap-3">
-            <button @click="showGroupSettingsModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
-            <button @click="saveGroupSettings" :disabled="savingGroupSettings"
-              class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-              <svg v-if="savingGroupSettings" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-              Save
+        <div class="mb-5">
+          <label class="block text-sm font-medium text-slate-300 mb-1.5">Shift Streak Rules</label>
+          <div v-for="(rule, idx) in groupSettingsForm.streak_rules" :key="idx" class="flex items-center gap-2 mb-2">
+            <input v-model="rule.shift_type" type="text" placeholder="shift type (e.g. night)"
+              class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+            <input v-model.number="rule.streak_length" type="number" min="1" title="Streak length"
+              class="w-16 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+            <span class="text-slate-500 text-xs whitespace-nowrap">then rest</span>
+            <input v-model.number="rule.rest_days" type="number" min="1" title="Rest days"
+              class="w-16 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+            <span class="text-slate-500 text-xs whitespace-nowrap">days</span>
+            <button @click="groupSettingsForm.streak_rules.splice(idx, 1)"
+              class="w-6 h-6 flex items-center justify-center text-slate-500 hover:text-red-400 transition-colors shrink-0" title="Remove rule">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
+          <button @click="groupSettingsForm.streak_rules.push({ shift_type: '', streak_length: 3, rest_days: 2 })"
+            class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">+ Add streak rule</button>
         </div>
-      </div>
+
+        <div class="flex items-center justify-end gap-3">
+          <button @click="showGroupSettingsModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
+          <button @click="saveGroupSettings" :disabled="savingGroupSettings"
+            class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            <svg v-if="savingGroupSettings" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            Save
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <!-- Unavailable Assignment Confirmation Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="availConfirm.show" class="fixed inset-0 z-[60] flex items-center justify-center px-4">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-        <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-red-500/30 rounded-2xl shadow-2xl shadow-red-500/10 p-6">
-          <div class="flex items-start gap-4 mb-5">
-            <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
-              <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <div class="flex-1">
-              <h3 class="text-red-300 font-bold text-lg mb-1">⚠️ Unavailable Period</h3>
-              <p class="text-slate-300 text-sm mb-2">
-                <strong class="text-white">{{ availConfirm.userName }}</strong> has marked
-                <strong class="text-red-300">{{ availConfirm.dateStr }}</strong> as unavailable.
-              </p>
-              <div v-if="availConfirm.entries.length" class="space-y-1.5 mb-3">
-                <div v-for="(entry, idx) in availConfirm.entries" :key="idx"
-                  class="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
-                  <span class="text-red-400 text-sm">🚫</span>
-                  <div class="text-sm">
-                    <span class="text-red-200 font-medium">{{ entry.start_time ? entry.start_time + '–' + entry.end_time : 'All day' }}</span>
-                    <span v-if="entry.note" class="text-slate-400 ml-2">— "{{ entry.note }}"</span>
-                  </div>
+      <BaseModal v-if="availConfirm.show"
+        role="alertdialog"
+        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-red-500/30 rounded-2xl shadow-2xl shadow-red-500/10 p-6"
+        :close-on-backdrop="false"
+        described
+        @close="cancelAvailConfirm"
+        v-slot="{ titleId, descriptionId }">
+        <div class="flex items-start gap-4 mb-5">
+          <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
+            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 :id="titleId" class="text-red-300 font-bold text-lg mb-1">⚠️ Unavailable Period</h3>
+            <p class="text-slate-300 text-sm mb-2">
+              <strong class="text-white">{{ availConfirm.userName }}</strong> has marked
+              <strong class="text-red-300">{{ availConfirm.dateStr }}</strong> as unavailable.
+            </p>
+            <div v-if="availConfirm.entries.length" class="space-y-1.5 mb-3">
+              <div v-for="(entry, idx) in availConfirm.entries" :key="idx"
+                class="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <span class="text-red-400 text-sm">🚫</span>
+                <div class="text-sm">
+                  <span class="text-red-200 font-medium">{{ entry.start_time ? entry.start_time + '–' + entry.end_time : 'All day' }}</span>
+                  <span v-if="entry.note" class="text-slate-400 ml-2">— "{{ entry.note }}"</span>
                 </div>
               </div>
-              <p class="text-slate-400 text-sm">Do you still want to assign this person to the shift?</p>
             </div>
-          </div>
-          <div class="flex items-center justify-end gap-3">
-            <button @click="cancelAvailConfirm"
-              class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-              Cancel
-            </button>
-            <button @click="confirmAvailAssign"
-              class="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl shadow-lg shadow-red-500/25 transition-all text-sm">
-              Assign Anyway
-            </button>
+            <p :id="descriptionId" class="text-slate-400 text-sm">Do you still want to assign this person to the shift?</p>
           </div>
         </div>
-      </div>
+        <div class="flex items-center justify-end gap-3">
+          <button @click="cancelAvailConfirm"
+            class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
+            Cancel
+          </button>
+          <button @click="confirmAvailAssign"
+            class="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl shadow-lg shadow-red-500/25 transition-all text-sm">
+            Assign Anyway
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <!-- Delegation Conflict Confirmation Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="delegConfirm.show" class="fixed inset-0 z-[60] flex items-center justify-center px-4">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-        <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-purple-500/30 rounded-2xl shadow-2xl shadow-purple-500/10 p-6">
-          <div class="flex items-start gap-4 mb-5">
-            <div class="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0">
-              <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <div class="flex-1">
-              <h3 class="text-purple-300 font-bold text-lg mb-1">📍 On Delegation</h3>
-              <p class="text-slate-300 text-sm mb-2">
-                <strong class="text-white">{{ delegConfirm.userName }}</strong> is on delegation during
-                <strong class="text-purple-300">{{ delegConfirm.dateStr }}</strong>.
-              </p>
-              <div v-if="delegConfirm.delegations.length" class="space-y-1.5 mb-3">
-                <div v-for="(del, idx) in delegConfirm.delegations" :key="idx"
-                  class="flex items-center gap-2 px-3 py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                  <span class="text-purple-400 text-sm">📍</span>
-                  <div class="text-sm">
-                    <span class="text-purple-200 font-medium">{{ del.name }}</span>
-                    <span class="text-slate-400 ml-2">— {{ del.destination }}</span>
-                  </div>
+      <BaseModal v-if="delegConfirm.show"
+        role="alertdialog"
+        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-purple-500/30 rounded-2xl shadow-2xl shadow-purple-500/10 p-6"
+        :close-on-backdrop="false"
+        described
+        @close="cancelDelegConfirm"
+        v-slot="{ titleId, descriptionId }">
+        <div class="flex items-start gap-4 mb-5">
+          <div class="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0">
+            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 :id="titleId" class="text-purple-300 font-bold text-lg mb-1">📍 On Delegation</h3>
+            <p class="text-slate-300 text-sm mb-2">
+              <strong class="text-white">{{ delegConfirm.userName }}</strong> is on delegation during
+              <strong class="text-purple-300">{{ delegConfirm.dateStr }}</strong>.
+            </p>
+            <div v-if="delegConfirm.delegations.length" class="space-y-1.5 mb-3">
+              <div v-for="(del, idx) in delegConfirm.delegations" :key="idx"
+                class="flex items-center gap-2 px-3 py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                <span class="text-purple-400 text-sm">📍</span>
+                <div class="text-sm">
+                  <span class="text-purple-200 font-medium">{{ del.name }}</span>
+                  <span class="text-slate-400 ml-2">— {{ del.destination }}</span>
                 </div>
               </div>
-              <p class="text-slate-400 text-sm">Do you still want to assign this person to the shift?</p>
             </div>
-          </div>
-          <div class="flex items-center justify-end gap-3">
-            <button @click="cancelDelegConfirm"
-              class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-              Cancel
-            </button>
-            <button @click="confirmDelegAssign"
-              class="px-5 py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 transition-all text-sm">
-              Assign Anyway
-            </button>
+            <p :id="descriptionId" class="text-slate-400 text-sm">Do you still want to assign this person to the shift?</p>
           </div>
         </div>
-      </div>
+        <div class="flex items-center justify-end gap-3">
+          <button @click="cancelDelegConfirm"
+            class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
+            Cancel
+          </button>
+          <button @click="confirmDelegAssign"
+            class="px-5 py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 transition-all text-sm">
+            Assign Anyway
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <!-- Office Closure Conflict Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="closureConflict.show" class="fixed inset-0 z-[60] flex items-center justify-center px-4">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-        <div class="relative w-full max-w-lg bg-slate-800/95 backdrop-blur-xl border border-orange-500/30 rounded-2xl shadow-2xl shadow-orange-500/10 p-6">
-          <div class="flex items-start gap-4 mb-5">
-            <div class="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center shrink-0">
-              <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <div class="flex-1">
-              <h3 class="text-orange-300 font-bold text-lg mb-1">🏢❌ Office Closed on Some Dates</h3>
-              <p class="text-slate-300 text-sm mb-3">
-                You're generating <strong class="text-amber-300">office shifts</strong> but the office is
-                <strong class="text-orange-300">closed</strong> on the following dates:
-              </p>
-              <div class="space-y-1.5 mb-3 max-h-[200px] overflow-y-auto">
-                <div v-for="c in closureConflict.closures" :key="c.id"
-                  class="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                  <span class="text-orange-400 text-sm">📅</span>
-                  <div class="text-sm flex-1">
-                    <span class="text-orange-200 font-medium">{{ formatClosureDate(c.date) }}</span>
-                    <span class="text-white ml-2">— {{ c.title }}</span>
-                    <p v-if="c.description" class="text-slate-500 text-[10px] mt-0.5">{{ c.description }}</p>
-                  </div>
+      <BaseModal v-if="closureConflict.show"
+        role="alertdialog"
+        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        panel-class="relative w-full max-w-lg bg-slate-800/95 backdrop-blur-xl border border-orange-500/30 rounded-2xl shadow-2xl shadow-orange-500/10 p-6"
+        :close-on-backdrop="false"
+        @close="cancelClosureConflict"
+        v-slot="{ titleId }">
+        <div class="flex items-start gap-4 mb-5">
+          <div class="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center shrink-0">
+            <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 :id="titleId" class="text-orange-300 font-bold text-lg mb-1">🏢❌ Office Closed on Some Dates</h3>
+            <p class="text-slate-300 text-sm mb-3">
+              You're generating <strong class="text-amber-300">office shifts</strong> but the office is
+              <strong class="text-orange-300">closed</strong> on the following dates:
+            </p>
+            <div class="space-y-1.5 mb-3 max-h-[200px] overflow-y-auto">
+              <div v-for="c in closureConflict.closures" :key="c.id"
+                class="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+                <span class="text-orange-400 text-sm">📅</span>
+                <div class="text-sm flex-1">
+                  <span class="text-orange-200 font-medium">{{ formatClosureDate(c.date) }}</span>
+                  <span class="text-white ml-2">— {{ c.title }}</span>
+                  <p v-if="c.description" class="text-slate-500 text-[10px] mt-0.5">{{ c.description }}</p>
                 </div>
               </div>
-              <p class="text-slate-400 text-sm">These shifts will still be created as "office" type. You can change them individually later.</p>
             </div>
-          </div>
-          <div class="flex items-center justify-end gap-2 flex-wrap">
-            <button @click="cancelClosureConflict"
-              class="px-4 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-              Cancel
-            </button>
-            <button @click="proceedGenerateAsRemote"
-              class="px-4 py-2.5 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition-all text-sm flex items-center gap-1.5">
-              🏠 Switch to Remote
-            </button>
-            <button @click="proceedGenerate"
-              class="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm">
-              Generate as Office
-            </button>
+            <p class="text-slate-400 text-sm">These shifts will still be created as "office" type. You can change them individually later.</p>
           </div>
         </div>
-      </div>
+        <div class="flex items-center justify-end gap-2 flex-wrap">
+          <button @click="cancelClosureConflict"
+            class="px-4 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
+            Cancel
+          </button>
+          <button @click="proceedGenerateAsRemote"
+            class="px-4 py-2.5 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition-all text-sm flex items-center gap-1.5">
+            🏠 Switch to Remote
+          </button>
+          <button @click="proceedGenerate"
+            class="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm">
+            Generate as Office
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <!-- Adjacent Shift Confirmation Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="adjacentConfirm.show" class="fixed inset-0 z-[60] flex items-center justify-center px-4">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
-        <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-amber-500/30 rounded-2xl shadow-2xl shadow-amber-500/10 p-6">
-          <div class="flex items-start gap-4 mb-5">
-            <div class="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
-              <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div class="flex-1">
-              <h3 class="text-amber-300 font-bold text-lg mb-1">⏰ Back-to-Back Shifts</h3>
-              <p class="text-slate-300 text-sm mb-2">
-                <strong class="text-white">{{ adjacentConfirm.userName }}</strong> is already assigned to an adjacent shift:
-              </p>
-              <div class="space-y-1.5 mb-3">
-                <div v-for="(conflict, idx) in adjacentConfirm.conflicts" :key="idx"
-                  class="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                  <span class="text-amber-400 text-sm">🔄</span>
-                  <div class="text-sm">
-                    <span class="text-amber-200 font-medium">
-                      {{ conflict.date }} · S{{ conflict.shiftNumber }}
-                    </span>
-                    <span v-if="conflict.startTime" class="text-slate-400 ml-1">
-                      ({{ conflict.startTime }}–{{ conflict.endTime }})
-                    </span>
-                    <span class="text-slate-500 ml-1">— {{ conflict.position }}</span>
-                  </div>
+      <BaseModal v-if="adjacentConfirm.show"
+        role="alertdialog"
+        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
+        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-amber-500/30 rounded-2xl shadow-2xl shadow-amber-500/10 p-6"
+        :close-on-backdrop="false"
+        described
+        @close="cancelAdjacentConfirm"
+        v-slot="{ titleId, descriptionId }">
+        <div class="flex items-start gap-4 mb-5">
+          <div class="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+            <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div class="flex-1">
+            <h3 :id="titleId" class="text-amber-300 font-bold text-lg mb-1">⏰ Back-to-Back Shifts</h3>
+            <p class="text-slate-300 text-sm mb-2">
+              <strong class="text-white">{{ adjacentConfirm.userName }}</strong> is already assigned to an adjacent shift:
+            </p>
+            <div class="space-y-1.5 mb-3">
+              <div v-for="(conflict, idx) in adjacentConfirm.conflicts" :key="idx"
+                class="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <span class="text-amber-400 text-sm">🔄</span>
+                <div class="text-sm">
+                  <span class="text-amber-200 font-medium">
+                    {{ conflict.date }} · S{{ conflict.shiftNumber }}
+                  </span>
+                  <span v-if="conflict.startTime" class="text-slate-400 ml-1">
+                    ({{ conflict.startTime }}–{{ conflict.endTime }})
+                  </span>
+                  <span class="text-slate-500 ml-1">— {{ conflict.position }}</span>
                 </div>
               </div>
-              <p class="text-slate-400 text-sm">This employee would work consecutive shifts without a break. Assign anyway?</p>
             </div>
-          </div>
-          <div class="flex items-center justify-end gap-3">
-            <button @click="cancelAdjacentConfirm"
-              class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-              Cancel
-            </button>
-            <button @click="confirmAdjacentAssign"
-              class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 transition-all text-sm">
-              Assign Anyway
-            </button>
+            <p :id="descriptionId" class="text-slate-400 text-sm">This employee would work consecutive shifts without a break. Assign anyway?</p>
           </div>
         </div>
-      </div>
+        <div class="flex items-center justify-end gap-3">
+          <button @click="cancelAdjacentConfirm"
+            class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
+            Cancel
+          </button>
+          <button @click="confirmAdjacentAssign"
+            class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 transition-all text-sm">
+            Assign Anyway
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <ShiftTypeBulkEditor v-if="showShiftTypeEditor" :group-id="activeGroupId" :month-key="monthKey" :schedule="schedule"
@@ -999,217 +1027,220 @@
       leave-active-class="transition-all duration-200 ease-in"
       leave-from-class="opacity-100"
       leave-to-class="opacity-0">
-      <div v-if="showGenerateModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="showGenerateModal = false">
-        <div class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[85vh] flex flex-col">
-          <!-- Modal Header -->
-          <div class="p-6 pb-3 border-b border-white/10 shrink-0">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2">
-              <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Generate Shifts — {{ monthLabel }}
-            </h3>
-            <p class="text-slate-400 text-sm mt-1">Configure shift templates for all days in this month</p>
-          </div>
+      <BaseModal v-if="showGenerateModal"
+        overlay-class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        panel-class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl mx-4 max-h-[85vh] flex flex-col"
+        :busy="generating"
+        @close="showGenerateModal = false"
+        v-slot="{ titleId }">
+        <!-- Modal Header -->
+        <div class="p-6 pb-3 border-b border-white/10 shrink-0">
+          <h3 :id="titleId" class="text-lg font-bold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Generate Shifts — {{ monthLabel }}
+          </h3>
+          <p class="text-slate-400 text-sm mt-1">Configure shift templates for all days in this month</p>
+        </div>
 
-          <!-- Modal Body (scrollable) -->
-          <div class="p-6 pt-4 overflow-y-auto flex-1">
-            <div class="flex gap-6">
-              <!-- Left Column: Config -->
-              <div class="flex-1 min-w-0">
-                <!-- Shifts per day -->
-                <div class="mb-5">
-                  <label class="block text-sm font-medium text-slate-300 mb-2">Shifts per day</label>
-                  <div class="flex items-center gap-3">
-                    <input v-model.number="genConfig.shiftsPerDay" type="range" min="1" max="10" step="1"
-                      @input="onGenShiftCountChange"
-                      class="flex-1 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
-                    <span class="w-8 text-center text-lg font-bold text-white">{{ genConfig.shiftsPerDay }}</span>
-                  </div>
+        <!-- Modal Body (scrollable) -->
+        <div class="p-6 pt-4 overflow-y-auto flex-1">
+          <div class="flex gap-6">
+            <!-- Left Column: Config -->
+            <div class="flex-1 min-w-0">
+              <!-- Shifts per day -->
+              <div class="mb-5">
+                <label class="block text-sm font-medium text-slate-300 mb-2">Shifts per day</label>
+                <div class="flex items-center gap-3">
+                  <input v-model.number="genConfig.shiftsPerDay" type="range" min="1" max="10" step="1"
+                    @input="onGenShiftCountChange"
+                    class="flex-1 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                  <span class="w-8 text-center text-lg font-bold text-white">{{ genConfig.shiftsPerDay }}</span>
                 </div>
+              </div>
 
-                <!-- Work mode defaults -->
-                <div class="mb-5">
-                  <label class="block text-sm font-medium text-slate-300 mb-2">Default work mode</label>
-                  <div class="grid grid-cols-2 gap-3">
-                    <div>
-                      <label class="block text-[10px] text-slate-500 uppercase tracking-wide mb-1">Weekdays</label>
-                      <select v-model="genConfig.workModeWeekday"
-                        class="w-full px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none">
-                        <option value="office" class="bg-slate-800">🏢 Office</option>
-                        <option value="remote" class="bg-slate-800">🏠 Remote</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label class="block text-[10px] text-slate-500 uppercase tracking-wide mb-1">Weekends</label>
-                      <select v-model="genConfig.workModeWeekend"
-                        class="w-full px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none">
-                        <option value="office" class="bg-slate-800">🏢 Office</option>
-                        <option value="remote" class="bg-slate-800">🏠 Remote</option>
-                      </select>
-                    </div>
+              <!-- Work mode defaults -->
+              <div class="mb-5">
+                <label class="block text-sm font-medium text-slate-300 mb-2">Default work mode</label>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-[10px] text-slate-500 uppercase tracking-wide mb-1">Weekdays</label>
+                    <select v-model="genConfig.workModeWeekday"
+                      class="w-full px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none">
+                      <option value="office" class="bg-slate-800">🏢 Office</option>
+                      <option value="remote" class="bg-slate-800">🏠 Remote</option>
+                    </select>
                   </div>
-                </div>
-
-                <!-- Shift templates -->
-                <div class="space-y-3">
-                  <div v-for="(shift, idx) in genConfig.shifts" :key="idx"
-                    class="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <div class="flex items-center gap-2 mb-2">
-                      <span class="text-xs font-bold text-slate-400 uppercase">Shift {{ idx + 1 }}</span>
-                      <span v-if="shift.start_time && shift.end_time && shift.end_time < shift.start_time"
-                        class="px-1.5 py-0.5 text-[8px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 rounded font-medium">
-                        🌙 Overnight
-                      </span>
-                      <span v-if="shift.color && shiftColorById[shift.color]"
-                        class="w-3 h-3 rounded-full border border-white/20" :style="{ backgroundColor: shiftColorById[shift.color]?.hex }"></span>
-                    </div>
-
-                    <!-- Times + Color in one row -->
-                    <div>
-                      <div class="flex gap-2 mb-1">
-                        <span class="w-24 shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">Start</span>
-                        <span class="w-24 shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">End</span>
-                        <span class="text-[10px] text-slate-500 uppercase tracking-wide">Color</span>
-                      </div>
-                      <div class="flex items-center gap-2">
-                        <input v-model="shift.start_time" type="time"
-                          class="w-24 shrink-0 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-                        <input v-model="shift.end_time" type="time"
-                          @blur="syncNextShiftStart(idx)"
-                          class="w-24 shrink-0 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-                        <div class="flex flex-wrap gap-1 items-center">
-                          <button v-for="colorDef in shiftColors" :key="colorDef.id"
-                            @click="shift.color = shift.color == colorDef.id ? null : String(colorDef.id)"
-                            :class="['w-6 h-6 rounded border transition-all',
-                              shift.color == colorDef.id ? 'border-white scale-110' : 'border-transparent hover:border-white/30']"
-                            :style="{ backgroundColor: colorDef.hex }"
-                            :title="colorDef.name">
-                          </button>
-                          <button @click="shift.color = null; shift.color_label = ''"
-                            :class="['w-6 h-6 rounded border transition-all text-[9px]',
-                              !shift.color ? 'border-white/30 bg-white/10' : 'border-white/10 bg-white/5']"
-                            title="No color">✕</button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="mt-2 flex items-center gap-2">
-                      <label :for="`gen-shift-type-${idx}`" class="w-24 shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">
-                        Shift {{ idx + 1 }} type
-                      </label>
-                      <input :id="`gen-shift-type-${idx}`" v-model="shift.shift_type" type="text" maxlength="50"
-                        list="shift-type-suggestions" placeholder="e.g. night"
-                        class="flex-1 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
-                    </div>
-
-                    <!-- Checklists -->
-                    <div class="mt-2">
-                      <div v-if="shift.checklists?.length" class="space-y-1.5 mb-1.5">
-                        <div v-for="(cl, ci) in shift.checklists" :key="ci"
-                          class="flex items-center gap-1.5 bg-white/[0.03] border border-white/10 rounded-lg px-2 py-1">
-                          <select v-model="cl.checklist_template_id"
-                            class="flex-1 px-2 py-1 bg-white/5 border border-white/10 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer">
-                            <option :value="null" class="bg-slate-800 text-slate-400">Template...</option>
-                            <option v-for="t in checklistTemplates" :key="t.id" :value="t.id" class="bg-slate-800">{{ t.name }}</option>
-                          </select>
-                          <label v-if="cl.checklist_template_id" class="flex items-center gap-1 cursor-pointer shrink-0">
-                            <input type="checkbox" v-model="cl.is_required"
-                              class="w-3 h-3 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/30" />
-                            <span class="text-[8px] text-slate-400 uppercase">Req</span>
-                          </label>
-                          <input v-if="cl.checklist_template_id" v-model.number="cl.deadline_minutes" type="number" min="1" placeholder="min"
-                            class="w-12 px-1 py-0.5 bg-white/5 border border-white/10 rounded text-white text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500/50" />
-                          <select v-if="cl.checklist_template_id" v-model="cl.deadline_reference"
-                            class="px-1 py-0.5 bg-white/5 border border-white/10 rounded text-white text-[10px] focus:outline-none cursor-pointer">
-                            <option value="shift_start" class="bg-slate-800">after start</option>
-                            <option value="shift_end" class="bg-slate-800">before end</option>
-                          </select>
-                          <button @click="shift.checklists.splice(ci, 1)" class="text-slate-600 hover:text-red-400 transition-colors shrink-0" title="Remove">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                          </button>
-                        </div>
-                      </div>
-                      <button @click="shift.checklists = [...(shift.checklists || []), { checklist_template_id: null, is_required: false, deadline_minutes: null, deadline_reference: 'shift_start' }]"
-                        class="text-[9px] text-indigo-400 hover:text-indigo-300 transition-colors">
-                        + Add Checklist
-                      </button>
-                    </div>
+                  <div>
+                    <label class="block text-[10px] text-slate-500 uppercase tracking-wide mb-1">Weekends</label>
+                    <select v-model="genConfig.workModeWeekend"
+                      class="w-full px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none">
+                      <option value="office" class="bg-slate-800">🏢 Office</option>
+                      <option value="remote" class="bg-slate-800">🏠 Remote</option>
+                    </select>
                   </div>
                 </div>
               </div>
 
-              <!-- Right Column: Donut Chart -->
-              <div class="w-72 shrink-0 flex flex-col items-center">
-                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">24h Overview</h4>
-                <div class="relative">
-                  <svg viewBox="0 0 200 200" class="w-56 h-56">
-                    <!-- Background ring -->
-                    <circle cx="100" cy="100" r="70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="28" />
-                    <!-- Shift segments -->
-                    <path v-for="(seg, si) in donutSegments" :key="si"
-                      :d="seg.path" fill="none"
-                      :stroke="seg.color" stroke-width="28"
-                      :stroke-opacity="0.7"
-                      class="transition-all duration-300" />
-                    <!-- Hour markers -->
-                    <template v-for="h in 24" :key="'h'+h">
-                      <line
-                        :x1="100 + 88 * Math.sin((h-1) * Math.PI / 12)"
-                        :y1="100 - 88 * Math.cos((h-1) * Math.PI / 12)"
-                        :x2="100 + (h % 6 === 0 ? 82 : 85) * Math.sin((h-1) * Math.PI / 12)"
-                        :y2="100 - (h % 6 === 0 ? 82 : 85) * Math.cos((h-1) * Math.PI / 12)"
-                        :stroke="h % 6 === 0 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)'"
-                        :stroke-width="h % 6 === 0 ? 1.5 : 0.5" />
-                    </template>
-                    <!-- Hour labels (0, 6, 12, 18) -->
-                    <text x="100" y="18" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">0:00</text>
-                    <text x="186" y="103" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">6:00</text>
-                    <text x="100" y="190" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">12:00</text>
-                    <text x="14" y="103" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">18:00</text>
-                    <!-- Center text -->
-                    <text x="100" y="95" text-anchor="middle" class="fill-white text-[11px] font-bold">{{ genConfig.shiftsPerDay }}</text>
-                    <text x="100" y="109" text-anchor="middle" class="fill-slate-400 text-[8px]">{{ genConfig.shiftsPerDay === 1 ? 'shift' : 'shifts' }}</text>
-                  </svg>
-                </div>
-                <!-- Legend -->
-                <div class="mt-4 w-full space-y-1.5">
-                  <div v-for="(seg, si) in donutSegments" :key="'leg'+si"
-                    class="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-lg">
-                    <div class="w-3 h-3 rounded-sm shrink-0" :style="{ backgroundColor: seg.color, opacity: 0.8 }"></div>
-                    <span class="text-[11px] text-white font-medium">S{{ si + 1 }}</span>
-                    <span class="text-[10px] text-slate-400 font-mono">{{ seg.startTime }}–{{ seg.endTime }}</span>
-                    <span class="text-[10px] text-slate-500 ml-auto tabular-nums">{{ seg.durationLabel }}</span>
+              <!-- Shift templates -->
+              <div class="space-y-3">
+                <div v-for="(shift, idx) in genConfig.shifts" :key="idx"
+                  class="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase">Shift {{ idx + 1 }}</span>
+                    <span v-if="shift.start_time && shift.end_time && shift.end_time < shift.start_time"
+                      class="px-1.5 py-0.5 text-[8px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 rounded font-medium">
+                      🌙 Overnight
+                    </span>
+                    <span v-if="shift.color && shiftColorById[shift.color]"
+                      class="w-3 h-3 rounded-full border border-white/20" :style="{ backgroundColor: shiftColorById[shift.color]?.hex }"></span>
                   </div>
-                  <div v-if="donutGapMinutes > 0" class="flex items-center gap-2 px-3 py-1.5">
-                    <div class="w-3 h-3 rounded-sm shrink-0 bg-white/5"></div>
-                    <span class="text-[10px] text-slate-500 italic">Uncovered: {{ formatDonutDuration(donutGapMinutes) }}</span>
+
+                  <!-- Times + Color in one row -->
+                  <div>
+                    <div class="flex gap-2 mb-1">
+                      <span class="w-24 shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">Start</span>
+                      <span class="w-24 shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">End</span>
+                      <span class="text-[10px] text-slate-500 uppercase tracking-wide">Color</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input v-model="shift.start_time" type="time"
+                        class="w-24 shrink-0 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                      <input v-model="shift.end_time" type="time"
+                        @blur="syncNextShiftStart(idx)"
+                        class="w-24 shrink-0 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+                      <div class="flex flex-wrap gap-1 items-center">
+                        <button v-for="colorDef in shiftColors" :key="colorDef.id"
+                          @click="shift.color = shift.color == colorDef.id ? null : String(colorDef.id)"
+                          :class="['w-6 h-6 rounded border transition-all',
+                            shift.color == colorDef.id ? 'border-white scale-110' : 'border-transparent hover:border-white/30']"
+                          :style="{ backgroundColor: colorDef.hex }"
+                          :title="colorDef.name">
+                        </button>
+                        <button @click="shift.color = null; shift.color_label = ''"
+                          :class="['w-6 h-6 rounded border transition-all text-[9px]',
+                            !shift.color ? 'border-white/30 bg-white/10' : 'border-white/10 bg-white/5']"
+                          title="No color">✕</button>
+                      </div>
+                    </div>
                   </div>
-                  <div v-if="donutOverlapMinutes > 0" class="flex items-center gap-2 px-3 py-1.5 bg-red-500/5 border border-red-500/10 rounded-lg">
-                    <span class="text-[10px] text-red-400">⚠ Overlap: {{ formatDonutDuration(donutOverlapMinutes) }}</span>
+
+                  <div class="mt-2 flex items-center gap-2">
+                    <label :for="`gen-shift-type-${idx}`" class="w-24 shrink-0 text-[10px] text-slate-500 uppercase tracking-wide">
+                      Shift {{ idx + 1 }} type
+                    </label>
+                    <input :id="`gen-shift-type-${idx}`" v-model="shift.shift_type" type="text" maxlength="50"
+                      list="shift-type-suggestions" placeholder="e.g. night"
+                      class="flex-1 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500" />
+                  </div>
+
+                  <!-- Checklists -->
+                  <div class="mt-2">
+                    <div v-if="shift.checklists?.length" class="space-y-1.5 mb-1.5">
+                      <div v-for="(cl, ci) in shift.checklists" :key="ci"
+                        class="flex items-center gap-1.5 bg-white/[0.03] border border-white/10 rounded-lg px-2 py-1">
+                        <select v-model="cl.checklist_template_id"
+                          class="flex-1 px-2 py-1 bg-white/5 border border-white/10 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer">
+                          <option :value="null" class="bg-slate-800 text-slate-400">Template...</option>
+                          <option v-for="t in checklistTemplates" :key="t.id" :value="t.id" class="bg-slate-800">{{ t.name }}</option>
+                        </select>
+                        <label v-if="cl.checklist_template_id" class="flex items-center gap-1 cursor-pointer shrink-0">
+                          <input type="checkbox" v-model="cl.is_required"
+                            class="w-3 h-3 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-500/30" />
+                          <span class="text-[8px] text-slate-400 uppercase">Req</span>
+                        </label>
+                        <input v-if="cl.checklist_template_id" v-model.number="cl.deadline_minutes" type="number" min="1" placeholder="min"
+                          class="w-12 px-1 py-0.5 bg-white/5 border border-white/10 rounded text-white text-[10px] focus:outline-none focus:ring-1 focus:ring-indigo-500/50" />
+                        <select v-if="cl.checklist_template_id" v-model="cl.deadline_reference"
+                          class="px-1 py-0.5 bg-white/5 border border-white/10 rounded text-white text-[10px] focus:outline-none cursor-pointer">
+                          <option value="shift_start" class="bg-slate-800">after start</option>
+                          <option value="shift_end" class="bg-slate-800">before end</option>
+                        </select>
+                        <button @click="shift.checklists.splice(ci, 1)" class="text-slate-600 hover:text-red-400 transition-colors shrink-0" title="Remove">
+                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <button @click="shift.checklists = [...(shift.checklists || []), { checklist_template_id: null, is_required: false, deadline_minutes: null, deadline_reference: 'shift_start' }]"
+                      class="text-[9px] text-indigo-400 hover:text-indigo-300 transition-colors">
+                      + Add Checklist
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Modal Footer -->
-          <div class="p-6 pt-3 border-t border-white/10 shrink-0 flex items-center justify-end gap-3">
-            <button @click="showGenerateModal = false"
-              class="px-5 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-              Cancel
-            </button>
-            <button @click="generateMonth" :disabled="generating"
-              class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-              <svg v-if="generating" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-              </svg>
-              Generate {{ monthLabel }}
-            </button>
+            <!-- Right Column: Donut Chart -->
+            <div class="w-72 shrink-0 flex flex-col items-center">
+              <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">24h Overview</h4>
+              <div class="relative">
+                <svg viewBox="0 0 200 200" class="w-56 h-56">
+                  <!-- Background ring -->
+                  <circle cx="100" cy="100" r="70" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="28" />
+                  <!-- Shift segments -->
+                  <path v-for="(seg, si) in donutSegments" :key="si"
+                    :d="seg.path" fill="none"
+                    :stroke="seg.color" stroke-width="28"
+                    :stroke-opacity="0.7"
+                    class="transition-all duration-300" />
+                  <!-- Hour markers -->
+                  <template v-for="h in 24" :key="'h'+h">
+                    <line
+                      :x1="100 + 88 * Math.sin((h-1) * Math.PI / 12)"
+                      :y1="100 - 88 * Math.cos((h-1) * Math.PI / 12)"
+                      :x2="100 + (h % 6 === 0 ? 82 : 85) * Math.sin((h-1) * Math.PI / 12)"
+                      :y2="100 - (h % 6 === 0 ? 82 : 85) * Math.cos((h-1) * Math.PI / 12)"
+                      :stroke="h % 6 === 0 ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)'"
+                      :stroke-width="h % 6 === 0 ? 1.5 : 0.5" />
+                  </template>
+                  <!-- Hour labels (0, 6, 12, 18) -->
+                  <text x="100" y="18" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">0:00</text>
+                  <text x="186" y="103" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">6:00</text>
+                  <text x="100" y="190" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">12:00</text>
+                  <text x="14" y="103" text-anchor="middle" class="fill-slate-400 text-[9px] font-mono">18:00</text>
+                  <!-- Center text -->
+                  <text x="100" y="95" text-anchor="middle" class="fill-white text-[11px] font-bold">{{ genConfig.shiftsPerDay }}</text>
+                  <text x="100" y="109" text-anchor="middle" class="fill-slate-400 text-[8px]">{{ genConfig.shiftsPerDay === 1 ? 'shift' : 'shifts' }}</text>
+                </svg>
+              </div>
+              <!-- Legend -->
+              <div class="mt-4 w-full space-y-1.5">
+                <div v-for="(seg, si) in donutSegments" :key="'leg'+si"
+                  class="flex items-center gap-2 px-3 py-1.5 bg-white/[0.03] border border-white/5 rounded-lg">
+                  <div class="w-3 h-3 rounded-sm shrink-0" :style="{ backgroundColor: seg.color, opacity: 0.8 }"></div>
+                  <span class="text-[11px] text-white font-medium">S{{ si + 1 }}</span>
+                  <span class="text-[10px] text-slate-400 font-mono">{{ seg.startTime }}–{{ seg.endTime }}</span>
+                  <span class="text-[10px] text-slate-500 ml-auto tabular-nums">{{ seg.durationLabel }}</span>
+                </div>
+                <div v-if="donutGapMinutes > 0" class="flex items-center gap-2 px-3 py-1.5">
+                  <div class="w-3 h-3 rounded-sm shrink-0 bg-white/5"></div>
+                  <span class="text-[10px] text-slate-500 italic">Uncovered: {{ formatDonutDuration(donutGapMinutes) }}</span>
+                </div>
+                <div v-if="donutOverlapMinutes > 0" class="flex items-center gap-2 px-3 py-1.5 bg-red-500/5 border border-red-500/10 rounded-lg">
+                  <span class="text-[10px] text-red-400">⚠ Overlap: {{ formatDonutDuration(donutOverlapMinutes) }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+
+        <!-- Modal Footer -->
+        <div class="p-6 pt-3 border-t border-white/10 shrink-0 flex items-center justify-end gap-3">
+          <button @click="showGenerateModal = false"
+            class="px-5 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
+            Cancel
+          </button>
+          <button @click="generateMonth" :disabled="generating"
+            class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            <svg v-if="generating" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Generate {{ monthLabel }}
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
     <!-- Delete Schedule Confirmation Modal -->
@@ -1220,45 +1251,52 @@
       leave-active-class="transition-all duration-200 ease-in"
       leave-from-class="opacity-100"
       leave-to-class="opacity-0">
-      <div v-if="deleteStep > 0" class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="deleteStep = 0">
-        <div class="bg-slate-800/95 border border-red-500/20 rounded-2xl shadow-2xl w-full max-w-sm mx-4">
-          <!-- Step 1 -->
-          <template v-if="deleteStep === 1">
-            <div class="p-6 text-center">
-              <div class="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
-                <svg class="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <h3 class="text-lg font-bold text-white mb-2">Delete {{ monthLabel }} Schedule?</h3>
-              <p class="text-sm text-slate-400">This will remove all shifts and assigned users for this month.</p>
+      <!-- Keyed by step: step 2 is a new alertdialog (focused and announced), not a re-render
+           that would drop focus with step 1's removed buttons. -->
+      <BaseModal v-if="deleteStep > 0" :key="deleteStep"
+        role="alertdialog"
+        overlay-class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        panel-class="bg-slate-800/95 border border-red-500/20 rounded-2xl shadow-2xl w-full max-w-sm mx-4"
+        described
+        :busy="deleting"
+        @close="deleteStep = 0"
+        v-slot="{ titleId, descriptionId }">
+        <!-- Step 1 -->
+        <template v-if="deleteStep === 1">
+          <div class="p-6 text-center">
+            <div class="w-14 h-14 rounded-2xl bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+              <svg class="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
             </div>
-            <div class="p-4 pt-0 flex gap-3">
-              <button @click="deleteStep = 0" class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
-              <button @click="deleteStep = 2" class="flex-1 px-4 py-2.5 text-sm text-red-300 bg-red-500/15 hover:bg-red-500/25 border border-red-500/25 rounded-xl transition-all font-medium">Yes, continue</button>
+            <h3 :id="titleId" class="text-lg font-bold text-white mb-2">Delete {{ monthLabel }} Schedule?</h3>
+            <p :id="descriptionId" class="text-sm text-slate-400">This will remove all shifts and assigned users for this month.</p>
+          </div>
+          <div class="p-4 pt-0 flex gap-3">
+            <button @click="deleteStep = 0" class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
+            <button @click="deleteStep = 2" class="flex-1 px-4 py-2.5 text-sm text-red-300 bg-red-500/15 hover:bg-red-500/25 border border-red-500/25 rounded-xl transition-all font-medium">Yes, continue</button>
+          </div>
+        </template>
+        <!-- Step 2 (final confirm) -->
+        <template v-if="deleteStep === 2">
+          <div class="p-6 text-center">
+            <div class="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
+              <svg class="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
             </div>
-          </template>
-          <!-- Step 2 (final confirm) -->
-          <template v-if="deleteStep === 2">
-            <div class="p-6 text-center">
-              <div class="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
-                <svg class="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h3 class="text-lg font-bold text-red-300 mb-2">This cannot be undone!</h3>
-              <p class="text-sm text-slate-400">All shifts, assignments, and checklist data for <strong class="text-white">{{ monthLabel }}</strong> will be permanently deleted.</p>
-            </div>
-            <div class="p-4 pt-0 flex gap-3">
-              <button @click="deleteStep = 0" class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
-              <button @click="clearMonth" :disabled="deleting" class="flex-1 px-4 py-2.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all font-semibold shadow-lg shadow-red-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
-                <svg v-if="deleting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                Delete Everything
-              </button>
-            </div>
-          </template>
-        </div>
-      </div>
+            <h3 :id="titleId" class="text-lg font-bold text-red-300 mb-2">This cannot be undone!</h3>
+            <p :id="descriptionId" class="text-sm text-slate-400">All shifts, assignments, and checklist data for <strong class="text-white">{{ monthLabel }}</strong> will be permanently deleted.</p>
+          </div>
+          <div class="p-4 pt-0 flex gap-3">
+            <button @click="deleteStep = 0" class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
+            <button @click="clearMonth" :disabled="deleting" class="flex-1 px-4 py-2.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-xl transition-all font-semibold shadow-lg shadow-red-500/25 disabled:opacity-50 flex items-center justify-center gap-2">
+              <svg v-if="deleting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              Delete Everything
+            </button>
+          </div>
+        </template>
+      </BaseModal>
     </Transition>
 
     <RestDayPolicyModal v-if="restPrompt" :user-name="restPrompt.item.user_name || 'This employee'"
@@ -1273,33 +1311,36 @@
       leave-active-class="transition-all duration-200 ease-in"
       leave-from-class="opacity-100"
       leave-to-class="opacity-0">
-      <div v-if="changeRequestModal.show" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="changeRequestModal.show = false">
-        <div class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md mx-4">
-          <div class="p-6 pb-3 border-b border-white/10">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2">
-              🔄 Request Day Off
-            </h3>
-            <p class="text-slate-400 text-sm mt-1">
-              Shift {{ changeRequestModal.shiftNumber }} on <strong class="text-white">{{ changeRequestModal.dateLabel }}</strong>
-            </p>
-          </div>
-          <div class="p-6 pt-4">
-            <label class="block text-sm font-medium text-slate-300 mb-2">Reason <span class="text-red-400">*</span></label>
-            <textarea v-model="changeRequestModal.reason" rows="4" placeholder="Please describe why you can't work this shift..."
-              class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
-            <p v-if="changeRequestModal.error" class="text-red-400 text-xs mt-1">{{ changeRequestModal.error }}</p>
-          </div>
-          <div class="p-6 pt-0 flex gap-3">
-            <button @click="changeRequestModal.show = false"
-              class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
-            <button @click="submitChangeRequest" :disabled="changeRequestModal.submitting || !changeRequestModal.reason.trim()"
-              class="flex-1 px-4 py-2.5 text-sm text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-all font-semibold shadow-lg shadow-orange-500/25 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-              <svg v-if="changeRequestModal.submitting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-              Submit Request
-            </button>
-          </div>
+      <BaseModal v-if="changeRequestModal.show"
+        overlay-class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        panel-class="bg-slate-800/95 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md mx-4"
+        :busy="changeRequestModal.submitting"
+        @close="changeRequestModal.show = false"
+        v-slot="{ titleId }">
+        <div class="p-6 pb-3 border-b border-white/10">
+          <h3 :id="titleId" class="text-lg font-bold text-white flex items-center gap-2">
+            🔄 Request Day Off
+          </h3>
+          <p class="text-slate-400 text-sm mt-1">
+            Shift {{ changeRequestModal.shiftNumber }} on <strong class="text-white">{{ changeRequestModal.dateLabel }}</strong>
+          </p>
         </div>
-      </div>
+        <div class="p-6 pt-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Reason <span class="text-red-400">*</span></label>
+          <textarea v-model="changeRequestModal.reason" rows="4" placeholder="Please describe why you can't work this shift..."
+            class="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
+          <p v-if="changeRequestModal.error" class="text-red-400 text-xs mt-1">{{ changeRequestModal.error }}</p>
+        </div>
+        <div class="p-6 pt-0 flex gap-3">
+          <button @click="changeRequestModal.show = false"
+            class="flex-1 px-4 py-2.5 text-sm text-slate-300 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">Cancel</button>
+          <button @click="submitChangeRequest" :disabled="changeRequestModal.submitting || !changeRequestModal.reason.trim()"
+            class="flex-1 px-4 py-2.5 text-sm text-white bg-orange-600 hover:bg-orange-700 rounded-xl transition-all font-semibold shadow-lg shadow-orange-500/25 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            <svg v-if="changeRequestModal.submitting" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+            Submit Request
+          </button>
+        </div>
+      </BaseModal>
     </Transition>
 
   </AppLayout>
@@ -1313,6 +1354,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import AutoFillPanel from '../components/AutoFillPanel.vue';
+import BaseModal from '../components/BaseModal.vue';
 import RestDayPolicyModal from '../components/RestDayPolicyModal.vue';
 import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
 import { confirm } from '../composables/useConfirm.js';

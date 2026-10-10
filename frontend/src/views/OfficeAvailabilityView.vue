@@ -110,40 +110,43 @@
       <Transition
         enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showModal = false">
-          <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showModal = false"></div>
-          <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
-            <h3 class="text-white font-bold text-lg mb-1">{{ editingId ? 'Edit Closure' : 'Add Office Closure' }}</h3>
-            <p class="text-slate-400 text-sm mb-5">{{ form.date }}{{ form.end_date && form.end_date !== form.date ? ' → ' + form.end_date : '' }}</p>
+        <BaseModal v-if="showModal"
+          overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+          backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+          :busy="saving"
+          @close="showModal = false"
+          v-slot="{ titleId }">
+          <h3 :id="titleId" class="text-white font-bold text-lg mb-1">{{ editingId ? 'Edit Closure' : 'Add Office Closure' }}</h3>
+          <p class="text-slate-400 text-sm mb-5">{{ form.date }}{{ form.end_date && form.end_date !== form.date ? ' → ' + form.end_date : '' }}</p>
 
-            <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Title <span class="text-red-400 ml-0.5">*</span></label>
-                <input v-model="form.title" type="text" required placeholder="e.g. Christmas Holiday"
-                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">Description <span class="text-slate-500 font-normal">(optional)</span></label>
-                <textarea v-model="form.description" rows="3" placeholder="e.g. Office closed for the holiday season"
-                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
-              </div>
-              <div v-if="!editingId">
-                <label class="block text-sm font-medium text-slate-300 mb-1.5">End Date <span class="text-slate-500 font-normal">(for multi-day closure)</span></label>
-                <input v-model="form.end_date" type="date" :min="form.date"
-                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50" />
-              </div>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-300 mb-1.5">Title <span class="text-red-400 ml-0.5">*</span></label>
+              <input v-model="form.title" type="text" required placeholder="e.g. Christmas Holiday"
+                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500" />
             </div>
-
-            <div class="flex items-center justify-end gap-3 mt-5">
-              <button @click="showModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
-              <button @click="saveClosure" :disabled="saving || !form.title.trim()"
-                class="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold rounded-xl shadow-lg shadow-orange-500/25 transition-all text-sm disabled:opacity-50 flex items-center gap-2">
-                <svg v-if="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                {{ editingId ? 'Update' : 'Save' }}
-              </button>
+            <div>
+              <label class="block text-sm font-medium text-slate-300 mb-1.5">Description <span class="text-slate-500 font-normal">(optional)</span></label>
+              <textarea v-model="form.description" rows="3" placeholder="e.g. Office closed for the holiday season"
+                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
+            </div>
+            <div v-if="!editingId">
+              <label class="block text-sm font-medium text-slate-300 mb-1.5">End Date <span class="text-slate-500 font-normal">(for multi-day closure)</span></label>
+              <input v-model="form.end_date" type="date" :min="form.date"
+                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50" />
             </div>
           </div>
-        </div>
+
+          <div class="flex items-center justify-end gap-3 mt-5">
+            <button @click="showModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
+            <button @click="saveClosure" :disabled="saving || !form.title.trim()"
+              class="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold rounded-xl shadow-lg shadow-orange-500/25 transition-all text-sm disabled:opacity-50 flex items-center gap-2">
+              <svg v-if="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              {{ editingId ? 'Update' : 'Save' }}
+            </button>
+          </div>
+        </BaseModal>
       </Transition>
 
       <AppToast />
@@ -156,6 +159,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';

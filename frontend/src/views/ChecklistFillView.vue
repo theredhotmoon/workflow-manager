@@ -475,50 +475,52 @@
     <!-- Procedure Preview Modal -->
     <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <div v-if="showProcedureModal" class="fixed inset-0 z-[70] flex items-start justify-center pt-4 px-4">
-        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="closeProcedureModal"></div>
-        <div class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl">
-          <!-- Header -->
-          <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
-            <div v-if="procedurePreview" class="flex items-center gap-3 min-w-0">
-              <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full shrink-0">
-                {{ procedurePreview.identifier }}
-              </span>
-              <h2 class="text-lg font-bold text-white truncate">{{ procedurePreview.title }}</h2>
-              <span class="text-[10px] text-slate-500 tabular-nums shrink-0">v{{ procedurePreview.version }}</span>
-            </div>
-            <div v-else class="text-slate-400 text-sm">Loading...</div>
-            <div class="flex items-center gap-2 shrink-0 ml-3">
-              <button v-if="procedurePreview" @click="copyProcedureLink" class="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all" title="Copy link to procedure">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-              </button>
-              <router-link v-if="procedurePreview" :to="`/procedures/${procedurePreview.id}`"
-                class="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-all" title="Open full page">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              </router-link>
-              <button @click="closeProcedureModal" class="p-2 text-slate-400 hover:text-white transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
+      <BaseModal v-if="showProcedureModal"
+        overlay-class="fixed inset-0 z-[70] flex items-start justify-center pt-4 px-4"
+        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+        panel-class="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl"
+        @close="closeProcedureModal"
+        v-slot="{ titleId }">
+        <!-- Header -->
+        <div class="sticky top-0 z-10 bg-slate-800/95 backdrop-blur-xl border-b border-white/10 px-6 py-4 flex items-center justify-between">
+          <div v-if="procedurePreview" class="flex items-center gap-3 min-w-0">
+            <span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 rounded-full shrink-0">
+              {{ procedurePreview.identifier }}
+            </span>
+            <h2 :id="titleId" class="text-lg font-bold text-white truncate">{{ procedurePreview.title }}</h2>
+            <span class="text-[10px] text-slate-500 tabular-nums shrink-0">v{{ procedurePreview.version }}</span>
           </div>
-          <!-- Shared Content -->
-          <div v-if="procedurePreview" class="px-6 py-5">
-            <ProcedureContent
-              ref="procedureContentRef"
-              :procedure="procedurePreview"
-              :user-id="currentUser?.id"
-              :change-reason="procedurePreview.change_reason"
-              :publisher="procedurePreview.publisher"
-              :published-at="procedurePreview.published_at"
-              :viewing-version="procedurePreview.version"
-              @toast="msg => showToast(msg)" />
-          </div>
-          <!-- Loading spinner -->
-          <div v-else class="flex items-center justify-center py-16">
-            <svg class="animate-spin w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+          <div v-else :id="titleId" class="text-slate-400 text-sm">Loading...</div>
+          <div class="flex items-center gap-2 shrink-0 ml-3">
+            <button v-if="procedurePreview" @click="copyProcedureLink" class="p-2 text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-all" title="Copy link to procedure">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+            </button>
+            <router-link v-if="procedurePreview" :to="`/procedures/${procedurePreview.id}`"
+              class="p-2 text-slate-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-all" title="Open full page">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+            </router-link>
+            <button @click="closeProcedureModal" aria-label="Close procedure preview" class="p-2 text-slate-400 hover:text-white transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
           </div>
         </div>
-      </div>
+        <!-- Shared Content -->
+        <div v-if="procedurePreview" class="px-6 py-5">
+          <ProcedureContent
+            ref="procedureContentRef"
+            :procedure="procedurePreview"
+            :user-id="currentUser?.id"
+            :change-reason="procedurePreview.change_reason"
+            :publisher="procedurePreview.publisher"
+            :published-at="procedurePreview.published_at"
+            :viewing-version="procedurePreview.version"
+            @toast="msg => showToast(msg)" />
+        </div>
+        <!-- Loading spinner -->
+        <div v-else class="flex items-center justify-center py-16">
+          <svg class="animate-spin w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+        </div>
+      </BaseModal>
     </Transition>
   </AppLayout>
 </template>
@@ -529,6 +531,7 @@ import { useRoute } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';

@@ -68,72 +68,78 @@
         <!-- Feedback Report Modal -->
         <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
           enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-          <div v-if="showFeedbackModal" class="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showFeedbackModal = false"></div>
-            <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-orange-500/25 rounded-2xl shadow-2xl p-6">
-              <h3 class="text-white font-bold text-lg mb-4">Report Procedure Issue</h3>
-              <form @submit.prevent="submitFeedback" class="space-y-4">
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Type</label>
-                  <select v-model="feedbackForm.type" class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50">
-                    <option value="error" class="bg-slate-800">Error Report</option>
-                    <option value="suggestion" class="bg-slate-800">Suggestion</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Description</label>
-                  <textarea v-model="feedbackForm.description" rows="3" required placeholder="Describe the issue..."
-                    class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Proposed Changes (optional)</label>
-                  <textarea v-model="feedbackForm.proposed_changes" rows="2" placeholder="Suggest a fix..."
-                    class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
-                </div>
-                <div class="flex justify-end gap-3">
-                  <button type="button" @click="showFeedbackModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
-                  <button type="submit" :disabled="submittingFeedback" class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ submittingFeedback ? 'Sending...' : 'Submit' }}</button>
-                </div>
-              </form>
-            </div>
-          </div>
+          <BaseModal v-if="showFeedbackModal"
+            overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+            backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-orange-500/25 rounded-2xl shadow-2xl p-6"
+            :busy="submittingFeedback"
+            @close="showFeedbackModal = false"
+            v-slot="{ titleId }">
+            <h3 :id="titleId" class="text-white font-bold text-lg mb-4">Report Procedure Issue</h3>
+            <form @submit.prevent="submitFeedback" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1.5">Type</label>
+                <select v-model="feedbackForm.type" class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50">
+                  <option value="error" class="bg-slate-800">Error Report</option>
+                  <option value="suggestion" class="bg-slate-800">Suggestion</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1.5">Description</label>
+                <textarea v-model="feedbackForm.description" rows="3" required placeholder="Describe the issue..."
+                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1.5">Proposed Changes (optional)</label>
+                <textarea v-model="feedbackForm.proposed_changes" rows="2" placeholder="Suggest a fix..."
+                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 placeholder-slate-500 resize-none"></textarea>
+              </div>
+              <div class="flex justify-end gap-3">
+                <button type="button" @click="showFeedbackModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
+                <button type="submit" :disabled="submittingFeedback" class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ submittingFeedback ? 'Sending...' : 'Submit' }}</button>
+              </div>
+            </form>
+          </BaseModal>
         </Transition>
 
         <!-- Template Modal -->
         <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
           enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-          <div v-if="showTemplateModal" class="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showTemplateModal = false"></div>
-            <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-violet-500/25 rounded-2xl shadow-2xl p-6">
-              <h3 class="text-white font-bold text-lg mb-4">{{ templateForm.id ? 'Edit Template' : 'New Template' }}</h3>
-              <form @submit.prevent="saveTemplate" class="space-y-4">
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Title</label>
-                  <input v-model="templateForm.title" type="text" required placeholder="e.g. Greeting"
-                    class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder-slate-500" />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Language</label>
-                  <select v-model="templateForm.language" class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50">
-                    <option value="en" class="bg-slate-800">English</option>
-                    <option value="pl" class="bg-slate-800">Polish</option>
-                    <option value="de" class="bg-slate-800">German</option>
-                    <option value="fr" class="bg-slate-800">French</option>
-                    <option value="es" class="bg-slate-800">Spanish</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-slate-300 mb-1.5">Body</label>
-                  <textarea v-model="templateForm.body" rows="5" required placeholder="Dear Customer..."
-                    class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder-slate-500 resize-none"></textarea>
-                </div>
-                <div class="flex justify-end gap-3">
-                  <button type="button" @click="showTemplateModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
-                  <button type="submit" :disabled="savingTemplate" class="px-5 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ templateForm.id ? 'Update' : 'Create' }}</button>
-                </div>
-              </form>
-            </div>
-          </div>
+          <BaseModal v-if="showTemplateModal"
+            overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+            backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+            panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-violet-500/25 rounded-2xl shadow-2xl p-6"
+            :busy="savingTemplate"
+            @close="showTemplateModal = false"
+            v-slot="{ titleId }">
+            <h3 :id="titleId" class="text-white font-bold text-lg mb-4">{{ templateForm.id ? 'Edit Template' : 'New Template' }}</h3>
+            <form @submit.prevent="saveTemplate" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1.5">Title</label>
+                <input v-model="templateForm.title" type="text" required placeholder="e.g. Greeting"
+                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder-slate-500" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1.5">Language</label>
+                <select v-model="templateForm.language" class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50">
+                  <option value="en" class="bg-slate-800">English</option>
+                  <option value="pl" class="bg-slate-800">Polish</option>
+                  <option value="de" class="bg-slate-800">German</option>
+                  <option value="fr" class="bg-slate-800">French</option>
+                  <option value="es" class="bg-slate-800">Spanish</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-300 mb-1.5">Body</label>
+                <textarea v-model="templateForm.body" rows="5" required placeholder="Dear Customer..."
+                  class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder-slate-500 resize-none"></textarea>
+              </div>
+              <div class="flex justify-end gap-3">
+                <button type="button" @click="showTemplateModal = false" class="px-4 py-2 text-sm text-slate-300 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all">Cancel</button>
+                <button type="submit" :disabled="savingTemplate" class="px-5 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold rounded-xl text-sm shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">{{ templateForm.id ? 'Update' : 'Create' }}</button>
+              </div>
+            </form>
+          </BaseModal>
         </Transition>
 
         <!-- Diff Modal -->
@@ -165,6 +171,7 @@ import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import ProcedureDiffModal from '../components/procedure/ProcedureDiffModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';

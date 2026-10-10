@@ -78,69 +78,72 @@
       <Transition
         enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center px-4" @click.self="showModal = false">
-          <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="showModal = false"></div>
-          <div class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6">
-            <h3 class="text-white font-bold text-lg mb-1">Add Availability</h3>
-            <p class="text-slate-400 text-sm mb-5">{{ form.start_date }}{{ form.end_date !== form.start_date ? ' → ' + form.end_date : '' }}</p>
+        <BaseModal v-if="showModal"
+          overlay-class="fixed inset-0 z-50 flex items-center justify-center px-4"
+          backdrop-class="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl shadow-black/50 p-6"
+          :busy="saving"
+          @close="showModal = false"
+          v-slot="{ titleId }">
+          <h3 :id="titleId" class="text-white font-bold text-lg mb-1">Add Availability</h3>
+          <p class="text-slate-400 text-sm mb-5">{{ form.start_date }}{{ form.end_date !== form.start_date ? ' → ' + form.end_date : '' }}</p>
 
-            <!-- Type -->
-            <div class="flex gap-2 mb-4">
-              <button @click="form.type = 'unavailable'"
-                :class="['flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all', form.type === 'unavailable' ? 'bg-red-500/20 text-red-300 border-red-500/40' : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10']">
-                🔴 Unavailable
-              </button>
-              <button @click="form.type = 'preferred'"
-                :class="['flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all', form.type === 'preferred' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10']">
-                🟢 Preferred
-              </button>
-            </div>
+          <!-- Type -->
+          <div class="flex gap-2 mb-4">
+            <button @click="form.type = 'unavailable'"
+              :class="['flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all', form.type === 'unavailable' ? 'bg-red-500/20 text-red-300 border-red-500/40' : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10']">
+              🔴 Unavailable
+            </button>
+            <button @click="form.type = 'preferred'"
+              :class="['flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all', form.type === 'preferred' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-white/5 text-slate-400 border-white/10 hover:bg-white/10']">
+              🟢 Preferred
+            </button>
+          </div>
 
-            <!-- End Date -->
-            <div class="mb-4">
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">End Date <span class="text-slate-500 font-normal">(for multi-day range)</span></label>
-              <input v-model="form.end_date" type="date" :min="form.start_date"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-            </div>
+          <!-- End Date -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">End Date <span class="text-slate-500 font-normal">(for multi-day range)</span></label>
+            <input v-model="form.end_date" type="date" :min="form.start_date"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+          </div>
 
-            <!-- Specific Hours -->
-            <div class="mb-4">
-              <label class="flex items-center gap-2 text-sm text-slate-300 mb-2 cursor-pointer">
-                <input type="checkbox" v-model="useHours" class="rounded bg-white/10 border-white/20 text-indigo-500 focus:ring-indigo-500/50" />
-                Specific hours only
-              </label>
-              <div v-if="useHours" class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">From</label>
-                  <input v-model="form.start_time" type="time"
-                    class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-                </div>
-                <div>
-                  <label class="block text-xs text-slate-400 mb-1">To</label>
-                  <input v-model="form.end_time" type="time"
-                    class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
-                </div>
+          <!-- Specific Hours -->
+          <div class="mb-4">
+            <label class="flex items-center gap-2 text-sm text-slate-300 mb-2 cursor-pointer">
+              <input type="checkbox" v-model="useHours" class="rounded bg-white/10 border-white/20 text-indigo-500 focus:ring-indigo-500/50" />
+              Specific hours only
+            </label>
+            <div v-if="useHours" class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">From</label>
+                <input v-model="form.start_time" type="time"
+                  class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">To</label>
+                <input v-model="form.end_time" type="time"
+                  class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50" />
               </div>
             </div>
-
-            <!-- Note -->
-            <div class="mb-5">
-              <label class="block text-sm font-medium text-slate-300 mb-1.5">Note <span class="text-slate-500 font-normal">(optional)</span></label>
-              <input v-model="form.note" type="text" placeholder="e.g. Doctor appointment"
-                class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-600" />
-            </div>
-
-            <!-- Actions -->
-            <div class="flex items-center justify-end gap-3">
-              <button @click="showModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
-              <button @click="saveEntry" :disabled="saving"
-                class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                <svg v-if="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                Save
-              </button>
-            </div>
           </div>
-        </div>
+
+          <!-- Note -->
+          <div class="mb-5">
+            <label class="block text-sm font-medium text-slate-300 mb-1.5">Note <span class="text-slate-500 font-normal">(optional)</span></label>
+            <input v-model="form.note" type="text" placeholder="e.g. Doctor appointment"
+              class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-600" />
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center justify-end gap-3">
+            <button @click="showModal = false" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
+            <button @click="saveEntry" :disabled="saving"
+              class="px-5 py-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+              <svg v-if="saving" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              Save
+            </button>
+          </div>
+        </BaseModal>
       </Transition>
 
       <AppToast />
@@ -153,6 +156,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
+import BaseModal from '../components/BaseModal.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';

@@ -4,6 +4,54 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-10 — 🧱 Backend hardening: validated filters, race-safe writes, honest logs and counts
+
+> **Deploy notes**
+> - Four migrations, all safe on existing data:
+>   - `2026_10_10_120000_one_pending_change_request_per_assignment`: partial unique index (one `pending` change request per assignment). Older duplicate pending requests, if any, are settled (`acknowledged`, newest one kept pending) instead of failing the deploy; the count is printed.
+>   - `2026_10_10_130000_add_end_after_start_checks`: `CHECK (end >= start)` on `newbie_periods`, `user_availabilities`, `delegations`, `archived_delegations` and members' travel dates (`delegation_user`, `archived_delegation_user`; NULLs pass). Rows saved with reversed dates are swapped first (count printed per table).
+>   - `2026_10_10_140000_add_incoming_reassignment_to_checklist_submissions_table`: nullable `previous_incoming_user_id`, `incoming_reassigned_by_id` (FK users, restrict) and `incoming_reassigned_at`.
+>   - `2026_10_10_150000_add_filed_without_shift_to_checklist_submissions_table`: boolean `filed_without_shift`; existing shift-less handovers are marked `true` (they keep clearing alerts as before).
+> - Rebuild backend and frontend.
+>
+> **Behaviour changes**
+> - **API errors:** every `api/*` response is JSON whatever the `Accept` header: a protected route without a session answers 401 (was a 500), an unknown `/api/...` path 404 (was the SPA's HTML). A GET whose value PostgreSQL can't read (SQLSTATE 22P02/22007/22008) answers 422 instead of 500 (safety net behind validation; still logged).
+> - **List filters are validated** (422 naming the filter): procedures (`created_*`/`updated_*` as `Y-m-d`, `tags` ids, `node_id` = id or `root`), procedure access log, handover archive `status`, alarms (`status` read/unread, dates), schedule and shifts-by-date `shift_group_id`, office closures `month`, delegation archive dates and `employee_id`, feedback `status`. `per_page` stays clamped to 1..cap. Non-uuid alarm ids and non-numeric user ids in paths answer 404.
+> - **Concurrent duplicates answer 422, not 500:** assigning the same person twice at once, a double self-registration, a second pending change request (now also enforced by the database), a user created twice with one email. Generate counts only the slots it created.
+> - **Procedure identifiers** come from the highest `PROC-n` of all procedures (archived ones included) under an advisory lock, so two concurrent creates can't take the same number. (Reuse after delete was already impossible since procedures are archived, #38.)
+> - **Office closures:** one request closes at most 366 days (422 beyond), in one transaction; `created` counts only days that weren't closed already (new `already_closed`; the toast says so). `GET /api/office-closures/conflicts` adds `office_shifts` to each closure: the office-mode shifts already planned that day (groups not archived).
+> - **Date ranges:** a newbie-period edit that sends one date is checked against the stored other date; delegation members' travel dates must lie within the delegation and end on/after they start (the date inputs get min/max). Delegation edits were already merged (M15).
+> - **Search** is case-insensitive (`ILIKE`) with `%` and `_` matched literally: procedures, delegation archive destination, handover archive.
+> - **Pagination:** `GET /api/procedure-feedbacks` (per_page default 50) and `GET /api/delegation-archive` (default 20) are paginated (`per_page` 1..100). The archive screen pages through with `fetchAllPages`; no screen reads the feedback list.
+> - **Checklists:** a number item may have only a maximum (or only a minimum); max ≥ min is checked when both are set. A shift's checklist list is saved all-or-nothing and lists each template once (422 on a duplicate).
+> - **Delegation log:** approving, rejecting, removing or re-dating someone who isn't on the delegation answers 404 and logs nothing; an edit logs only fields that really changed (dates compared as dates, e.g. "Start date changed (2026-11-02 → 2026-11-03)"). Nobody can apply after a delegation's last day (business date; the last day still counts).
+> - **Feedback:** the "your feedback was resolved" alarm is sent when it becomes resolved, not on every later save.
+> - **`GET /api/current-shift`** returns `active_shifts`: the shift(s) on now in every non-archived group, ordered by group then start, each with group name and crew; `shift_group_id` limits it to one group. `active_shift` stays (the first one) for older clients. The dashboard shows one crew block per shift on now, labelled with its group; the schedule highlights every active shift.
+> - **Manual assign / move and the 11 h daily rest:** if the employee would have less than 11 h of rest next to another of their shifts (any group) or an on-call callback, the assign answers 409 `short_daily_rest` listing what's too close; the schedule asks "Less than 11 hours of rest … Assign anyway?" and resends with `confirm_short_rest: true`. Same rule as auto-fill (`BusyIntervals::allowsDailyRest`). Shifts without times are left out.
+> - **Auto-fill runs and clear-month** for one group's month take turns (advisory lock taken before the month is read); other months and groups don't wait.
+> - **Settlement:** callback hours are elapsed time across DST (a 01:00–04:00 callback on 2026-10-25 counts 4 h); a group with neither anchor nor creation date is anchored on the business date.
+> - **Stuck handovers:** an admin can hand a pending handover whose incoming user was deactivated to another active user: `PUT /api/checklist-submissions/{id}/incoming` (`incoming_user_id`; not the outgoing user, not themselves). The handover keeps who it was handed over from, by whom and when (`previous_incoming_user`, `incoming_reassigned_by`, `incoming_reassigned_at` on show). API only for now.
+> - **Checklist alerts:** a handover filed without a shift still clears that day's alert for its template; one whose shift was removed later no longer clears another slot's alert.
+
+- **Backend lows from the 2026-10-09 audit (L7–L20) and follow-ups F1–F8.** L16 (saving re-activated a deactivated template) was already fixed in #24 (`ChecklistTemplateHistoryTest`: "does not re-activate a deactivated template when it is edited (L16)"). A unique index on one handover per shift + template was **not** added: a filed handover can't be edited or deleted, so filing it again is the only way to correct one, and every crew member may file their own handover for the same shift.
+
+### Backend
+| What | Details |
+|------|---------|
+| New | `App\Support\SqlState` (invalid-input SQLSTATEs), `App\Support\AdvisoryLock` (transaction-scoped named locks), `App\Support\LikePattern` (escaped `%term%`). Exception handler: JSON for `api/*`, 422 safety net for invalid-input GETs. `Authenticate` never redirects API requests. SPA catch-all excludes `api/*` |
+| New | `ChecklistSubmissionController::reassignIncoming`; `ChecklistSubmission::previousIncomingUser()`, `incomingReassignedBy()`, `filed_without_shift` (set on create when there's no shift). `ShiftAutoAssignController::monthLockName()` / one run per group+month. `Procedure::IDENTIFIER_LOCK`. `BusyIntervals::wallClock()` is public |
+| Changed | Filter validation in `ProcedureController` (index, accessLog), `ChecklistSubmissionController`, `AlarmController`, `ScheduleController::index`, `/shifts-by-date`, `OfficeClosureController::index`, `DelegationArchiveController::index`, `ProcedureFeedbackController::index`. Route params `{userId}` numeric |
+| Changed | `UniqueConstraintViolationException` → 422 in assign, self-register, change request store, user store. `OfficeClosureController::store`/`checkConflicts`. `NewbiePeriodController::update` merged range. `DelegationController`: travel-date checks, `memberOr404`, change detection, last-day rule, my-delegations eager load. `ScheduleController`: `shortRestConflicts` (409 `short_daily_rest`), `updateShiftChecklist` transaction + `distinct`. `CurrentShiftController` rewritten for groups. `ProcedureController::index` last access as a subquery; `ProceduresToLearnController` selects listed columns; `/my-shifts` eager loads the group. `SettlementPeriodController` callbacks elapsed; `SettlementPeriodCalculator` business-date fallback. `ChecklistAlertController` date fallback only for handovers filed without a shift |
+| Tests | New: `ApiErrorResponsesTest`, `FilterValidationTest`, `UniqueRaceTest`, `ProcedureIdentifierTest`, `OfficeClosureStoreTest`, `DateRangeIntegrityTest`, `CaseInsensitiveSearchTest`, `QueryBoundsTest` (query-count guards: procedures, my delegations, my shifts), `ChecklistNumberRangeTest`, `DelegationLogAccuracyTest`, `ShiftChecklistSyncTest`, `CurrentShiftGroupsTest`, `LateRegistrationAndFeedbackAlarmTest`, `ManualAssignDailyRestTest`, `AutoFillSerialisationTest`, `SettlementTimezoneTest`, `HandoverIncomingReassignTest`, `ChecklistAlertFallbackTest`. `sideConnection()` helper in `tests/Pest.php` (a second DB session to hold a lock). Route matrix: new admin route |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Changed | Dashboard current crew per active shift with group labels; Schedule highlights all active shifts and asks before a short-rest assign (resends with `confirm_short_rest`). Delegation archive pages through `fetchAllPages`. Office closure toast uses the server's created / already-closed counts. Travel date inputs limited to the delegation |
+| Tests | New E2E `dashboard/current-crew.spec.js` (stubbed `/api/current-shift`: two groups, empty), `schedule/short-rest.spec.js` (cross-group short rest: Cancel saves nothing, "Assign anyway" saves; archives its groups afterwards). Fixtures `setShiftTimes`, `archiveShiftGroup`; `assignShift` answers the short-rest question yes by default (`confirmShortRest`), since specs seed the same employees across groups (the settlement report specs put them on overlapping shifts) |
+
+---
+
 ## 2026-10-10 — 🔒 Need-to-know: colleagues' notes, reasons, emails, drafts and access logs stay private
 
 > **Deploy notes**

@@ -26,6 +26,7 @@ class ChecklistSubmission extends Model
         'submitted_at' => 'datetime',
         'confirmed_at' => 'datetime',
         'submitted_on_time' => 'boolean',
+        'incoming_reassigned_at' => 'datetime',
     ];
 
     public function template()
@@ -41,6 +42,18 @@ class ChecklistSubmission extends Model
     public function incomingUser()
     {
         return $this->belongsTo(User::class, 'incoming_user_id');
+    }
+
+    /** The incoming user this handover had before an admin handed it on (F7), if it was. */
+    public function previousIncomingUser()
+    {
+        return $this->belongsTo(User::class, 'previous_incoming_user_id');
+    }
+
+    /** The admin who handed the handover to its current incoming user, if one did. */
+    public function incomingReassignedBy()
+    {
+        return $this->belongsTo(User::class, 'incoming_reassigned_by_id');
     }
 
     /** Who filed the handover: its outgoing user, or an admin filing on their behalf (null on old rows). */

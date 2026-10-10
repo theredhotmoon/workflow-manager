@@ -134,6 +134,7 @@ function rpmExpected(): array
             'POST /api/users',
             'POST /api/users/{user}/deactivate',
             'POST /api/users/{user}/reactivate',
+            'PUT /api/checklist-submissions/{checklistSubmission}/incoming',
             'PUT /api/checklist-templates/{checklist_template}',
             'PUT /api/delegations/{delegation}',
             'PUT /api/delegations/{delegation}/user-dates',

@@ -273,6 +273,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::delete('/shift-colors/{shiftColor}', [ShiftColorController::class, 'destroy']);
         Route::post('/shift-colors/reorder', [ShiftColorController::class, 'reorder']);
 
+        // A pending handover whose incoming user was deactivated, handed to another user (F7)
+        Route::put('/checklist-submissions/{checklistSubmission}/incoming', [ChecklistSubmissionController::class, 'reassignIncoming']);
+
         // Checklist template management
         Route::apiResource('checklist-templates', ChecklistTemplateController::class)->except(['index']);
 

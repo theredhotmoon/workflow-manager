@@ -12,6 +12,9 @@ All notable changes to the Shift Changer application are documented here.
 > **Behaviour changes**
 > - Every dialog now closes on **Escape** (only the top one when dialogs are stacked), keeps **Tab** inside itself, takes focus when it opens and gives it back to the button that opened it. Escape does what the dialog's Cancel does (the conflict prompts on Schedule cancel the assignment or generation).
 > - The four conflict prompts and the delete-month prompt on Schedule, and Deactivate User / Delete Group on Users, are now `alertdialog`s.
+> - While a dialog is saving, Escape and backdrop clicks don't close it; in Users, Deactivate and Change Password also disable Cancel/✕ meanwhile.
+> - The Users dialogs (Create/Edit User, Change Password, Deactivate, Group edit, Group delete) now close on a backdrop click like every other dialog; before, a backdrop layer swallowed the click.
+> - Toasts are drawn above dialogs.
 > - The notifications menu closes on Escape and on a click elsewhere; the account menu also closes on Escape.
 > - On a phone the header no longer runs off the screen: the page links scroll sideways in their own strip, the bell and account menu stay visible, and the "Shift Changer" text is hidden below the `sm` breakpoint.
 
@@ -20,10 +23,11 @@ All notable changes to the Shift Changer application are documented here.
 ### Frontend
 | What | Details |
 |------|---------|
-| New | `components/BaseModal.vue`: props `overlay-class`, `backdrop-class`, `panel-class`, `role`, `label`, `described`, `close-on-backdrop`, `close-on-escape`, `initial-focus`; emits `close`; slot props `titleId`, `descriptionId`. Shown by mounting it (`v-if`), so an enclosing `<Transition>` still animates it |
-| Changed | `useFocusTrap.js`: the trap is now `createFocusTrap()` (activate/deactivate), driven by both `useFocusTrap` and `BaseModal`. It skips hidden controls, pulls focus back in when it sits outside the dialog, falls back to focusing the dialog itself, and does not restore focus to an opener that is no longer on the page |
-| Changed | `AppToast.vue`: two live regions, always in the DOM |
-| Changed | `AppLayout.vue`: sidebar toggle `aria-label`/`aria-expanded`/`aria-controls`; bell and account button `aria-controls`; notifications menu closes on click-away and Escape (focus back to the bell); logo link named for the phone layout; links get `aria-current="page"`; the notifications panel is never wider than the viewport |
+| New | `components/BaseModal.vue`: props `overlay-class`, `backdrop-class`, `panel-class`, `role`, `label`, `described`, `close-on-backdrop`, `close-on-escape`, `initial-focus`, `return-focus`, `busy`; emits `close`; slot props `titleId`, `descriptionId`. Shown by mounting it (`v-if`), so an enclosing `<Transition>` still animates it |
+| Changed | `useFocusTrap.js`: the trap is now `createFocusTrap()` (activate/deactivate), driven by both `useFocusTrap` and `BaseModal`. It skips hidden controls, pulls focus back in when it sits outside the dialog, falls back to focusing the dialog itself. When the opener is gone, focus goes to `returnFocus`, else the dialog below, else `<main>` (the password dialog returns to the account button). Delete Schedule's step 2 is its own (keyed) alertdialog, so it takes focus |
+| Changed | `AppToast.vue`: two live regions, always in the DOM, holding the card but not the Dismiss button (laid over it, so it isn't announced); `z-[110]`, above every dialog |
+| Fixed | Users: Deactivate and Change Password read their target before the request, so a close mid-request can no longer swallow a successful deactivation's toast and list refresh |
+| Changed | `AppLayout.vue`: sidebar toggle `aria-label`/`aria-expanded`/`aria-controls`; bell and account button `aria-controls`; notifications menu closes on click-away and Escape (focus back to the bell); `aria-controls` only while the panel is open; logo link named for the phone layout; links get `aria-current="page"`; the phone link strip fades at its right edge; the notifications panel is never wider than the viewport |
 | Changed | Icon-only close buttons in the Users dialogs and the checklist procedure preview have `aria-label`s |
 | Tests | Unit: `BaseModal.test.js` (real browser via a throwaway Vite server: focus on open, Tab / Shift+Tab wrap, hidden controls skipped, Escape closes only the top of two dialogs, focus back to each opener, `initial-focus`, backdrop / no-close options). E2E: `accessibility/modals-and-toasts.spec.js` (Generate Month and Add User from the keyboard, Tab trapped both ways, Escape, focus return; error toast in the assertive region; notifications menu Escape / click-away). `users/deactivate.spec.js` looks for an `alertdialog`; `my-shifts/load-errors.spec.js` scopes its alert/status checks to `main`, since the toast regions are always present |
 

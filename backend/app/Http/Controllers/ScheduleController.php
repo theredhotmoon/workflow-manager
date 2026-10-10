@@ -489,12 +489,17 @@ class ScheduleController extends Controller
         }
 
         // Less than 11 h of rest next to the employee's other work needs the manager's go-ahead.
+        // An overlap (booked twice at the same time) is said as such; the go-ahead covers both.
         if (!$request->boolean('confirm_short_rest') && ($conflicts = $this->shortRestConflicts($shift, $userId)) !== []) {
             $list = implode('; ', array_map(fn ($c) => $c['label'], $conflicts));
+            $overlaps = collect($conflicts)->contains('overlaps', true);
 
             return response()->json([
                 'code' => 'short_daily_rest',
-                'message' => 'This leaves the employee less than ' . BusyIntervals::MIN_DAILY_REST_HOURS . " hours of rest: {$list}.",
+                'overlaps' => $overlaps,
+                'message' => $overlaps
+                    ? "This overlaps an existing shift of the employee (they would be booked twice at the same time): {$list}."
+                    : 'This leaves the employee less than ' . BusyIntervals::MIN_DAILY_REST_HOURS . " hours of rest: {$list}.",
                 'conflicts' => array_map(fn ($c) => array_diff_key($c, ['label' => true]), $conflicts),
             ], 409);
         }
@@ -561,17 +566,19 @@ class ScheduleController extends Controller
             return [];
         }
 
+        // Which neighbours make the rest too short: raw seconds against the rule. Rounding is only
+        // for display (floored, so a gap under 11 h never reads "11 h").
         $minRest = BusyIntervals::MIN_DAILY_REST_HOURS * 3600;
-        $restHours = function (int $a, int $b) use ($start, $end): float {
-            $gap = $b <= $start ? $start - $b : ($a >= $end ? $a - $end : 0);
-
-            return round($gap / 3600, 1);
-        };
+        $gapOf = fn (int $a, int $b): int => $b <= $start ? $start - $b : ($a >= $end ? $a - $end : 0);
+        $overlaps = fn (int $a, int $b): bool => $a < $end && $b > $start;
+        $shown = fn (int $gap): float => floor($gap / 360) / 10;
         $conflicts = [];
         foreach ($others as $other) {
             [$a, $b] = BusyIntervals::shiftSpan($other);
-            $rest = $restHours($a, $b);
-            if ($rest * 3600 < $minRest) {
+            $gap = $gapOf($a, $b);
+            if ($gap < $minRest) {
+                $rest = $shown($gap);
+                $overlap = $overlaps($a, $b);
                 $times = substr($other->start_time, 0, 5) . '–' . substr($other->end_time, 0, 5);
                 $where = $other->shiftGroup?->name ? ", {$other->shiftGroup->name}" : '';
                 $conflicts[] = [
@@ -583,15 +590,18 @@ class ScheduleController extends Controller
                     'end_time' => substr($other->end_time, 0, 5),
                     'shift_group_name' => $other->shiftGroup?->name,
                     'rest_hours' => $rest,
+                    'overlaps' => $overlap,
                     'starts_at' => $a,
-                    'label' => self::restLabel($rest, $a >= $end) . " shift {$other->shift_number} on {$other->date->toDateString()} ({$times}{$where})",
+                    'label' => self::restLabel($rest, $overlap, $a >= $end) . " shift {$other->shift_number} on {$other->date->toDateString()} ({$times}{$where})",
                 ];
             }
         }
         foreach ($callbacks as $callback) {
             [$a, $b] = BusyIntervals::callbackSpan($callback);
-            $rest = $restHours($a, $b);
-            if ($rest * 3600 < $minRest) {
+            $gap = $gapOf($a, $b);
+            if ($gap < $minRest) {
+                $rest = $shown($gap);
+                $overlap = $overlaps($a, $b);
                 $conflicts[] = [
                     'type' => 'on_call_callback',
                     'callback_id' => $callback->id,
@@ -599,21 +609,30 @@ class ScheduleController extends Controller
                     'start_time' => $callback->starts_at->format('H:i'),
                     'end_time' => $callback->ends_at->format('H:i'),
                     'rest_hours' => $rest,
+                    'overlaps' => $overlap,
                     'starts_at' => $a,
-                    'label' => self::restLabel($rest, $a >= $end) . ' an on-call callback on ' . BusyIntervals::callbackDate($callback)
+                    'label' => self::restLabel($rest, $overlap, $a >= $end) . ' an on-call callback on ' . BusyIntervals::callbackDate($callback)
                         . ' (' . $callback->starts_at->format('H:i') . '–' . $callback->ends_at->format('H:i') . ')',
                 ];
             }
         }
-        usort($conflicts, fn ($x, $y) => $x['starts_at'] <=> $y['starts_at']);
+        // The rule refused, so the answer is a conflict even if no neighbour could be named.
+        if ($conflicts === []) {
+            return [[
+                'type' => 'other', 'rest_hours' => null, 'overlaps' => false,
+                'label' => "other work of the employee close to this shift",
+            ]];
+        }
+        // Overlaps first: they are the harder conflict.
+        usort($conflicts, fn ($x, $y) => [$y['overlaps'], $x['starts_at']] <=> [$x['overlaps'], $y['starts_at']]);
 
         return array_map(fn ($c) => array_diff_key($c, ['starts_at' => true]), $conflicts);
     }
 
-    /** "8 h after" / "3 h before" / "overlaps": how the candidate sits next to other work. */
-    private static function restLabel(float $restHours, bool $otherIsLater): string
+    /** "overlaps" / "8 h after" / "0 h before": how the candidate sits next to other work. */
+    private static function restLabel(float $restHours, bool $overlaps, bool $otherIsLater): string
     {
-        if ($restHours <= 0) {
+        if ($overlaps) {
             return 'overlaps';
         }
         $hours = rtrim(rtrim(number_format($restHours, 1, '.', ''), '0'), '.');

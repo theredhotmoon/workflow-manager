@@ -470,16 +470,16 @@
                   <div v-else-if="day.isCurrentMonth" class="space-y-1">
                     <div v-for="shift in day.shifts" :key="shift.id"
                       :class="['group relative rounded-lg p-1 -m-1 transition-all',
-                        activeShiftId === shift.id ? 'border border-emerald-500/40' : '',
-                        isSelectedEmployeeAssigned(shift) && activeShiftId !== shift.id ? 'border border-sky-500/40' : ''
+                        isActiveShift(shift) ? 'border border-emerald-500/40' : '',
+                        isSelectedEmployeeAssigned(shift) && !isActiveShift(shift) ? 'border border-sky-500/40' : ''
                       ]"
-                      :style="activeShiftId === shift.id ? {
+                      :style="isActiveShift(shift) ? {
                         backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(16, 185, 129, 0.12) 4px, rgba(16, 185, 129, 0.12) 8px)',
                         boxShadow: 'inset 0 0 0 1px rgba(16, 185, 129, 0.2)'
                       } : getShiftCellStyle(shift)">
                       <div class="flex items-center gap-1 mb-0.5 flex-wrap">
-                        <span :class="['text-[9px] uppercase tracking-wide', activeShiftId === shift.id ? 'text-emerald-400 font-bold' : 'text-slate-500']">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · <span class="normal-case">{{ shift.shift_type }}</span></template></span>
-                        <span v-if="activeShiftId === shift.id"
+                        <span :class="['text-[9px] uppercase tracking-wide', isActiveShift(shift) ? 'text-emerald-400 font-bold' : 'text-slate-500']">S{{ shift.shift_number }}<template v-if="shift.shift_type"> · <span class="normal-case">{{ shift.shift_type }}</span></template></span>
+                        <span v-if="isActiveShift(shift)"
                           class="px-1 py-0.5 text-[7px] font-bold uppercase rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 animate-pulse tracking-wider">
                           ● LIVE
                         </span>
@@ -1403,7 +1403,9 @@ const hasScheduleShifts = computed(() =>
   Object.values(schedule.value).some((shifts) => shifts.length > 0),
 );
 const employees = ref([]);
-const activeShiftId = ref(null);
+// Shifts on right now, in every group (the all-groups view can show several).
+const activeShiftIds = ref(new Set());
+const isActiveShift = (shift) => activeShiftIds.value.has(shift.id);
 const empSort = ref('name');
 const deleteStep = ref(0); // 0=hidden, 1=first confirm, 2=final confirm
 const deleting = ref(false);
@@ -2992,7 +2994,7 @@ onMounted(async () => {
   fetchTemplates();
   try {
     const res = await api.get('/api/current-shift');
-    if (res.data.active_shift) activeShiftId.value = res.data.active_shift.id;
+    activeShiftIds.value = new Set((res.data.active_shifts || []).map((s) => s.id));
   } catch {}
 
   // Auto-select highlighted employee after data loads

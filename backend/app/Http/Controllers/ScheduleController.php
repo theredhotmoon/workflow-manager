@@ -715,26 +715,31 @@ class ScheduleController extends Controller
         $attachedIds = $shift->shiftChecklists()->pluck('checklist_template_id')->all();
         $request->validate([
             'checklists' => ['present', 'array'],
-            'checklists.*.checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')
+            // Each template once per shift (alerts and the fill form key on shift + template).
+            'checklists.*.checklist_template_id' => ['required', 'integer', 'distinct', Rule::exists('checklist_templates', 'id')
                 ->where(fn ($q) => $q->whereNull('archived_at')->orWhereIn('id', $attachedIds))],
             'checklists.*.is_required' => ['required', 'boolean'],
             'checklists.*.deadline_minutes' => ['nullable', 'integer', 'min:1'],
             'checklists.*.deadline_reference' => ['nullable', 'in:shift_start,shift_end'],
         ]);
 
-        // Sync: delete existing, insert new
-        $shift->shiftChecklists()->delete();
+        // Sync, all or nothing: delete existing, insert new. The group is locked first (ShiftGroup's
+        // lock order) and re-checked, so an archive since the check above is refused here.
+        DB::transaction(function () use ($request, $shift) {
+            $this->lockGroupsOrRefuse([$shift]);
+            $shift->shiftChecklists()->delete();
 
-        foreach ($request->checklists as $i => $item) {
-            ShiftChecklist::create([
-                'shift_id' => $shift->id,
-                'checklist_template_id' => $item['checklist_template_id'],
-                'is_required' => $item['is_required'],
-                'deadline_minutes' => $item['deadline_minutes'] ?? null,
-                'deadline_reference' => $item['deadline_reference'] ?? 'shift_start',
-                'sort_order' => $i,
-            ]);
-        }
+            foreach ($request->checklists as $i => $item) {
+                ShiftChecklist::create([
+                    'shift_id' => $shift->id,
+                    'checklist_template_id' => $item['checklist_template_id'],
+                    'is_required' => $item['is_required'],
+                    'deadline_minutes' => $item['deadline_minutes'] ?? null,
+                    'deadline_reference' => $item['deadline_reference'] ?? 'shift_start',
+                    'sort_order' => $i,
+                ]);
+            }
+        });
 
         $shift->load('shiftChecklists.template:id,name');
 

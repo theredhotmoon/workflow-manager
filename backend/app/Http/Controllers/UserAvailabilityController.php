@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Models\UserAvailability;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -65,7 +66,8 @@ class UserAvailabilityController extends Controller
 
     /**
      * Get availability entries for a specific user in a given month.
-     * Used by the schedule view to show overlays.
+     * Used by the schedule view to show overlays. Any user may read the type and dates; the note
+     * is only for that user and schedule managers (formatEntry).
      */
     public function forMonth(Request $request, $userId)
     {
@@ -96,7 +98,8 @@ class UserAvailabilityController extends Controller
             'end_date' => $entry->end_date->format('Y-m-d'),
             'start_time' => $entry->start_time ? substr($entry->start_time, 0, 5) : null,
             'end_time' => $entry->end_time ? substr($entry->end_time, 0, 5) : null,
-            'note' => $entry->note,
+            // Private to the entry's user and schedule managers (L1): colleagues get null.
+            'note' => $entry->noteVisibleTo(User::viewer()) ? $entry->note : null,
         ];
     }
 }

@@ -5,6 +5,9 @@
 export async function dragToShiftDropzone(page, sourceLocator, targetLocator) {
   // Shift-group tabs above the grid wrap as groups accumulate during a run, pushing late days below
   // the fold. The employee roster is sticky, so scrolling the target in keeps both ends on screen.
+  // The source first (a no-op for the sticky roster, but a card inside a scrolled list is brought in),
+  // then the target.
+  await sourceLocator.scrollIntoViewIfNeeded();
   await targetLocator.scrollIntoViewIfNeeded();
   const source = await sourceLocator.boundingBox();
   const target = await targetLocator.boundingBox();
@@ -18,7 +21,7 @@ export async function dragToShiftDropzone(page, sourceLocator, targetLocator) {
   ]) {
     if (box.y < 0 || box.y + box.height > viewport.height) {
       throw new Error(
-        `drag ${name} is outside the ${viewport.width}x${viewport.height} viewport (y=${Math.round(box.y)}); use a taller viewport`,
+        `drag ${name} is outside the ${viewport.width}x${viewport.height} viewport (y=${Math.round(box.y)}); bring it up (e.g. sort the roster so the card is near the top) or use a taller viewport`,
       );
     }
   }

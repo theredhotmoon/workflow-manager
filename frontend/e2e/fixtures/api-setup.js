@@ -72,11 +72,21 @@ export async function setDayShiftCount(context, { date, count, shiftGroupId }) {
   return await res.json();
 }
 
+/**
+ * Needs an admin context: /api/employees only returns colleagues' emails to admins (others get
+ * just their own), so a non-admin context can't look anyone else up by email.
+ */
 export async function getEmployeeIdByEmail(context, email) {
   const headers = await getXsrfHeader(context);
   const res = await send(context, 'get', '/api/employees', { headers });
   if (!res.ok()) throw new Error(`list employees failed: ${res.status()} ${await res.text()}`);
   const employees = await res.json();
+  const withEmail = employees.filter((e) => 'email' in e);
+  if (withEmail.length <= 1 && employees.length > 1) {
+    throw new Error(
+      `getEmployeeIdByEmail(${email}) needs an admin context: this login only sees its own email.`,
+    );
+  }
   const match = employees.find((e) => e.email === email);
   if (!match) throw new Error(`no employee found with email ${email}`);
   return match.id;

@@ -537,7 +537,7 @@
                             assignment.has_change_request
                               ? 'bg-amber-500/20 border border-amber-500/30 text-amber-300'
                               : 'bg-indigo-500/20 border border-indigo-500/30 text-indigo-300']"
-                          :title="assignment.has_change_request ? '⚠ Day-off request: ' + assignment.change_request_reason : ''">
+                          :title="assignment.has_change_request ? '⚠ Day-off request' + (assignment.change_request_reason ? ': ' + assignment.change_request_reason : '') : ''">
                           <span :class="['w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0',
                             assignment.has_change_request ? 'bg-orange-500/30 text-orange-200' : 'bg-indigo-500/30 text-indigo-200']">
                             {{ getInitials(assignment.user_name) }}

@@ -42,7 +42,7 @@
                 <div class="flex items-center gap-4 text-xs text-slate-400 mb-2">
                   <span class="flex items-center gap-1">📍 {{ del.destination }}</span>
                   <span>{{ formatDate(del.start_datetime) }} → {{ formatDate(del.end_datetime) }}</span>
-                  <span class="text-slate-500">{{ del.users?.length || 0 }} interested</span>
+                  <span class="text-slate-500">{{ approvedUsers(del).length }} confirmed</span>
                 </div>
                 <p v-if="del.description" class="text-sm text-slate-400 leading-relaxed">{{ del.description }}</p>
 

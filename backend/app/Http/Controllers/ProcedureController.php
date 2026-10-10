@@ -186,6 +186,9 @@ class ProcedureController extends Controller
         // route group, so an owner who isn't an admin must not be offered the editor.
         $procedure->can_edit = $request->user()->isAdmin() && !$procedure->isArchived();
 
+        // The access log (who read it, when) is for admins and the owner only (L3).
+        $procedure->can_view_access_log = $procedure->isAdminOrOwner($request->user());
+
         // Include latest version's change_reason
         $latestVersion = $procedure->versions()->where('version', $procedure->version)->first();
         $procedure->change_reason = $latestVersion?->change_reason;
@@ -500,8 +503,13 @@ class ProcedureController extends Controller
         return response()->json($procedure->tags);
     }
 
+    /** Who read the procedure and when: admins and the procedure's owner only (L3). */
     public function accessLog(Request $request, Procedure $procedure)
     {
+        if (!$procedure->isAdminOrOwner($request->user())) {
+            return response()->json(['message' => 'Only admins and the procedure owner can see its access log.'], 403);
+        }
+
         $query = $procedure->accessLogs()
             ->with('user:id,name')
             ->orderByDesc('accessed_at');

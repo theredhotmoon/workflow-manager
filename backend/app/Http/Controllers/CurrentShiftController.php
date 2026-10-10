@@ -54,11 +54,11 @@ class CurrentShiftController extends Controller
                 'start_time' => substr($activeShift->start_time, 0, 5),
                 'end_time' => substr($activeShift->end_time, 0, 5),
                 'is_overnight' => BusinessDate::endsNextDay($activeShift->start_time, $activeShift->end_time),
-                'crew' => $activeShift->assignments->map(fn($a) => [
-                    'id' => $a->user->id,
-                    'name' => $a->user->name,
-                    'email' => $a->user->email,
-                ]),
+                // id and name; email only where User's $hidden lets the viewer see it (admins,
+                // themselves). Filtered from toArray(), not $user->only(), which ignores $hidden.
+                'crew' => $activeShift->assignments->map(
+                    fn($a) => collect($a->user->toArray())->only(['id', 'name', 'email'])->all()
+                ),
             ],
         ]);
     }

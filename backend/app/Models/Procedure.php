@@ -75,6 +75,25 @@ class Procedure extends Model
             ->first();
     }
 
+    /** The pending draft: shown only to admins and the procedure's owner (L3). */
+    public const DRAFT_FIELDS = ['has_draft', 'draft_title', 'draft_purpose', 'draft_requirements', 'draft_content'];
+
+    /**
+     * Need-to-know (L3): admins and the procedure's owner. Decides who sees the pending draft (in
+     * every payload that serialises a Procedure) and who may read the access log.
+     */
+    public function isAdminOrOwner(?User $viewer): bool
+    {
+        return $viewer !== null && ($viewer->isAdmin() || ($this->owner_id !== null && (int) $viewer->id === (int) $this->owner_id));
+    }
+
+    public function getHidden()
+    {
+        $hidden = parent::getHidden();
+
+        return $this->isAdminOrOwner(User::viewer()) ? $hidden : [...$hidden, ...self::DRAFT_FIELDS];
+    }
+
     public function owner()
     {
         return $this->belongsTo(User::class, 'owner_id');

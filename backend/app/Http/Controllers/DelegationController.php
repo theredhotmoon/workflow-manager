@@ -276,11 +276,12 @@ class DelegationController extends Controller
     }
 
     /**
-     * List open delegations — any authenticated user.
+     * List open delegations — any authenticated user. Each lists its approved participants and the
+     * viewer's own application (Delegation::membersFor), never other applicants' pending/rejected status.
      */
     public function openDelegations(Request $request)
     {
-        $delegations = Delegation::with(['users:id,name', 'creator:id,name'])
+        $delegations = Delegation::with([...Delegation::membersFor($request->user()), 'creator:id,name'])
             ->where('registration_open', true)
             // Open through its last day: delegations are date-only, compared with the business date.
             ->whereDate('end_datetime', '>=', BusinessDate::todayString())
@@ -315,7 +316,7 @@ class DelegationController extends Controller
         $delegation->users()->attach($request->user()->id, ['status' => 'pending']);
         $this->log($delegation->id, $request->user()->id, 'self_registered', "{$request->user()->name} requested to join");
 
-        $delegation->load(['users:id,name', 'creator:id,name']);
+        $delegation->load([...Delegation::membersFor($request->user()), 'creator:id,name']);
         return response()->json($delegation);
     }
 
@@ -332,7 +333,7 @@ class DelegationController extends Controller
         $delegation->users()->detach($request->user()->id);
         $this->log($delegation->id, $request->user()->id, 'self_unregistered', "{$request->user()->name} withdrew request");
 
-        $delegation->load(['users:id,name', 'creator:id,name']);
+        $delegation->load([...Delegation::membersFor($request->user()), 'creator:id,name']);
         return response()->json($delegation);
     }
 
@@ -360,7 +361,9 @@ class DelegationController extends Controller
     }
 
     /**
-     * Get all delegations for a month (admin, for schedule overlay).
+     * Delegations in a month, for the Schedule overlay and conflict checks (schedule managers). A
+     * schedule maintainer sees approved participants only (and their own application); admins see
+     * every applicant (Delegation::membersFor).
      */
     public function forMonth(Request $request)
     {
@@ -369,7 +372,7 @@ class DelegationController extends Controller
         $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
-        $delegations = Delegation::with('users:id,name')
+        $delegations = Delegation::with(Delegation::membersFor($request->user()))
             ->where(function ($q) use ($start, $end) {
                 $q->whereBetween('start_datetime', [$start, $end])
                     ->orWhereBetween('end_datetime', [$start, $end])

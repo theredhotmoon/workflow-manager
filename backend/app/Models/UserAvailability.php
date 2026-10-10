@@ -21,6 +21,22 @@ class UserAvailability extends Model
         'end_date' => 'date:Y-m-d',
     ];
 
+    /**
+     * Need-to-know (L1): the note is private to the user who wrote it and to schedule managers
+     * (admins, schedule maintainers). Colleagues still see the entry's type and dates.
+     */
+    public function noteVisibleTo(?User $viewer): bool
+    {
+        return $viewer !== null && ($viewer->canManageSchedule() || (int) $viewer->id === (int) $this->user_id);
+    }
+
+    public function getHidden()
+    {
+        $hidden = parent::getHidden();
+
+        return $this->noteVisibleTo(User::viewer()) ? $hidden : [...$hidden, 'note'];
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

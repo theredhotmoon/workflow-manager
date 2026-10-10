@@ -35,6 +35,22 @@ class ShiftChangeRequest extends Model
         });
     }
 
+    /**
+     * Need-to-know (L2): the free-text reason is private to the requester and to schedule managers
+     * (admins, schedule maintainers). Others may still see that a request exists.
+     */
+    public function reasonVisibleTo(?User $viewer): bool
+    {
+        return $viewer !== null && ($viewer->canManageSchedule() || (int) $viewer->id === (int) $this->user_id);
+    }
+
+    public function getHidden()
+    {
+        $hidden = parent::getHidden();
+
+        return $this->reasonVisibleTo(User::viewer()) ? $hidden : [...$hidden, 'reason'];
+    }
+
     public function getAssignmentRemovedAttribute(): bool
     {
         return $this->shift_assignment_id === null;

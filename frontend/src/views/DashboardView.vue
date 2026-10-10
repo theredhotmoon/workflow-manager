@@ -111,7 +111,7 @@
             </div>
             <div>
               <p class="text-sm font-medium text-white">{{ member.name }}</p>
-              <p class="text-xs text-slate-400">{{ member.email }}</p>
+              <p v-if="member.email" class="text-xs text-slate-400">{{ member.email }}</p>
             </div>
           </div>
         </div>

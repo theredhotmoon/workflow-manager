@@ -843,7 +843,7 @@ const filteredGroupUsers = computed(() => {
   const memberIds = new Set(selectedGroup.value.users?.map((u) => u.id) ?? []);
   const list = q
     ? activeUsers.value.filter(
-        (u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+        (u) => u.name.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q),
       )
     : activeUsers.value;
   return [...list]

@@ -113,7 +113,7 @@
     </div>
 
     <!-- Access Log Tab -->
-    <div v-show="activeTab === 'access-log'">
+    <div v-if="procedure.can_view_access_log" v-show="activeTab === 'access-log'">
       <ProcedureAccessLogTab v-if="accessLogLoaded" :procedure-id="procedure.id" />
       <div v-else class="text-center text-slate-500 text-sm py-8">Click to load access logs.</div>
     </div>
@@ -165,7 +165,10 @@ const tabs = computed(() => [
   { key: 'templates', label: 'Templates', count: props.procedure?.response_templates?.length || 0 },
   { key: 'feedback', label: 'Feedback', count: props.procedure?.feedbacks?.length || 0 },
   { key: 'owners', label: 'Owners', count: props.procedure?.owner_changes?.length || 0 },
-  { key: 'access-log', label: 'Access Log', count: null },
+  // Who read it and when: admins and the procedure's owner only (the server answers 403 to others).
+  ...(props.procedure?.can_view_access_log
+    ? [{ key: 'access-log', label: 'Access Log', count: null }]
+    : []),
 ]);
 
 watch(activeTab, (val) => {

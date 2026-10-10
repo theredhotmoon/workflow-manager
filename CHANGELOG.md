@@ -4,6 +4,37 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-10 — 🔒 Need-to-know: colleagues' notes, reasons, emails, drafts and access logs stay private
+
+> **Deploy notes**
+> - No migrations. Rebuild backend and frontend.
+>
+> **Behaviour changes**
+> - **Availability notes** (`GET /api/user-availabilities/{userId}/month`) are returned only to that user and to admins / schedule maintainers; everyone else gets `note: null`. The entry's type, dates and times stay visible.
+> - **Change-request reasons** in the schedule (`change_request_reason` on each assignment) are returned only to the requester and to admins / schedule maintainers; others get `null`. `has_change_request`, `change_request_id` and `change_request_date` stay. The chip's tooltip says just "Day-off request" without the reason.
+> - **Procedure access log** (`GET /api/procedures/{id}/access-log`) answers 403 unless you are an admin or the procedure's owner. The detail payload carries `can_view_access_log`, and the "Access Log" tab is only shown when it is true.
+> - **Procedure drafts** (`has_draft`, `draft_title`, `draft_purpose`, `draft_requirements`, `draft_content`) are left out of every procedure payload except for admins and the owner (owners still can't edit; editing stays admin-only).
+> - **Emails** are returned only to admins, plus your own email to you (`/api/user`, login). Names stay. This covers `/api/employees`, `/api/schedule` employees, `/api/user-groups` members, current-shift crew, delegations and every other payload that serialises a user. Schedule maintainers don't get emails either.
+> - **Delegation applicants:** on `GET /api/delegations/open`, self-register and self-unregister responses, a non-admin sees the approved participants and their own application (any status), never other people's pending or rejected applications. `GET /api/delegations/month` (Schedule overlay) does the same for schedule maintainers; admins still see every applicant there and on the management screens. The open-delegations card shows "N confirmed" (approved participants) instead of "N interested".
+
+- **Colleague data was visible to every logged-in user** (audit L1–L4): any employee could read others' availability notes, day-off reasons, procedure drafts and access logs, every colleague's email, and who else had applied to (or been rejected from) a delegation.
+
+### Backend
+| What | Details |
+|------|---------|
+| New | Viewer-aware hiding on the models, so new endpoints are private by default: `User::getHidden()` adds `email` unless `emailVisibleTo(User::viewer())` (admin or self); `UserAvailability::noteVisibleTo()`, `ShiftChangeRequest::reasonVisibleTo()` (subject or schedule manager) and `Procedure::isAdminOrOwner()` (drafts, access log) hide `note` / `reason` / `Procedure::DRAFT_FIELDS` the same way. `User::viewer()` is the logged-in user (null outside a request: hidden). Ids are compared as integers |
+| New | `Delegation::membersFor($viewer)`: the eager load of delegation members (id, name, pivot) a viewer may see |
+| Changed | `ScheduleController` assignment payload, `UserAvailabilityController::formatEntry`, `ProcedureController::accessLog` (403) and `show` (`can_view_access_log`), `CurrentShiftController` crew (id, name, email-if-visible), `DelegationController` open / self-register / self-unregister / month |
+| Tests | New `PrivacyNeedToKnowTest` (9 tests: each rule per role, access-log 403/200 matrix, draft hiding across show/index/search/tree/versions/to-learn, current-shift crew keys, a payload sweep of 16 user-serialising endpoints as an employee, string-id comparisons, delegation applicants). Route matrix unchanged (the access-log rule is object-level) |
+
+### Frontend
+| What | Details |
+|------|---------|
+| Changed | Procedure detail: "Access Log" tab only when `can_view_access_log`. Dashboard crew shows the email only when present. Schedule day-off chip tooltip without a reason when none is sent. Open delegations count confirmed participants. Users group-member search tolerates a missing email |
+| Tests | New E2E `privacy/need-to-know.spec.js`: admin sees emails on Users, an employee gets only their own; employee screens (dashboard, schedule, delegations, procedures) render; open delegations hide a pending colleague; Access Log tab and endpoint per role |
+
+---
+
 ## 2026-10-09 — 🗄️ Deletes keep history: shift groups and procedures are archived, delegations with members can't be deleted, change requests survive
 
 > **Deploy notes**

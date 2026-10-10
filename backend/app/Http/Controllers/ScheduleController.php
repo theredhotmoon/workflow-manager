@@ -542,6 +542,8 @@ class ScheduleController extends Controller
      */
     private function shiftPayload(Shift $shift, array $resting): array
     {
+        $viewer = User::viewer();
+
         return [
             'id' => $shift->id,
             'shift_number' => $shift->shift_number,
@@ -559,7 +561,7 @@ class ScheduleController extends Controller
                 'deadline_minutes' => $sc->deadline_minutes,
                 'deadline_reference' => $sc->deadline_reference,
             ]),
-            'assignments' => $shift->assignments->map(function ($a) use ($resting) {
+            'assignments' => $shift->assignments->map(function ($a) use ($resting, $viewer) {
                 $pendingRequest = $a->changeRequests->first();
                 return [
                     'id' => $a->id,
@@ -569,7 +571,9 @@ class ScheduleController extends Controller
                     'in_rest' => isset($resting[$a->id]) && $a->rest_policy === null,
                     'resting_until' => $resting[$a->id] ?? null,
                     'has_change_request' => $pendingRequest !== null,
-                    'change_request_reason' => $pendingRequest?->reason,
+                    // That a request exists is shown to everyone; why, only to the requester and
+                    // schedule managers (L2).
+                    'change_request_reason' => $pendingRequest?->reasonVisibleTo($viewer) ? $pendingRequest->reason : null,
                     'change_request_id' => $pendingRequest?->id,
                     'change_request_date' => $pendingRequest?->created_at?->toIso8601String(),
                 ];

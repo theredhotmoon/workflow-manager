@@ -45,6 +45,22 @@ class Delegation extends Model
             ->withTimestamps();
     }
 
+    /**
+     * Eager load of users (id, name) as $viewer may see them (L4). Admins manage delegations and see
+     * every applicant with their status. Anyone else sees the approved participants and their own
+     * application (whatever its status): who else applied, is pending or was rejected is not theirs.
+     */
+    public static function membersFor(User $viewer): array
+    {
+        return ['users' => function ($query) use ($viewer) {
+            $query->select('users.id', 'users.name');
+            if (!$viewer->isAdmin()) {
+                $query->where(fn ($q) => $q->where('delegation_user.status', 'approved')
+                    ->orWhere('users.id', $viewer->id));
+            }
+        }];
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');

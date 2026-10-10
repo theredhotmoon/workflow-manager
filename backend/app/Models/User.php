@@ -54,6 +54,33 @@ class User extends Authenticatable
             : $appends;
     }
 
+    /**
+     * Need-to-know (L4): a user's email is serialised only for admins and for the user themselves.
+     * Every payload that serialises a User (eager-loaded relations, partial selects, lists) goes
+     * through this, so a new endpoint can't leak colleagues' emails by default. With no logged-in
+     * viewer (console, queue) it stays hidden.
+     */
+    public function getHidden()
+    {
+        $hidden = parent::getHidden();
+
+        return $this->emailVisibleTo(self::viewer()) ? $hidden : array_values(array_unique([...$hidden, 'email']));
+    }
+
+    public function emailVisibleTo(?self $viewer): bool
+    {
+        // Integer compare: an id read from a raw query or pivot can arrive as a string.
+        return $viewer !== null && ($viewer->isAdmin() || ($this->getKey() !== null && (int) $viewer->getKey() === (int) $this->getKey()));
+    }
+
+    /** The logged-in user a response is being built for; null outside a request (console, queue). */
+    public static function viewer(): ?self
+    {
+        $user = auth()->user();
+
+        return $user instanceof self ? $user : null;
+    }
+
     public function getIsAdminAttribute(): bool
     {
         return $this->isAdmin();

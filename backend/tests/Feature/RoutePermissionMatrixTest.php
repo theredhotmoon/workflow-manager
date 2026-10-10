@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Route;
 //
 // Object-level rules (whose handover, whose procedure) are tested where they live:
 // HandoverAccessTest (M1/M2: filing, history scoping), PrivilegeGapsTest (H1 confirmation, H2
-// procedure move/change-owner, own-handover filing), ProcedureEditingTest (procedure writes).
+// procedure move/change-owner, own-handover filing), ProcedureEditingTest (procedure writes),
+// PrivacyNeedToKnowTest (L3: a procedure's access log is for admins and its owner only).
 
 function rpmExpected(): array
 {

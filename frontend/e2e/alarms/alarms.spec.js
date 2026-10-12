@@ -72,16 +72,25 @@ test.describe('Notifications', () => {
       .locator('div.cursor-pointer', { hasText: 'New question on procedure "Alarm Badge Proc"' })
       .first();
 
-    // The server refuses: the badge comes back and the user is told.
-    await adminPage.route('**/api/alarms/*/read', (route) =>
-      route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
+    // The server refuses: the badge drops at once while the request is out, then comes back and
+    // the user is told.
+    const refused = await holdRequests(
+      adminPage,
+      (url) => /^\/api\/alarms\/[^/]+\/read$/.test(url.pathname),
+      {
+        method: 'PUT',
+        mode: 'abort',
+        times: 1,
+      },
     );
     await card.click();
+    await refused.seen;
+    await expect(badge).toHaveText(String(before - 1));
+    await refused.releaseAndSettle();
     await expect(adminPage.getByText(/Could not mark the notification as read/)).toBeVisible();
     await expect(badge).toHaveText(String(before));
 
     // It works: the badge drops without waiting for the next poll.
-    await adminPage.unroute('**/api/alarms/*/read');
     const saved = adminPage.waitForResponse((res) => /\/api\/alarms\/[^/]+\/read$/.test(res.url()));
     await card.click();
     await expect(badge).toHaveText(String(before - 1));
@@ -114,5 +123,37 @@ test.describe('Notifications', () => {
       .first()
       .click();
     await expect(adminPage.getByText(/Could not mark the notification as read/)).toBeVisible();
+  });
+
+  // M1: the bell and the page share state: "Mark all read" in the bell updates the page's list.
+  test('marking all read from the bell updates the Notifications page', async ({
+    adminPage,
+    employeePage,
+  }) => {
+    const adminContext = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(adminContext, 'admin@shiftchanger.com');
+    const procedure = await createProcedure(adminContext, {
+      title: 'Alarm Shared Proc',
+      ownerId: adminId,
+    });
+    await askFaqQuestion(employeePage.context(), procedure.id, 'Shared state question?');
+
+    await adminPage.goto('/alarms');
+    const pageMarkAll = adminPage.getByRole('button', { name: 'Mark all as read' });
+    await expect(pageMarkAll).toBeVisible();
+
+    await adminPage.getByRole('button', { name: 'Notifications' }).click();
+    const saved = adminPage.waitForResponse((res) => res.url().endsWith('/api/alarms/read-all'));
+    await adminPage
+      .locator('#alarm-dropdown')
+      .getByRole('button', { name: 'Mark all read' })
+      .click();
+    expect((await saved).status()).toBe(200);
+
+    // The page's list now has nothing unread: its own "Mark all as read" is gone, without a reload.
+    await expect(pageMarkAll).toHaveCount(0);
+    await expect(
+      adminPage.getByRole('button', { name: 'Notifications' }).locator('span'),
+    ).toHaveCount(0);
   });
 });

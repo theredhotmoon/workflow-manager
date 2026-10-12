@@ -120,7 +120,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import { useAlarms } from '../composables/useAlarms.js';
@@ -172,13 +172,16 @@ async function fetchAlarms() {
 // Shared with the header bell: its badge follows what's marked read here (rolled back, with a
 // toast, when the server refuses).
 const alarmStore = useAlarms();
+// Registered with the store, so marking read from the header bell updates this list too.
+const unregisterList = alarmStore.registerList(alarms);
+onUnmounted(unregisterList);
 
 function handleAlarmClick(alarm) {
-  alarmStore.markRead(alarm, [alarms.value]);
+  alarmStore.markRead(alarm);
 }
 
 function markAllRead() {
-  alarmStore.markAllRead([alarms.value]);
+  alarmStore.markAllRead();
 }
 
 function clearFilters() {

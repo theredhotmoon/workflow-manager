@@ -1,12 +1,16 @@
 import { expect, test } from '@playwright/test';
-import { createAlarmStore } from './alarmStore.js';
+import { ref } from 'vue';
+import { createAlarmStore, resetAlarmsOnUserChange } from './alarmStore.js';
 
-function fakeApi({ failPut = false } = {}) {
+function fakeApi({ failPut = false, count = 2 } = {}) {
   const calls = [];
   return {
     calls,
+    count,
+    failGet: false,
     async get(url) {
       calls.push(['get', url]);
+      if (this.failGet) throw { response: { status: 500, data: {} } };
       if (url === '/api/alarms/latest') {
         return {
           data: [
@@ -16,7 +20,7 @@ function fakeApi({ failPut = false } = {}) {
           ],
         };
       }
-      return { data: { count: 2 } };
+      return { data: { count: this.count } };
     },
     async put(url) {
       calls.push(['put', url]);
@@ -95,5 +99,74 @@ test.describe('alarm store (L24)', () => {
     await expect(store.markRead(store.latest.value[2])).resolves.toBe(true);
     expect(api.calls.filter(([m]) => m === 'put')).toHaveLength(0);
     expect(store.unreadCount.value).toBe(2);
+  });
+});
+
+test.describe('alarm store: review fixes', () => {
+  test('a mark-read from the bell updates a registered page list (M1)', async () => {
+    const store = createAlarmStore({ api: fakeApi(), now: () => NOW });
+    await store.refresh();
+    const page = ref([{ id: 'a', read_at: null }]);
+    const unregister = store.registerList(page);
+
+    await store.markRead(store.latest.value[0]);
+    expect(page.value[0].read_at).toBe(NOW);
+    // Clicking the page's copy afterwards sends nothing and doesn't lower the badge again.
+    await store.markRead(page.value[0]);
+    expect(store.unreadCount.value).toBe(1);
+
+    unregister();
+    const later = ref([{ id: 'b', read_at: null }]);
+    store.registerList(later);
+    await store.markAllRead();
+    expect(later.value[0].read_at).toBe(NOW);
+    expect(page.value.every((a) => a.read_at === NOW)).toBe(true);
+  });
+
+  test('a failed mark-read takes the count from the server, not local arithmetic (M2)', async () => {
+    const api = fakeApi({ failPut: true });
+    const store = createAlarmStore({ api, now: () => NOW });
+    await store.refresh();
+    // Meanwhile two more alarms arrived on the server.
+    api.count = 4;
+    await expect(store.markRead(store.latest.value[0])).resolves.toBe(false);
+    expect(store.unreadCount.value).toBe(4);
+
+    // If the server can't be asked either, the local correction is the fallback.
+    api.failGet = true;
+    await expect(store.markRead(store.latest.value[1])).resolves.toBe(false);
+    expect(store.unreadCount.value).toBe(4);
+  });
+
+  test('reset empties the store and drops a refresh in flight (I3)', async () => {
+    const api = fakeApi();
+    const store = createAlarmStore({ api });
+    await store.refresh();
+    expect(store.latest.value).toHaveLength(3);
+
+    const inFlight = store.refresh();
+    store.reset();
+    await inFlight;
+    expect(store.latest.value).toEqual([]);
+    expect(store.unreadCount.value).toBe(0);
+  });
+
+  test('the store is reset when the user signs out or another user signs in (I3)', async () => {
+    const store = createAlarmStore({ api: fakeApi() });
+    const user = ref({ id: 1 });
+    const stop = resetAlarmsOnUserChange(store, user);
+    await store.refresh();
+
+    user.value = { id: 1, name: 'same user, fetched again' };
+    expect(store.latest.value).toHaveLength(3);
+
+    user.value = null; // signed out
+    expect(store.latest.value).toEqual([]);
+    expect(store.unreadCount.value).toBe(0);
+
+    await store.refresh();
+    user.value = { id: 2 }; // someone else
+    expect(store.latest.value).toEqual([]);
+    stop();
   });
 });

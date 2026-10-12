@@ -236,6 +236,11 @@ docker run --rm --network workflow-manager_app_network \
   --entrypoint php workflow-manager_backend vendor/bin/pest
 ```
 
+**Code style.** The backend follows [Laravel Pint](https://laravel.com/docs/pint)'s Laravel preset
+(`backend/pint.json`); CI runs `vendor/bin/pint --test` and fails on unformatted code. Format with
+`vendor/bin/pint` (or, without PHP on the host, the same `docker run` as above with
+`vendor/bin/pint` in place of `vendor/bin/pest`).
+
 On Windows in Git Bash, put `MSYS_NO_PATHCONV=1` in front of `docker run`
 (`MSYS_NO_PATHCONV=1 docker run ...`); otherwise Git Bash rewrites `/var/www/html` into a Windows
 path and the container can't find the mount.

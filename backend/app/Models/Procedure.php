@@ -11,6 +11,17 @@ use Illuminate\Support\Facades\DB;
 
 class Procedure extends Model
 {
+    /**
+     * Longest content (and draft content) a write takes, in characters. Pasted images live in the
+     * HTML as base64 data: URLs (about 4/3 of the image size), so this is roughly 11 MB of images.
+     * Set by memory, not by the 50 MB body Nginx and PHP allow on the procedure writes: measured in
+     * php-fpm (memory_limit 256M) on create, update (version snapshot) and draft, peak memory is
+     * about 3 bytes per character for one large image and up to about 8.5 for many images (the
+     * sanitiser keeps copies per image): 29.4M characters in 40 images peaked at 230 MB, close to
+     * the limit. At 14M characters in 200 images the peak was 118 MB, so this cap leaves about 2x.
+     */
+    public const CONTENT_MAX_LENGTH = 15_000_000;
+
     protected $fillable = [
         'identifier',
         'title',

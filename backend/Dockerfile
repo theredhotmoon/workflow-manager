@@ -72,6 +72,7 @@ RUN chmod +x /usr/local/bin/pg_dump /usr/local/bin/pg_restore \
 COPY docker/nginx.conf      /etc/nginx/http.d/default.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/php.ini          /usr/local/etc/php/conf.d/zzz-custom.ini
+COPY docker/php-fpm-logging.conf /usr/local/etc/php-fpm.d/zzz-logging.conf
 COPY docker/entrypoint.sh    /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh \

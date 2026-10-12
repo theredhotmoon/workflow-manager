@@ -72,8 +72,9 @@ it('validates the ids and the mode', function () {
         ->assertStatus(422)->assertJsonValidationErrors('shift_ids.0');
     $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => [$id], 'work_mode' => 'hybrid'])
         ->assertStatus(422)->assertJsonValidationErrors('work_mode');
-    $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => range(1, 501), 'work_mode' => 'remote'])
-        ->assertStatus(422)->assertJsonValidationErrors('shift_ids');
+    // Above the cap the whole request is refused, saying how many can be switched at once.
+    $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => range(1, 2001), 'work_mode' => 'remote'])
+        ->assertStatus(422)->assertJsonPath('errors.shift_ids.0', 'At most 2000 shifts can be switched at once.');
 
     expect(Shift::where('work_mode', 'remote')->count())->toBe(0);
 });
@@ -90,4 +91,18 @@ it('checks the ids with a fixed number of queries, however many there are (M4)',
     DB::disableQueryLog();
 
     expect($queries)->toBeLessThan(20);
+});
+
+it('switches 2000 shifts in one request, the cap (all or nothing)', function () {
+    $now = now();
+    DB::table('shifts')->insert(collect(range(1, 2000))->map(fn ($n) => [
+        'date' => '2029-05-01', 'shift_number' => $n, 'shift_group_id' => $this->main->id, 'work_mode' => 'office',
+        'created_at' => $now, 'updated_at' => $now,
+    ])->all());
+    $ids = Shift::where('date', '2029-05-01')->pluck('id')->all();
+
+    $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => $ids, 'work_mode' => 'remote'])
+        ->assertOk()->assertJsonPath('updated', 2000);
+
+    expect(Shift::where('date', '2029-05-01')->where('work_mode', 'remote')->count())->toBe(2000);
 });

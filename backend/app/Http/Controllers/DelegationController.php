@@ -26,15 +26,18 @@ class DelegationController extends Controller
     }
 
     /**
-     * List all delegations (with users) — admin.
+     * The delegations (with users), one page at a time (per_page 1..100, default 20) — admin.
+     * Newest start first; the id breaks ties, so pages never overlap or skip a delegation.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $delegations = Delegation::with(['users:id,name,email', 'creator:id,name'])
-            ->orderByDesc('start_datetime')
-            ->get();
+        $request->validate(['per_page' => ['sometimes', 'nullable', 'integer']]);
+        $perPage = max(1, min((int) $request->input('per_page', 20), 100));
 
-        return response()->json($delegations);
+        return response()->json(Delegation::with(['users:id,name,email', 'creator:id,name'])
+            ->orderByDesc('start_datetime')
+            ->orderByDesc('id')
+            ->paginate($perPage));
     }
 
     /**
@@ -109,49 +112,101 @@ class DelegationController extends Controller
             }
         }
 
-        // Either date may change alone, so compare the dates the delegation will end up with.
-        $start = $validated['start_datetime'] ?? $delegation->start_datetime?->format('Y-m-d');
-        $end = $validated['end_datetime'] ?? $delegation->end_datetime?->format('Y-m-d');
-        if ($start !== null && $end !== null && $end < $start) {
-            throw ValidationException::withMessages([
-                'end_datetime' => 'The end date must be on or after the start date.',
-            ]);
-        }
+        // The checks, the edit, its log and the members' travel dates that no longer fit all work
+        // on the locked row (locked like add-member and re-dating a member), so an edit or a member
+        // change at the same moment is seen, not overwritten or left outside the new dates.
+        [$delegation, $adjusted] = DB::transaction(function () use ($request, $delegation, $validated) {
+            $delegation = Delegation::lockOrGone($delegation->id);
 
-        // Only what really changes is logged: dates compared as dates (the stored value carries a
-        // midnight time), text with an empty value the same as none.
-        $changes = [];
-        foreach ($validated as $key => $value) {
-            switch ($key) {
-                case 'registration_open':
-                    if ((bool) $value !== (bool) $delegation->registration_open) {
-                        $changes[] = $value ? 'Registration opened' : 'Registration closed';
-                    }
-                    break;
-                case 'start_datetime':
-                case 'end_datetime':
-                    $old = $delegation->$key?->format('Y-m-d');
-                    if ($old !== $value) {
-                        $label = $key === 'start_datetime' ? 'Start date' : 'End date';
-                        $changes[] = "{$label} changed ({$old} → {$value})";
-                    }
-                    break;
-                default:
-                    if ((string) ($delegation->$key ?? '') !== (string) ($value ?? '')) {
-                        $changes[] = ucfirst($key).' changed';
-                    }
+            // Either date may change alone, so compare the dates the delegation will end up with.
+            $start = $validated['start_datetime'] ?? $delegation->start_datetime?->format('Y-m-d');
+            $end = $validated['end_datetime'] ?? $delegation->end_datetime?->format('Y-m-d');
+            if ($start !== null && $end !== null && $end < $start) {
+                throw ValidationException::withMessages([
+                    'end_datetime' => 'The end date must be on or after the start date.',
+                ]);
             }
-        }
 
-        $delegation->update($validated);
+            // Only what really changes is logged: dates compared as dates (the stored value carries
+            // a midnight time), text with an empty value the same as none.
+            $changes = [];
+            $datesChanged = false;
+            foreach ($validated as $key => $value) {
+                switch ($key) {
+                    case 'registration_open':
+                        if ((bool) $value !== (bool) $delegation->registration_open) {
+                            $changes[] = $value ? 'Registration opened' : 'Registration closed';
+                        }
+                        break;
+                    case 'start_datetime':
+                    case 'end_datetime':
+                        $old = $delegation->$key?->format('Y-m-d');
+                        if ($old !== $value) {
+                            $label = $key === 'start_datetime' ? 'Start date' : 'End date';
+                            $changes[] = "{$label} changed ({$old} → {$value})";
+                            $datesChanged = true;
+                        }
+                        break;
+                    default:
+                        if ((string) ($delegation->$key ?? '') !== (string) ($value ?? '')) {
+                            $changes[] = ucfirst($key).' changed';
+                        }
+                }
+            }
 
-        if ($changes) {
-            $this->log($delegation->id, $request->user()->id, 'updated', implode('; ', $changes));
-        }
+            $delegation->update($validated);
+
+            if ($changes) {
+                $this->log($delegation->id, $request->user()->id, 'updated', implode('; ', $changes));
+            }
+
+            return [$delegation, $datesChanged ? $this->clampMemberDates($delegation, $request->user()->id) : 0];
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
 
-        return response()->json($delegation);
+        return response()->json(array_merge($delegation->toArray(), ['adjusted_members' => $adjusted]));
+    }
+
+    /**
+     * Moves every member's own travel dates into the delegation's (new) days: each end is clamped
+     * into the range, an unset end stays unset (it means the delegation's own day). A member whose
+     * dates no longer overlap the delegation at all goes back to the delegation's dates. Each change
+     * is logged; returns how many members changed.
+     */
+    private function clampMemberDates(Delegation $delegation, int $performedBy): int
+    {
+        $first = $delegation->start_datetime->format('Y-m-d');
+        $last = $delegation->end_datetime->format('Y-m-d');
+        $day = fn ($value): ?string => $value === null ? null : substr((string) $value, 0, 10);
+        $range = fn (?string $start, ?string $end): string => ($start ?? 'start').' to '.($end ?? 'end');
+
+        $members = $delegation->users()
+            ->where(fn ($q) => $q->whereNotNull('delegation_user.custom_start')->orWhereNotNull('delegation_user.custom_end'))
+            ->orderBy('users.id')
+            ->get(['users.id', 'users.name']);
+
+        $adjusted = 0;
+        foreach ($members as $member) {
+            $start = $day($member->pivot->custom_start);
+            $end = $day($member->pivot->custom_end);
+            $from = max($start ?? $first, $first);
+            $to = min($end ?? $last, $last);
+            $reset = $from > $to;
+            $newStart = $reset || $start === null ? null : $from;
+            $newEnd = $reset || $end === null ? null : $to;
+            if ($newStart === $start && $newEnd === $end) {
+                continue;
+            }
+
+            $delegation->users()->updateExistingPivot($member->id, ['custom_start' => $newStart, 'custom_end' => $newEnd]);
+            $this->log($delegation->id, $performedBy, 'dates_adjusted', $reset
+                ? "Travel dates for {$member->name} reset to the delegation's dates (were {$range($start, $end)}, outside {$first} to {$last})"
+                : "Travel dates for {$member->name} moved into the delegation's dates: {$range($start, $end)} → {$range($newStart, $newEnd)}");
+            $adjusted++;
+        }
+
+        return $adjusted;
     }
 
     /**
@@ -172,17 +227,18 @@ class DelegationController extends Controller
         if ($request->has('custom_end')) {
             $pivotData['custom_end'] = self::dateOnly($request->custom_end);
         }
-        // A date not sent stays as stored, so the check uses the member's current one.
-        $current = $delegation->users()->where('users.id', $request->user_id)->first()?->pivot;
-        $this->ensureTravelDatesFit(
-            $delegation,
-            array_key_exists('custom_start', $pivotData) ? $pivotData['custom_start'] : $current?->custom_start,
-            array_key_exists('custom_end', $pivotData) ? $pivotData['custom_end'] : $current?->custom_end,
-        );
-
         DB::transaction(function () use ($request, $delegation, $pivotData) {
-            // Locked like destroy(), so a delete can't miss a member added at the same moment.
-            Delegation::lockOrGone($delegation->id);
+            // Locked like destroy(), so a delete can't miss a member added at the same moment, and
+            // the travel dates are checked against the locked row: a date change of the delegation
+            // at the same moment either lands first (and is checked against) or clamps them after.
+            $locked = Delegation::lockOrGone($delegation->id);
+            // A date not sent stays as stored, so the check uses the member's current one.
+            $current = $delegation->users()->where('users.id', $request->user_id)->first()?->pivot;
+            $this->ensureTravelDatesFit(
+                $locked,
+                array_key_exists('custom_start', $pivotData) ? $pivotData['custom_start'] : $current?->custom_start,
+                array_key_exists('custom_end', $pivotData) ? $pivotData['custom_end'] : $current?->custom_end,
+            );
             $delegation->users()->syncWithoutDetaching([$request->user_id => $pivotData]);
 
             // If user already existed with different status, update it
@@ -211,14 +267,19 @@ class DelegationController extends Controller
 
         $customStart = self::dateOnly($request->custom_start);
         $customEnd = self::dateOnly($request->custom_end);
-        $this->ensureTravelDatesFit($delegation, $customStart, $customEnd);
 
-        $delegation->users()->updateExistingPivot($request->user_id, [
-            'custom_start' => $customStart,
-            'custom_end' => $customEnd,
-        ]);
+        DB::transaction(function () use ($request, $delegation, $member, $customStart, $customEnd) {
+            // Checked against the locked row: a date change of the delegation at the same moment
+            // either lands first (and these dates are checked against it) or clamps them after.
+            $this->ensureTravelDatesFit(Delegation::lockOrGone($delegation->id), $customStart, $customEnd);
 
-        $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$member->name}");
+            $delegation->users()->updateExistingPivot($request->user_id, [
+                'custom_start' => $customStart,
+                'custom_end' => $customEnd,
+            ]);
+
+            $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$member->name}");
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
 

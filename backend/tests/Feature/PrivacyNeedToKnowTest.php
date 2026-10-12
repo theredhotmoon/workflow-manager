@@ -357,7 +357,7 @@ it('shows employees only approved participants and their own application on open
         expect($month->pluck('id')->all())->toBe([$approved->id], "{$who} month");
     }
     // The admin management screen (its own endpoint) still lists every applicant with status.
-    $all = collect($this->actingAs($cast['admin'])->getJson('/api/delegations')->assertOk()->json('0.users'));
+    $all = collect($this->actingAs($cast['admin'])->getJson('/api/delegations')->assertOk()->json('data.0.users'));
     expect($all->pluck('pivot.status')->sort()->values()->all())->toBe(['approved', 'pending', 'pending', 'rejected']);
 });
 

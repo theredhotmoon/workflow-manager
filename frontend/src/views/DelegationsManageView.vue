@@ -5,7 +5,7 @@
       <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 class="text-2xl font-bold text-white">Manage Delegations</h1>
-          <p class="text-slate-400 text-sm mt-1">{{ delegations.length }} delegation{{ delegations.length !== 1 ? 's' : '' }}</p>
+          <p class="text-slate-400 text-sm mt-1">{{ total }} delegation{{ total !== 1 ? 's' : '' }}</p>
         </div>
         <button @click="openCreateModal"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all whitespace-nowrap">
@@ -203,6 +203,19 @@
         </div>
       </div>
 
+      <!-- Pagination -->
+      <nav v-if="lastPage > 1" aria-label="Delegation pages" class="flex items-center justify-center gap-2 mt-8">
+        <button @click="goToPage(page - 1)" :disabled="loading || page <= 1"
+          class="px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-xl text-slate-300 hover:bg-white/10 disabled:opacity-30 transition-all">
+          ← Previous
+        </button>
+        <span class="text-sm text-slate-500">Page {{ page }} of {{ lastPage }}</span>
+        <button @click="goToPage(page + 1)" :disabled="loading || page >= lastPage"
+          class="px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-xl text-slate-300 hover:bg-white/10 disabled:opacity-30 transition-all">
+          Next →
+        </button>
+      </nav>
+
       <!-- Create / Edit Modal -->
       <Transition
         enter-active-class="transition-all duration-300 ease-out"
@@ -244,13 +257,18 @@ import AppLayout from '../components/AppLayout.vue';
 import BaseModal from '../components/BaseModal.vue';
 import DelegationForm from '../components/DelegationForm.vue';
 import { confirm } from '../composables/useConfirm.js';
+import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 import { formatCalendarDate } from '../dates.js';
 import { isDelegationCompleted } from '../delegationStatus.js';
 
 const { showToast } = useToast();
 
+// One page of the list at a time (the server pages it, 20 per page, newest start first).
 const delegations = ref([]);
+const page = ref(1);
+const lastPage = ref(1);
+const total = ref(0);
 const allUsers = ref([]);
 const loading = ref(true);
 const saving = ref(false);
@@ -387,9 +405,19 @@ async function saveModal(payload) {
   modalFieldErrors.value = {};
   try {
     if (editingId.value) {
-      await api.put(`/api/delegations/${editingId.value}`, payload);
+      const res = await api.put(`/api/delegations/${editingId.value}`, payload);
+      // New dates move members' own travel dates that no longer fit (the server clamps them).
+      const adjusted = res.data?.adjusted_members ?? 0;
+      showToast(
+        adjusted === 0
+          ? 'Delegation saved.'
+          : `Delegation saved. Travel dates of ${adjusted} member${adjusted === 1 ? '' : 's'} adjusted to the new dates.`,
+        'success',
+      );
     } else {
       await api.post('/api/delegations', payload);
+      // Back to the first page, where a new (usually upcoming) delegation is listed.
+      page.value = 1;
     }
     showModal.value = false;
   } catch (err) {
@@ -524,20 +552,38 @@ function refreshLogs(delId) {
   if (logsData[delId]) fetchLogs(delId);
 }
 
+// A page change and a reload after an action can overlap: only the latest applies its page.
+const listRequests = useLatestRequest();
+
 async function fetchData() {
+  const token = listRequests.begin();
   loading.value = true;
   try {
     const [delRes, usersRes] = await Promise.all([
-      api.get('/api/delegations'),
+      api.get('/api/delegations', { params: { page: page.value } }),
       api.get('/api/users'),
     ]);
-    delegations.value = delRes.data;
+    if (!listRequests.isCurrent(token)) return;
+    // The page emptied (its last delegation was archived or deleted): show the new last page.
+    if (delRes.data.data.length === 0 && page.value > 1 && delRes.data.last_page < page.value) {
+      page.value = delRes.data.last_page;
+      return fetchData();
+    }
+    delegations.value = delRes.data.data;
+    lastPage.value = delRes.data.last_page;
+    total.value = delRes.data.total;
     allUsers.value = usersRes.data;
   } catch (err) {
-    showError(err, 'Could not load delegations');
+    if (listRequests.isCurrent(token)) showError(err, 'Could not load delegations');
   } finally {
-    loading.value = false;
+    if (listRequests.isCurrent(token)) loading.value = false;
   }
+}
+
+function goToPage(n) {
+  if (n < 1 || n > lastPage.value || n === page.value) return;
+  page.value = n;
+  fetchData();
 }
 
 onMounted(fetchData);

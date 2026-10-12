@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -48,38 +49,111 @@ class ChecklistSubmissionController extends Controller
         return response()->json(array_merge($page->toArray(), ['status_counts' => $statusCounts]));
     }
 
+    /** Rows per chunk of the streamed CSV export. */
+    private const EXPORT_CHUNK = 500;
+
     /**
      * Every handover the archive list would show for the same filters (and visibility), as a CSV
-     * download. Streamed in keyset chunks on the primary key (WHERE id < last id, 500 rows each),
-     * so there is no row cap, no growing OFFSET, the whole archive is never held in memory, and a
-     * row filed or removed mid-export can't shift the pages and duplicate or skip another.
-     * The order is therefore newest filed first (id descending), not the list's sort column.
+     * download, in the list's order (its sort column, then newest handover, newest filed, highest
+     * id). Streamed in keyset chunks of EXPORT_CHUNK rows on that whole order (WHERE the row comes
+     * after the last one written), so there is no row cap, no growing OFFSET, the whole archive is
+     * never held in memory, and a row filed or removed mid-export can't shift the chunks and
+     * duplicate or skip another. The id ends the order, so a tie never straddles a chunk boundary.
      */
     public function export(Request $request)
     {
-        $query = $this->archiveQuery($request)->with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name']);
+        $order = $this->archiveOrder($request);
+        $query = $this->archiveQuery($request)->with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name'])
+            ->select('checklist_submissions.*');
+        // Each order key is read back with the row as the database compares it (raw, not cast).
+        foreach ($order as $i => [$expression]) {
+            $query->selectRaw("{$expression} as keyset_{$i}");
+        }
         $filename = 'checklist-archive-'.BusinessDate::todayString().'.csv';
 
-        return response()->streamDownload(function () use ($query) {
+        return response()->streamDownload(function () use ($query, $order) {
             $out = fopen('php://output', 'w');
             // UTF-8 BOM: without it Excel reads the file as ANSI and garbles Polish names.
             fwrite($out, "\xEF\xBB\xBF");
             self::csvRow($out, ['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Timing', 'Submitted At']);
-            foreach ($query->reorder()->lazyByIdDesc(500, 'checklist_submissions.id', 'id') as $submission) {
-                self::csvRow($out, [
-                    $submission->date?->format('Y-m-d') ?? '',
-                    $submission->template?->name ?? '',
-                    $submission->outgoingUser?->name ?? '',
-                    $submission->incomingUser?->name ?? '',
-                    self::STATUS_LABELS[$submission->status] ?? $submission->status,
-                    match ($submission->submitted_on_time) {
-                        true => 'On time', false => 'Late', default => ''
-                    },
-                    $submission->submitted_at?->copy()->setTimezone(BusinessDate::timezone())->format('Y-m-d H:i') ?? '',
-                ]);
-            }
+            // Progress guard, in constant memory: each chunk must move the cursor, bring none of the
+            // previous chunk's rows, and the export can't write more rows than matched when it
+            // started (plus a chunk, for rows filed meanwhile). A keyset that doesn't advance (a bug
+            // in whereAfter) would otherwise loop forever; it is logged and the file ends with a row
+            // saying it is incomplete.
+            $total = $query->clone()->reorder()->count();
+            $written = 0;
+            $previousIds = [];
+            $last = null;
+            do {
+                $chunk = $query->clone()
+                    ->when($last !== null, fn ($q) => self::whereAfter($q, $order, $last))
+                    ->limit(self::EXPORT_CHUNK)
+                    ->get();
+                $tail = $chunk->last();
+                $next = $tail === null ? null : array_map(fn ($i) => $tail->getAttributes()["keyset_{$i}"], array_keys($order));
+                $repeated = $chunk->first(fn ($submission) => isset($previousIds[$submission->id]));
+                if ($tail !== null && ($next === $last || $repeated !== null || $written + $chunk->count() > $total + self::EXPORT_CHUNK)) {
+                    Log::error('Checklist archive export stopped: the keyset did not advance or brought more rows than matched.', [
+                        'order' => $order, 'cursor' => $last, 'next' => $next, 'repeated_id' => $repeated?->id,
+                        'rows_written' => $written, 'rows_matching' => $total,
+                    ]);
+                    // The 200 and part of the file are already sent, so no exception (its error page
+                    // would be appended to the file): the file says it is incomplete and ends here.
+                    self::csvRow($out, ["Export incomplete: stopped after {$written} of {$total} rows. Please try again."]);
+                    fclose($out);
+
+                    return;
+                }
+                $written += $chunk->count();
+                $previousIds = $chunk->pluck('id')->flip()->all();
+                foreach ($chunk as $submission) {
+                    self::csvRow($out, [
+                        $submission->date?->format('Y-m-d') ?? '',
+                        $submission->template?->name ?? '',
+                        $submission->outgoingUser?->name ?? '',
+                        $submission->incomingUser?->name ?? '',
+                        self::STATUS_LABELS[$submission->status] ?? $submission->status,
+                        match ($submission->submitted_on_time) {
+                            true => 'On time', false => 'Late', default => ''
+                        },
+                        $submission->submitted_at?->copy()->setTimezone(BusinessDate::timezone())->format('Y-m-d H:i') ?? '',
+                    ]);
+                }
+                $last = $next;
+            } while ($chunk->count() === self::EXPORT_CHUNK);
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Narrows $query to the rows after $last in $order, as ORDER BY sorts them (ascending puts
+     * nulls last, descending first): further along on the first key, or equal on it and further
+     * along on the next, and so on down to the id.
+     *
+     * @param  list<array{0: string, 1: 'asc'|'desc'}>  $order
+     * @param  list<mixed>  $last  the last written row's value of each key
+     */
+    private static function whereAfter(Builder $query, array $order, array $last): void
+    {
+        $query->where(function ($any) use ($order, $last) {
+            foreach ($order as $i => [$expression, $direction]) {
+                $any->orWhere(function ($row) use ($order, $last, $i, $expression, $direction) {
+                    for ($j = 0; $j < $i; $j++) {
+                        $last[$j] === null
+                            ? $row->whereRaw("{$order[$j][0]} is null")
+                            : $row->whereRaw("{$order[$j][0]} = ?", [$last[$j]]);
+                    }
+                    $value = $last[$i];
+                    match (true) {
+                        $direction === 'asc' && $value === null => $row->whereRaw('false'),
+                        $direction === 'asc' => $row->whereRaw("({$expression} > ? or {$expression} is null)", [$value]),
+                        $value === null => $row->whereRaw("{$expression} is not null"),
+                        default => $row->whereRaw("{$expression} < ?", [$value]),
+                    };
+                });
+            }
+        });
     }
 
     /**
@@ -129,21 +203,40 @@ class ChecklistSubmissionController extends Controller
                 ->orWhereHas('incomingUser', $nameMatches));
         }
 
+        foreach ($this->archiveOrder($request) as [$expression, $direction]) {
+            $query->orderByRaw("{$expression} {$direction}");
+        }
+
+        return $query;
+    }
+
+    /**
+     * The archive's order, shared by the list's pages and the export's keyset: the chosen sort
+     * column, then newest handover, newest filed, and the id last, so the order is total and pages
+     * never overlap or skip a row. The SQL is only ever these literals (the sort is one of SORTS).
+     *
+     * @return list<array{0: string, 1: 'asc'|'desc'}>
+     */
+    private function archiveOrder(Request $request): array
+    {
         $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
-        $nameOf = fn (string $table, string $column) => DB::table($table)->select('name')
-            ->whereColumn("{$table}.id", "checklist_submissions.{$column}")->limit(1);
-        match ($request->input('sort') ?? 'date') {
-            'template' => $query->orderBy($nameOf('checklist_templates', 'checklist_template_id'), $direction),
-            'outgoing' => $query->orderBy($nameOf('users', 'outgoing_user_id'), $direction),
-            'incoming' => $query->orderBy($nameOf('users', 'incoming_user_id'), $direction),
-            'status' => $query->orderBy('status', $direction),
-            'timing' => $query->orderBy('submitted_on_time', $direction),
-            'submitted_at' => $query->orderBy('submitted_at', $direction),
-            default => $query->orderBy('date', $direction),
+        $nameOf = fn (string $table, string $column) => "(select {$table}.name from {$table} where {$table}.id = checklist_submissions.{$column} limit 1)";
+        $sorted = match ($request->input('sort') ?? 'date') {
+            'template' => $nameOf('checklist_templates', 'checklist_template_id'),
+            'outgoing' => $nameOf('users', 'outgoing_user_id'),
+            'incoming' => $nameOf('users', 'incoming_user_id'),
+            'status' => 'checklist_submissions.status',
+            'timing' => 'checklist_submissions.submitted_on_time',
+            'submitted_at' => 'checklist_submissions.submitted_at',
+            default => 'checklist_submissions.date',
         };
 
-        // Newest first within equal keys, then by id so pages never overlap or skip a row.
-        return $query->orderBy('date', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+        return [
+            [$sorted, $direction],
+            ['checklist_submissions.date', 'desc'],
+            ['checklist_submissions.created_at', 'desc'],
+            ['checklist_submissions.id', 'desc'],
+        ];
     }
 
     /** One CSV line; a cell a spreadsheet would run as a formula gets a leading quote. */

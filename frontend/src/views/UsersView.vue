@@ -732,6 +732,7 @@ import DelegationForm from '../components/DelegationForm.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
 import { formatCalendarDate, todayStr } from '../dates.js';
+import { fetchAllPages } from '../fetchAllPages.js';
 import { canManageSchedule, isAdmin, ROLE_OPTIONS, roleLabel } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -1213,8 +1214,11 @@ async function toggleMember(userId) {
 // ── Delegations ────────────────────────────────────────
 async function fetchDelegations() {
   try {
-    const res = await api.get('/api/delegations');
-    allDelegations.value = res.data;
+    // The picker offers every delegation: page through the (paginated) list.
+    allDelegations.value = await fetchAllPages(
+      (url, config) => api.get(url, config),
+      '/api/delegations',
+    );
   } catch (err) {
     allDelegations.value = [];
     const e = describeApiError(err, 'Could not load delegations');

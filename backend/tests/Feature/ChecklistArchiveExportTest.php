@@ -2,7 +2,10 @@
 
 use App\Models\ChecklistTemplate;
 use App\Models\User;
+use App\Support\BusinessDate;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 // M23: the archive listed (and exported) at most 1000 handovers. The list is now paginated on the
 // server and the CSV comes from a streamed endpoint that exports every matching row, with the same
@@ -50,6 +53,8 @@ function caeCsv($response): array
         $rows[] = $row;
     }
     fclose($handle);
+    // The progress guard ends a stopped export with this row: no test expects it unless it says so.
+    expect(end($rows)[0] ?? '')->not->toStartWith('Export incomplete');
 
     return $rows;
 }
@@ -184,18 +189,141 @@ it('starts the CSV with a UTF-8 BOM so Excel reads Polish names right', function
         ->and(caeCsv($response)[1][2])->toBe('Kuba Urbańczyk');
 });
 
-it('exports newest filed first (by id) across chunks, whatever the list sort', function () {
+/**
+ * Inserts $count handovers with the same date and filing time (so only the id orders them) and a
+ * submitted_at one minute apart: its CSV cell tells the rows apart. Templates and incoming users
+ * cycle through the given lists (null = none).
+ */
+function caeInsertTied(int $count, array $templates, User $outgoing, array $incoming = [null], string $date = '2026-10-01', int $firstMinute = 0): void
+{
+    $filed = now()->setDate(2026, 10, 1)->setTime(12, 0);
+    $rows = [];
+    for ($i = 0; $i < $count; $i++) {
+        $rows[] = [
+            'checklist_template_id' => $templates[$i % count($templates)]->id,
+            'date' => $date,
+            'outgoing_user_id' => $outgoing->id,
+            'incoming_user_id' => $incoming[$i % count($incoming)]?->id,
+            'submitted_by_user_id' => $outgoing->id,
+            'status' => 'completed',
+            'submitted_at' => $filed->copy()->addMinutes($firstMinute + $i),
+            'created_at' => $filed,
+            'updated_at' => $filed,
+        ];
+    }
+    foreach (array_chunk($rows, 500) as $chunk) {
+        DB::table('checklist_submissions')->insert($chunk);
+    }
+}
+
+/** The list's order for $query, read page by page (per_page 100), as Submitted At cells. */
+function caeListOrder($test, User $admin, array $query): array
+{
+    $cells = [];
+    for ($page = 1; ; $page++) {
+        $res = $test->actingAs($admin)->getJson('/api/checklist-submissions?'.http_build_query($query + ['per_page' => 100, 'page' => $page]))->json();
+        foreach ($res['data'] as $row) {
+            $cells[] = Carbon::parse($row['submitted_at'])->setTimezone(BusinessDate::timezone())->format('Y-m-d H:i');
+        }
+        if ($page >= $res['last_page']) {
+            return $cells;
+        }
+    }
+}
+
+it('exports in the list order, ties broken by id, without dropping or repeating rows across chunks', function () {
     $admin = User::factory()->create(['role' => 'admin']);
     $template = caeTemplate();
-    // Filed in this order; their handover dates deliberately disagree with it.
-    foreach (['2026-10-01', '2026-10-09', '2026-10-05'] as $date) {
-        caeInsert(1, $template, $admin, null, ['date' => $date]);
+    // Filed first, but with handover dates on both sides of the rest: the list (newest handover
+    // first) puts them at the top and the bottom, not in filing order.
+    caeInsertTied(1, [$template], $admin, [null], '2026-10-09', 5000);
+    caeInsertTied(1, [$template], $admin, [null], '2026-09-01', 5001);
+    // 1203 rows tied on date and filing time: the 500-row chunks end inside the tie.
+    caeInsertTied(1203, [$template], $admin);
+
+    $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export')), 1);
+    $submitted = array_column($rows, 6);
+
+    expect($rows)->toHaveCount(1205)
+        ->and(array_unique($submitted))->toHaveCount(1205)
+        ->and($submitted)->toBe(caeListOrder($this, $admin, []))
+        ->and([$rows[0][0], $rows[1204][0]])->toBe(['2026-10-09', '2026-09-01'])
+        // Within the tie, newest id first: the last inserted (latest submitted_at) leads.
+        ->and($submitted[1])->toBeGreaterThan($submitted[1203]);
+});
+
+it('exports in the order of the list sort the screen sends, nulls included', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $templates = [caeTemplate('Bravo'), caeTemplate('Alpha'), caeTemplate('Charlie')];
+    $incoming = [null, User::factory()->create(['name' => 'Ann']), User::factory()->create(['name' => 'Zoe'])];
+    caeInsertTied(1100, $templates, $admin, $incoming);
+
+    foreach ([['sort' => 'template', 'direction' => 'asc'], ['sort' => 'incoming', 'direction' => 'desc'],
+        ['sort' => 'incoming', 'direction' => 'asc'], ['sort' => 'submitted_at', 'direction' => 'asc']] as $query) {
+        $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?'.http_build_query($query))), 1);
+        expect(array_column($rows, 6))->toBe(caeListOrder($this, $admin, $query), json_encode($query));
     }
-    // Enough later rows for several 500-row chunks.
-    caeInsert(1200, $template, $admin, null, ['date' => '2026-01-01']);
+});
 
-    $rows = caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?sort=template&direction=asc'));
+it('exports in the list order for the timing (nullable boolean) and status sorts', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    caeInsertTied(1100, [caeTemplate()], $admin);
+    // On time, late and not known (null); every status, so each sort has long ties across chunks.
+    // 3 in 5 are null (660 rows), so a 500-row boundary falls inside the nulls in both directions.
+    DB::statement("update checklist_submissions set
+        submitted_on_time = case id % 5 when 0 then true when 1 then false else null end,
+        status = case id % 4 when 0 then 'draft' when 1 then 'pending_confirmation' else 'completed' end");
 
-    expect(count($rows) - 1)->toBe(1203)
-        ->and(array_column(array_slice($rows, -3), 0))->toBe(['2026-10-05', '2026-10-09', '2026-10-01']);
+    foreach ([['sort' => 'timing', 'direction' => 'asc'], ['sort' => 'timing', 'direction' => 'desc'],
+        ['sort' => 'status', 'direction' => 'asc'], ['sort' => 'status', 'direction' => 'desc']] as $query) {
+        $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?'.http_build_query($query))), 1);
+        expect($rows)->toHaveCount(1100)
+            ->and(array_column($rows, 6))->toBe(caeListOrder($this, $admin, $query), json_encode($query));
+    }
+    // The timing cells really vary (and blanks are there), so the boolean keyset was exercised.
+    expect(array_values(array_unique(array_column($rows, 5))))->toEqualCanonicalizing(['On time', 'Late', '']);
+});
+
+it('exports an ascending sort whose nulls (last) run across chunk boundaries', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $incoming = [User::factory()->create(['name' => 'Ann']), User::factory()->create(['name' => 'Zoe'])];
+    caeInsertTied(1100, [caeTemplate()], $admin, $incoming);
+    // 7 in 10 without an incoming user (770 rows): ascending puts them last, so the boundaries at
+    // 500 and 1000 fall inside the nulls and the cursor's sort key is null twice.
+    DB::statement('update checklist_submissions set incoming_user_id = null where id % 10 < 7');
+
+    $query = ['sort' => 'incoming', 'direction' => 'asc'];
+    $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?'.http_build_query($query))), 1);
+    $submitted = array_column($rows, 6);
+
+    expect($rows)->toHaveCount(1100)
+        ->and(array_unique($submitted))->toHaveCount(1100)
+        ->and(array_values(array_unique(array_column(array_slice($rows, 330), 3))))->toBe([''])
+        ->and($submitted)->toBe(caeListOrder($this, $admin, $query));
+});
+
+it('ends a stopped export with a row saying it is incomplete, and logs why', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $template = caeTemplate();
+    caeInsert(500, $template, $admin);
+    // 600 older handovers filed while the first chunk is written: more rows than matched at the
+    // start plus a chunk, which the guard takes for an export that doesn't end.
+    $filed = false;
+    DB::listen(function ($query) use (&$filed, $template, $admin) {
+        if (! $filed && str_contains($query->sql, 'limit 500')) {
+            $filed = true;
+            caeInsert(600, $template, $admin, null, ['date' => '2020-01-01']);
+        }
+    });
+    Log::spy();
+
+    $content = $this->actingAs($admin)->get('/api/checklist-submissions/export')->assertOk()->streamedContent();
+
+    $lines = array_values(array_filter(explode(PHP_EOL, $content), fn ($line) => $line !== ''));
+    // Two full chunks (1000 rows) went out; the third would pass 500 matched + a chunk.
+    expect(end($lines))->toBe('"Export incomplete: stopped after 1000 of 500 rows. Please try again."')
+        ->and(count($lines))->toBe(1 + 1000 + 1)
+        ->and($content)->not->toContain('Server Error');
+    Log::shouldHaveReceived('error')->once()
+        ->withArgs(fn ($message, $context) => str_contains($message, 'export stopped') && $context['rows_matching'] === 500);
 });

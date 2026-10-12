@@ -96,6 +96,113 @@ test.describe('Delegations: create, act, withdraw', () => {
     await expect(card.getByRole('button', { name: /I want to take part/ })).toBeVisible();
   });
 
+  test("shortening a delegation moves members' travel dates into it and says so", async ({
+    adminPage,
+  }) => {
+    const context = adminPage.context();
+    const delegation = await createDelegation(context, {
+      name: 'Deleg Shrink Clamp',
+      destination: 'Toruń',
+      start: '2096-02-03',
+      end: '2096-02-08',
+    });
+    const memberId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
+    const headers = { Accept: 'application/json', ...(await getXsrfHeader(context)) };
+    const added = await context.request.post(`/api/delegations/${delegation.id}/add-user`, {
+      data: { user_id: memberId, custom_start: '2096-02-04', custom_end: '2096-02-07' },
+      headers,
+    });
+    expect(added.ok()).toBe(true);
+
+    await adminPage.goto('/delegations-manage');
+    const card = adminPage.locator('div.rounded-2xl').filter({
+      has: adminPage.getByRole('heading', { name: 'Deleg Shrink Clamp' }),
+    });
+    await card.getByTitle('Edit').click();
+    await adminPage.getByLabel('End Date').fill('2096-02-05');
+    const saved = adminPage.waitForResponse(
+      (res) =>
+        res.url().endsWith(`/api/delegations/${delegation.id}`) && res.request().method() === 'PUT',
+    );
+    await adminPage.getByRole('button', { name: 'Update', exact: true }).click();
+    expect((await saved).status()).toBe(200);
+
+    await expect(
+      adminPage.getByText('Delegation saved. Travel dates of 1 member adjusted to the new dates.'),
+    ).toBeVisible();
+    await expect(card.getByText('Feb 3, 2096 → Feb 5, 2096')).toBeVisible();
+
+    const list = await (
+      await context.request.get('/api/delegations?per_page=100', { headers })
+    ).json();
+    const rows = Array.isArray(list) ? list : list.data;
+    const member = rows.find((d) => d.id === delegation.id).users.find((u) => u.id === memberId);
+    expect([member.pivot.custom_start, member.pivot.custom_end]).toEqual([
+      '2096-02-04',
+      '2096-02-05',
+    ]);
+  });
+
+  test('the list is paged on the server: Next and Previous load the other page', async ({
+    adminPage,
+  }) => {
+    // A run creates fewer delegations than one page holds, so a second page is made up here: the
+    // real first page with last_page 2, and one made-up delegation on page 2.
+    const requested = [];
+    await adminPage.route(/\/api\/delegations\?/, async (route) => {
+      const page = Number(new URL(route.request().url()).searchParams.get('page'));
+      requested.push(page);
+      const response = await route.fetch();
+      const body = await response.json();
+      const second = { ...body.data[0], id: 99999999, name: 'Deleg Paged Second', users: [] };
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          current_page: page,
+          last_page: 2,
+          total: body.data.length + 1,
+          data: page === 2 ? [second] : body.data,
+        },
+      });
+    });
+
+    try {
+      await adminPage.goto('/delegations-manage');
+      const pager = adminPage.getByRole('navigation', { name: 'Delegation pages' });
+      await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+      await expect(pager.getByRole('button', { name: '← Previous' })).toBeDisabled();
+
+      await pager.getByRole('button', { name: 'Next →' }).click();
+      await expect(pager.getByText('Page 2 of 2')).toBeVisible();
+      await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toBeVisible();
+      await expect(pager.getByRole('button', { name: 'Next →' })).toBeDisabled();
+
+      await pager.getByRole('button', { name: '← Previous' }).click();
+      await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+      await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toHaveCount(0);
+      expect(requested).toEqual([1, 2, 1]);
+
+      // A delegation created from page 2 sends the list back to page 1, where it is listed.
+      await pager.getByRole('button', { name: 'Next →' }).click();
+      await expect(pager.getByText('Page 2 of 2')).toBeVisible();
+      await adminPage.getByRole('button', { name: '+ New Delegation' }).click();
+      await adminPage.getByLabel('Name').fill('Deleg Created From Page 2');
+      await adminPage.getByLabel('Destination').fill('Opole');
+      await adminPage.getByLabel('Start Date').fill('2096-02-01');
+      await adminPage.getByLabel('End Date').fill('2096-02-01');
+      await adminPage.getByRole('button', { name: 'Create', exact: true }).click();
+      await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+      await expect(
+        adminPage.getByRole('heading', { name: 'Deleg Created From Page 2' }),
+      ).toBeVisible();
+      expect(requested).toEqual([1, 2, 1, 2, 1]);
+    } finally {
+      // A handler still running when the page closes would fail the next test.
+      await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
+    }
+  });
+
   test("a field's server error clears once that field is changed", async ({ adminPage }) => {
     await adminPage.route('**/api/delegations', (route) =>
       route.request().method() === 'POST'

@@ -33,6 +33,9 @@ it('answers 404 JSON to an unknown API path instead of the SPA shell (F2)', func
 });
 
 it('still serves the SPA shell for app routes (F2)', function () {
+    // CI has no built frontend, so there is no Vite manifest to render.
+    $this->withoutVite();
+
     $this->get('/schedule/2026-10')->assertOk()->assertViewIs('app');
     $this->get('/apiary')->assertOk()->assertViewIs('app');
 });

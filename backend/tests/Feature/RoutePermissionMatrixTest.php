@@ -25,6 +25,8 @@ function rpmExpected(): array
     return [
         // No session needed.
         'public' => [
+            // The container healthcheck's readiness probe: no data, says only whether the DB is up.
+            'GET /api/health',
             'POST /api/login',
         ],
         // Open to every logged-in, active user, whatever their role.
@@ -245,9 +247,9 @@ it('keeps every api route in its reviewed access group', function () {
     }
 });
 
-it('puts every route but login behind a session and an active account', function () {
+it('puts every route but login and the health probe behind a session and an active account', function () {
     foreach (Route::getRoutes() as $route) {
-        if (! str_starts_with($route->uri(), 'api/') || $route->uri() === 'api/login') {
+        if (! str_starts_with($route->uri(), 'api/') || in_array($route->uri(), ['api/login', 'api/health'], true)) {
             continue;
         }
         expect($route->gatherMiddleware())->toContain('auth:sanctum', 'active');

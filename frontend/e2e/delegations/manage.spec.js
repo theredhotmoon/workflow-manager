@@ -181,6 +181,8 @@ test.describe('Delegations: create, act, withdraw', () => {
     await expect(pager.getByText('Page 1 of 2')).toBeVisible();
     await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toHaveCount(0);
     expect(requested).toEqual([1, 2, 1]);
+    // A handler still running when the page closes would fail the next test.
+    await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
   test("a field's server error clears once that field is changed", async ({ adminPage }) => {

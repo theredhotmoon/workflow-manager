@@ -261,3 +261,21 @@ it('exports in the order of the list sort the screen sends, nulls included', fun
         expect(array_column($rows, 6))->toBe(caeListOrder($this, $admin, $query), json_encode($query));
     }
 });
+
+it('exports in the list order for the timing (nullable boolean) and status sorts', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    caeInsertTied(1100, [caeTemplate()], $admin);
+    // On time, late and not known (null); every status, so each sort has long ties across chunks.
+    DB::statement("update checklist_submissions set
+        submitted_on_time = case id % 3 when 0 then null when 1 then true else false end,
+        status = case id % 4 when 0 then 'draft' when 1 then 'pending_confirmation' else 'completed' end");
+
+    foreach ([['sort' => 'timing', 'direction' => 'asc'], ['sort' => 'timing', 'direction' => 'desc'],
+        ['sort' => 'status', 'direction' => 'asc'], ['sort' => 'status', 'direction' => 'desc']] as $query) {
+        $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?'.http_build_query($query))), 1);
+        expect($rows)->toHaveCount(1100)
+            ->and(array_column($rows, 6))->toBe(caeListOrder($this, $admin, $query), json_encode($query));
+    }
+    // The timing cells really vary (and blanks are there), so the boolean keyset was exercised.
+    expect(array_unique(array_column($rows, 5)))->toEqualCanonicalizing(['On time', 'Late', '']);
+});

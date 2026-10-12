@@ -5,10 +5,12 @@ import {
   createUser,
 } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
+import { cleanupStack } from '../fixtures/cleanup.js';
 import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('checklists/handover-reassign');
 const HANDOVER_DAY = reserve.day('2092-08-15');
+const STALE_DAY = reserve.day('2092-08-16');
 
 // F7 + PR 20: a pending handover waiting for a deactivated incoming user is stuck; an admin hands
 // it to someone active from the archive, and that user is notified with a link that opens it.
@@ -29,11 +31,43 @@ async function deactivate(admin, userId) {
 /** A throwaway employee, signed in in their own browser context. */
 async function throwawayEmployee(admin, browser, label) {
   const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-  const email = `cr-${label}-${stamp}@example.test`;
-  const user = await createUser(admin, { name: `CR ${label} ${stamp}`, email });
+  const email = `ho-${label}-${stamp}@example.test`;
+  const user = await createUser(admin, { name: `HO ${label} ${stamp}`, email });
   const context = await browser.newContext({ extraHTTPHeaders: STATEFUL_ORIGIN });
   await loginAs(context, email, 'password123');
   return { user, context };
+}
+
+/** A pending handover from a new outgoing user to a new incoming user, who is then deactivated. */
+async function stuckHandover(admin, browser, cleanup, { date, label }) {
+  const outgoing = await throwawayEmployee(admin, browser, `${label}-out`);
+  cleanup.add(() => deactivate(admin, outgoing.user.id));
+  cleanup.add(() => outgoing.context.close());
+  const gone = await throwawayEmployee(admin, browser, `${label}-gone`);
+  cleanup.add(() => deactivate(admin, gone.user.id)); // idempotent: also when the test got that far
+  cleanup.add(() => gone.context.close());
+  const template = await createChecklistTemplate(admin, {
+    name: `HO Stuck ${label} ${Date.now()}`,
+    requiresConfirmation: true,
+  });
+  const submission = await createChecklistSubmission(outgoing.context, {
+    template,
+    date,
+    outgoingUserId: outgoing.user.id,
+    incomingUserId: gone.user.id,
+  });
+  expect(submission.status).toBe('pending_confirmation');
+  await deactivate(admin, gone.user.id);
+  return { outgoing, gone, template, submission };
+}
+
+async function openArchiveRow(adminPage, templateName) {
+  await adminPage.goto('/checklist/history');
+  await adminPage.getByPlaceholder('Search by template or user...').fill(templateName);
+  const row = adminPage.getByRole('row').filter({ hasText: templateName });
+  await expect(row).toHaveCount(1);
+  await expect(row.getByTestId('incoming-deactivated')).toBeVisible();
+  return row;
 }
 
 test.describe('Stuck handover reassignment', () => {
@@ -42,31 +76,19 @@ test.describe('Stuck handover reassignment', () => {
     browser,
   }) => {
     const admin = adminPage.context();
-    const stamp = Date.now();
-    const outgoing = await throwawayEmployee(admin, browser, 'out');
-    const gone = await throwawayEmployee(admin, browser, 'gone');
-    const replacement = await throwawayEmployee(admin, browser, 'new');
+    const cleanup = cleanupStack();
     try {
-      const template = await createChecklistTemplate(admin, {
-        name: `CR Stuck Handover ${stamp}`,
-        requiresConfirmation: true,
-      });
-      const submission = await createChecklistSubmission(outgoing.context, {
-        template,
+      const { outgoing, gone, template } = await stuckHandover(admin, browser, cleanup, {
         date: HANDOVER_DAY,
-        outgoingUserId: outgoing.user.id,
-        incomingUserId: gone.user.id,
+        label: 'ok',
       });
-      expect(submission.status).toBe('pending_confirmation');
-      await deactivate(admin, gone.user.id);
+      const replacement = await throwawayEmployee(admin, browser, 'ok-new');
+      cleanup.add(() => deactivate(admin, replacement.user.id));
+      cleanup.add(() => replacement.context.close());
 
-      await adminPage.goto('/checklist/history');
-      await adminPage.getByPlaceholder('Search by template or user...').fill(template.name);
-      const row = adminPage.getByRole('row').filter({ hasText: template.name });
-      await expect(row).toHaveCount(1);
-      await expect(row.getByTestId('incoming-deactivated')).toBeVisible();
-
-      await row.getByRole('button', { name: 'Hand to someone else' }).click();
+      const row = await openArchiveRow(adminPage, template.name);
+      // Named after its handover, so several stuck rows don't share one button name.
+      await row.getByRole('button', { name: `Hand to someone else: ${template.name} of ` }).click();
       const dialog = adminPage.getByRole('dialog', { name: 'Hand to someone else' });
       const picker = dialog.getByLabel('New incoming employee');
       // Active users only, without the outgoing user.
@@ -79,21 +101,63 @@ test.describe('Stuck handover reassignment', () => {
       await expect(dialog).toHaveCount(0);
       await expect(row).toContainText(replacement.user.name);
       await expect(row.getByTestId('incoming-deactivated')).toHaveCount(0);
-      await expect(row.getByRole('button', { name: 'Hand to someone else' })).toHaveCount(0);
+      await expect(row.getByRole('button', { name: /^Hand to someone else/ })).toHaveCount(0);
 
-      // The new incoming user sees the alarm, and its link opens the handover to confirm.
+      // The new incoming user is already on Fill Checklist (the view is reused, not remounted)
+      // when they follow the alarm: its link still opens the handover to confirm.
       const page = await replacement.context.newPage();
-      await page.goto('/dashboard');
+      await page.goto('/checklist/fill');
       await page.getByRole('button', { name: 'Notifications' }).click();
       const alarm = page.locator('#alarm-dropdown').getByText(/handed you a handover to confirm/);
       await expect(alarm).toBeVisible();
       await alarm.click();
-      await expect(page).toHaveURL(new RegExp(`/checklist/fill\\?confirm=${submission.id}$`));
       await expect(page.getByText(`${template.name} item`)).toBeVisible();
+      // Handled: the parameter leaves the address, so a reload doesn't reopen it or warn.
+      await expect(page).toHaveURL(/\/checklist\/fill$/);
     } finally {
-      for (const u of [outgoing, gone, replacement]) await u.context.close();
-      await deactivate(admin, outgoing.user.id);
-      await deactivate(admin, replacement.user.id);
+      await cleanup.run();
+    }
+  });
+
+  test('a handover handed over meanwhile by someone else is re-read instead of failing again', async ({
+    adminPage,
+    browser,
+  }) => {
+    const admin = adminPage.context();
+    const cleanup = cleanupStack();
+    try {
+      const { template, submission } = await stuckHandover(admin, browser, cleanup, {
+        date: STALE_DAY,
+        label: 'stale',
+      });
+      const mine = await throwawayEmployee(admin, browser, 'stale-mine');
+      cleanup.add(() => deactivate(admin, mine.user.id));
+      cleanup.add(() => mine.context.close());
+      const theirs = await throwawayEmployee(admin, browser, 'stale-theirs');
+      cleanup.add(() => deactivate(admin, theirs.user.id));
+      cleanup.add(() => theirs.context.close());
+
+      const row = await openArchiveRow(adminPage, template.name);
+      await row.getByRole('button', { name: /^Hand to someone else/ }).click();
+      const dialog = adminPage.getByRole('dialog', { name: 'Hand to someone else' });
+      await dialog.getByLabel('New incoming employee').selectOption({ label: mine.user.name });
+
+      // Another admin (here: the API) hands it over first.
+      await api(admin, 'put', `/api/checklist-submissions/${submission.id}/incoming`, {
+        incoming_user_id: theirs.user.id,
+      });
+      await dialog.getByRole('button', { name: 'Hand over' }).click();
+
+      await expect(dialog).toHaveCount(0);
+      await expect(
+        adminPage.getByText(
+          'Only a handover whose incoming user was deactivated can be handed to someone else.',
+        ),
+      ).toBeVisible();
+      await expect(row).toContainText(theirs.user.name);
+      await expect(row.getByRole('button', { name: /^Hand to someone else/ })).toHaveCount(0);
+    } finally {
+      await cleanup.run();
     }
   });
 });

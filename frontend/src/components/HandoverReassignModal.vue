@@ -2,7 +2,8 @@
   "Hand to someone else": an admin picks the new incoming user of a pending handover whose incoming
   user was deactivated (PUT /api/checklist-submissions/{id}/incoming). The picker lists active
   users only, without the outgoing user and the admin themselves (the API refuses both).
-  Emits `reassigned` with the updated handover, and `close`.
+  Emits `reassigned` with the updated handover, `stale` (with the server's message) when the
+  handover changed meanwhile (confirmed, or handed over by another admin), and `close`.
 -->
 <template>
   <BaseModal
@@ -61,7 +62,7 @@ const props = defineProps({
   /** The pending handover (a row of the archive list). */
   submission: { type: Object, required: true },
 });
-const emit = defineEmits(['close', 'reassigned']);
+const emit = defineEmits(['close', 'reassigned', 'stale']);
 
 const users = ref([]);
 const loadingUsers = ref(true);
@@ -104,11 +105,18 @@ async function submit() {
     emit('reassigned', res.data);
   } catch (err) {
     const e = describeApiError(err, 'Could not hand the handover over');
-    if (!e.silent) error.value = e.fieldErrors.incoming_user_id || e.message;
-    // Someone just deactivated the picked user: offer the fresh list.
+    if (e.silent) return;
     if (e.fieldErrors.incoming_user_id) {
+      // Someone just deactivated the picked user: offer the fresh list.
+      error.value = e.fieldErrors.incoming_user_id;
       selectedId.value = '';
       loadUsers();
+    } else if (e.status === 422 || e.status === 404) {
+      // The handover itself changed (no longer waiting, already handed over, gone): retrying here
+      // can only fail again, so the list re-reads it.
+      emit('stale', e.message);
+    } else {
+      error.value = e.message;
     }
   } finally {
     saving.value = false;

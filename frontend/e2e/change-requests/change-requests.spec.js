@@ -9,6 +9,7 @@ import {
   setDayShiftCount,
 } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
+import { cleanupStack } from '../fixtures/cleanup.js';
 import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('change-requests/change-requests');
@@ -47,30 +48,6 @@ async function fileRequest(context, assignmentId, reason) {
     shift_assignment_id: assignmentId,
     reason,
   });
-}
-
-/**
- * Cleanup steps, run in reverse order of creation, each on its own: one failing step (or a test
- * failing half-way through its setup) doesn't skip the others.
- */
-function cleanupStack() {
-  const steps = [];
-  return {
-    add(step) {
-      steps.push(step);
-    },
-    async run() {
-      const errors = [];
-      for (const step of steps.reverse()) {
-        try {
-          await step();
-        } catch (error) {
-          errors.push(error);
-        }
-      }
-      if (errors.length) throw errors[0];
-    },
-  };
 }
 
 /** The number on a nav link's badge (its aria-hidden digits, not the sr-only "(N pending)"). */

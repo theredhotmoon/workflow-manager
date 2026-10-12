@@ -224,6 +224,7 @@
                   <span v-else class="text-sm text-slate-600">—</span>
                   <!-- Stuck: waiting for someone who can no longer sign in (admins only see deactivated_at). -->
                   <button v-if="canHandToSomeoneElse(sub)" type="button" @click.stop="reassigning = sub"
+                    :aria-label="`Hand to someone else: ${sub.template?.name ?? 'handover'} of ${formatDate(sub.date)}`"
                     class="mt-1.5 px-2.5 py-1 text-[11px] font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition-all">
                     Hand to someone else
                   </button>
@@ -426,7 +427,7 @@
       </Transition>
 
       <HandoverReassignModal v-if="reassigning" :submission="reassigning"
-        @close="reassigning = null" @reassigned="onReassigned" />
+        @close="reassigning = null" @reassigned="onReassigned" @stale="onReassignStale" />
 
       <!-- Procedure Preview Modal (stacks on top of detail modal) -->
       <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
@@ -711,6 +712,16 @@ function onReassigned(updated) {
   if (detailData.value?.id === updated.id) Object.assign(detailData.value, fields);
   reassigning.value = null;
   showToast(`Handed to ${updated.incoming_user?.name ?? 'the new incoming user'}.`);
+}
+
+// The handover changed under the dialog (confirmed, or handed over by another admin): say why and
+// re-read the page (and an open detail of it), so the row stops offering the button.
+function onReassignStale(message) {
+  const id = reassigning.value?.id;
+  reassigning.value = null;
+  showToast(message, 'warning', 6000);
+  fetchPage();
+  if (id && detailData.value?.id === id) viewDetail(id);
 }
 
 // Helpers

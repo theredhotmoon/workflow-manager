@@ -167,22 +167,40 @@ test.describe('Delegations: create, act, withdraw', () => {
       });
     });
 
-    await adminPage.goto('/delegations-manage');
-    const pager = adminPage.getByRole('navigation', { name: 'Delegation pages' });
-    await expect(pager.getByText('Page 1 of 2')).toBeVisible();
-    await expect(pager.getByRole('button', { name: '← Previous' })).toBeDisabled();
+    try {
+      await adminPage.goto('/delegations-manage');
+      const pager = adminPage.getByRole('navigation', { name: 'Delegation pages' });
+      await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+      await expect(pager.getByRole('button', { name: '← Previous' })).toBeDisabled();
 
-    await pager.getByRole('button', { name: 'Next →' }).click();
-    await expect(pager.getByText('Page 2 of 2')).toBeVisible();
-    await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toBeVisible();
-    await expect(pager.getByRole('button', { name: 'Next →' })).toBeDisabled();
+      await pager.getByRole('button', { name: 'Next →' }).click();
+      await expect(pager.getByText('Page 2 of 2')).toBeVisible();
+      await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toBeVisible();
+      await expect(pager.getByRole('button', { name: 'Next →' })).toBeDisabled();
 
-    await pager.getByRole('button', { name: '← Previous' }).click();
-    await expect(pager.getByText('Page 1 of 2')).toBeVisible();
-    await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toHaveCount(0);
-    expect(requested).toEqual([1, 2, 1]);
-    // A handler still running when the page closes would fail the next test.
-    await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
+      await pager.getByRole('button', { name: '← Previous' }).click();
+      await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+      await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toHaveCount(0);
+      expect(requested).toEqual([1, 2, 1]);
+
+      // A delegation created from page 2 sends the list back to page 1, where it is listed.
+      await pager.getByRole('button', { name: 'Next →' }).click();
+      await expect(pager.getByText('Page 2 of 2')).toBeVisible();
+      await adminPage.getByRole('button', { name: '+ New Delegation' }).click();
+      await adminPage.getByLabel('Name').fill('Deleg Created From Page 2');
+      await adminPage.getByLabel('Destination').fill('Opole');
+      await adminPage.getByLabel('Start Date').fill('2096-02-01');
+      await adminPage.getByLabel('End Date').fill('2096-02-01');
+      await adminPage.getByRole('button', { name: 'Create', exact: true }).click();
+      await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+      await expect(
+        adminPage.getByRole('heading', { name: 'Deleg Created From Page 2' }),
+      ).toBeVisible();
+      expect(requested).toEqual([1, 2, 1, 2, 1]);
+    } finally {
+      // A handler still running when the page closes would fail the next test.
+      await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
+    }
   });
 
   test("a field's server error clears once that field is changed", async ({ adminPage }) => {

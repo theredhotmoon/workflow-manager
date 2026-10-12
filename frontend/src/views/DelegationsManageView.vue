@@ -416,6 +416,8 @@ async function saveModal(payload) {
       );
     } else {
       await api.post('/api/delegations', payload);
+      // Back to the first page, where a new (usually upcoming) delegation is listed.
+      page.value = 1;
     }
     showModal.value = false;
   } catch (err) {

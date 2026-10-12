@@ -1392,6 +1392,15 @@ import { localDateStr, todayStr } from '../dates.js';
 import { putDayShiftCount } from '../dayShiftCount.js';
 import { isAdmin, canManageSchedule as userCanManageSchedule } from '../roles.js';
 import { currentUser } from '../router/index.js';
+import {
+  cloneEmployee,
+  describeArc,
+  formatClosureDate,
+  getInitials,
+  groupShiftsByGroup,
+  isOvernightShift,
+  minutesToAngle,
+} from '../schedule/helpers.js';
 import { formatDuration, timeToMinutes, totalShiftHours } from '../shiftHours.js';
 
 const router = useRouter();
@@ -1431,24 +1440,6 @@ const editingGroupId = ref(null);
 const editingGroupName = ref('');
 
 const isAllGroupsMode = computed(() => activeGroupId.value === 'all');
-
-// Group shifts by shift_group_id for All Groups mode rendering
-function groupShiftsByGroup(shifts) {
-  const map = {};
-  for (const shift of shifts) {
-    const gid = shift.shift_group_id || 'default';
-    if (!map[gid]) {
-      map[gid] = {
-        groupId: gid,
-        name: shift.shift_group_name || 'Unknown',
-        color: shift.shift_group_color || null,
-        shifts: [],
-      };
-    }
-    map[gid].shifts.push(shift);
-  }
-  return Object.values(map);
-}
 
 async function fetchShiftGroups() {
   try {
@@ -1954,23 +1945,6 @@ const defaultDonutColors = [
   '#14b8a6',
 ];
 
-function minutesToAngle(minutes) {
-  return (minutes / (24 * 60)) * 360;
-}
-
-function polarToCart(cx, cy, r, angleDeg) {
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-}
-
-function describeArc(cx, cy, r, startAngle, endAngle) {
-  if (endAngle - startAngle >= 360) endAngle = startAngle + 359.99;
-  const start = polarToCart(cx, cy, r, startAngle);
-  const end = polarToCart(cx, cy, r, endAngle);
-  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
-}
-
 const donutSegments = computed(() => {
   return genConfig.value.shifts.map((shift, idx) => {
     const startMin = timeToMinutes(shift.start_time);
@@ -2275,10 +2249,6 @@ async function saveChecklistConfig() {
   }
 }
 
-function isOvernightShift(shift) {
-  return shift.start_time && shift.end_time && shift.end_time < shift.start_time;
-}
-
 // Streak rules match shift types exactly, so offer the active group's rule types plus types
 // already used this month; free text is still allowed.
 const shiftTypeSuggestions = computed(() => {
@@ -2452,11 +2422,6 @@ async function proceedGenerateAsRemote() {
   }
 }
 
-function formatClosureDate(dateStr) {
-  const d = new Date((dateStr?.substring?.(0, 10) || dateStr) + 'T12:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
-
 // PUT /api/schedule/work-mode accepts at most this many shift ids (ScheduleController::MAX_WORK_MODE_SWITCH).
 const MAX_WORK_MODE_SWITCH = 2000;
 
@@ -2528,14 +2493,6 @@ async function changeDayShiftCount(dateStr, newCount) {
   } catch (err) {
     showToast(err.response?.data?.message || 'Failed to update shift count.', 'error');
   }
-}
-
-function cloneEmployee(original) {
-  return {
-    user_id: original.id || original.user_id,
-    user_name: original.name || original.user_name,
-    id: null, // assignment id, to be filled by server
-  };
 }
 
 const wasDragging = ref(false);
@@ -3037,16 +2994,6 @@ async function removeAssignment(assignment, shift) {
   }
   // Removing a shift can end or move a rest window: refresh the other chips' ⚠ / ⏸.
   await fetchSchedule({ quiet: true });
-}
-
-function getInitials(name) {
-  if (!name) return '';
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
 }
 
 // Watch month changes

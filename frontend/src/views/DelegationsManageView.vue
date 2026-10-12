@@ -232,7 +232,6 @@
         </BaseModal>
       </Transition>
     </main>
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -242,7 +241,6 @@ import { onMounted, reactive, ref } from 'vue';
 import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import DelegationForm from '../components/DelegationForm.vue';
 import { confirm } from '../composables/useConfirm.js';

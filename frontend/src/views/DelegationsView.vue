@@ -136,7 +136,6 @@
         </div>
       </div>
     </main>
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -145,7 +144,6 @@ import { onMounted, reactive, ref } from 'vue';
 import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';
 import { formatCalendarDate } from '../dates.js';

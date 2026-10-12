@@ -86,7 +86,6 @@
         </div>
       </div>
 
-      <AppToast />
     </main>
   </AppLayout>
 </template>
@@ -95,7 +94,6 @@
 import { onMounted, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';
 

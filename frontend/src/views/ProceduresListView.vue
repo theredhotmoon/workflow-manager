@@ -365,7 +365,6 @@
       :procedure-id="null"
       @close="showEditor = false"
       @saved="onProcedureCreated" />
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -375,7 +374,6 @@ import { useRouter } from 'vue-router';
 import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
 import ProcedureTreeNode from '../components/procedure/ProcedureTreeNode.vue';

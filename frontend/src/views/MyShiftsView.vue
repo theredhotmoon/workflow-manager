@@ -222,7 +222,6 @@
       </BaseModal>
     </Transition>
 
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -231,7 +230,6 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast';

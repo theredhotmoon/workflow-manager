@@ -116,7 +116,6 @@
         </button>
       </div>
     </main>
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -124,7 +123,6 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import { useAlarms } from '../composables/useAlarms.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 

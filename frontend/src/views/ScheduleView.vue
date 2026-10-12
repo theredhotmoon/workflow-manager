@@ -583,7 +583,6 @@
       </template>
     </main>
 
-    <AppToast />
 
     <datalist id="shift-type-suggestions">
       <option v-for="type in shiftTypeSuggestions" :key="type" :value="type" />
@@ -1382,7 +1381,6 @@ import { useRoute, useRouter } from 'vue-router';
 import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import AutoFillPanel from '../components/AutoFillPanel.vue';
 import BaseModal from '../components/BaseModal.vue';
 import RestDayPolicyModal from '../components/RestDayPolicyModal.vue';

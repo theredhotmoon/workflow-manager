@@ -89,4 +89,30 @@ test.describe('Notifications', () => {
     const count = await (await adminContext.request.get('/api/alarms/unread-count')).json();
     expect(count.count).toBe(before - 1);
   });
+
+  // I2: the toast is app-wide, so a failed mark-read from the bell is said on any page.
+  test('a failed mark-read from the bell on the dashboard shows a toast', async ({
+    adminPage,
+    employeePage,
+  }) => {
+    const adminContext = adminPage.context();
+    const adminId = await getEmployeeIdByEmail(adminContext, 'admin@shiftchanger.com');
+    const procedure = await createProcedure(adminContext, {
+      title: 'Alarm Bell Toast Proc',
+      ownerId: adminId,
+    });
+    await askFaqQuestion(employeePage.context(), procedure.id, 'Bell toast question?');
+    await adminPage.route('**/api/alarms/*/read', (route) =>
+      route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }),
+    );
+
+    await adminPage.goto('/dashboard');
+    await adminPage.getByRole('button', { name: 'Notifications' }).click();
+    await adminPage
+      .locator('#alarm-dropdown')
+      .getByText('New question on procedure "Alarm Bell Toast Proc"')
+      .first()
+      .click();
+    await expect(adminPage.getByText(/Could not mark the notification as read/)).toBeVisible();
+  });
 });

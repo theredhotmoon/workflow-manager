@@ -463,7 +463,6 @@
         </BaseModal>
       </Transition>
     </main>
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -472,7 +471,6 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { describeApiError, readBlobErrorBody } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';

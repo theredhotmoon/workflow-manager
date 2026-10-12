@@ -56,102 +56,27 @@
       </div>
 
       <!-- Shift Group Tabs (admin) -->
-      <div v-if="shiftGroups.length > 0" class="mb-4">
-        <div class="flex items-center gap-2 flex-wrap">
-          <!-- All Groups tab -->
-          <button @click="switchGroup('all')"
-            :class="['flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl border transition-all duration-200',
-              isAllGroupsMode
-                ? 'border-transparent text-white ring-1 ring-purple-500/40 shadow-lg shadow-purple-500/10'
-                : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-300 hover:border-white/20']"
-            :style="isAllGroupsMode ? { background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.25), rgba(236,72,153,0.15))' } : {}">
-            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899)"></span>
-            All Groups
-          </button>
-
-          <button v-for="group in shiftGroups" :key="group.id"
-            @click="switchGroup(group.id)"
-            :class="['flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl border transition-all duration-200',
-              activeGroupId === group.id
-                ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 ring-1 ring-indigo-500/30 shadow-lg shadow-indigo-500/10'
-                : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-slate-300 hover:border-white/20']">
-            <span v-if="group.color" class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ backgroundColor: group.color }"></span>
-            <span v-else class="w-2.5 h-2.5 rounded-full shrink-0 bg-slate-500/50"></span>
-
-            <!-- Inline rename -->
-            <template v-if="isAdmin(currentUser) && editingGroupId === group.id">
-              <input v-model="editingGroupName" type="text" @keyup.enter="saveGroupRename" @keyup.escape="editingGroupId = null" @blur="saveGroupRename"
-                class="w-24 px-1.5 py-0.5 bg-white/10 border border-indigo-500/30 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-                ref="groupRenameInput" />
-            </template>
-            <template v-else>
-              <span @dblclick.stop="isAdmin(currentUser) && startGroupRename(group)">{{ group.name }}</span>
-            </template>
-
-            <span v-if="activeGroupId === group.id && group.is_default" class="text-[8px] text-indigo-400/60 uppercase tracking-wider">default</span>
-
-            <!-- Archive group button (admin only, non-default) -->
-            <button v-if="isAdmin(currentUser) && !group.is_default && activeGroupId === group.id"
-              @click.stop="archiveShiftGroup(group)"
-              class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-amber-400 transition-colors ml-1"
-              title="Archive group">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
-            </button>
-
-            <!-- Group settlement settings (admin only: saving writes the group) -->
-            <button v-if="isAdmin(currentUser) && activeGroupId === group.id"
-              @click.stop="openGroupSettings(group)"
-              class="w-4 h-4 flex items-center justify-center text-slate-500 hover:text-indigo-400 transition-colors ml-1"
-              title="Settlement period settings">
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-            </button>
-          </button>
-
-          <!-- New Group button (admin only) -->
-          <button v-if="isAdmin(currentUser)" @click="showNewGroupInput = !showNewGroupInput"
-            class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border border-dashed border-white/15 text-slate-500 hover:text-indigo-400 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-            New Group
-          </button>
-
-          <!-- Archived groups (admin only) -->
-          <button v-if="isAdmin(currentUser) && archivedGroups.length > 0" @click="showArchivedGroups = !showArchivedGroups"
-            :aria-expanded="showArchivedGroups ? 'true' : 'false'"
-            class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all">
-            Archived ({{ archivedGroups.length }})
-          </button>
-        </div>
-
-        <!-- Archived groups list: their history stays; restoring brings the tab back -->
-        <div v-if="showArchivedGroups && isAdmin(currentUser) && archivedGroups.length > 0"
-          class="mt-3 p-3 bg-white/[0.03] border border-white/10 rounded-xl">
-          <p class="text-xs text-slate-500 mb-2">Archived groups keep their past shifts, hours and on-call duties. Restore one to plan in it again.</p>
-          <ul class="flex flex-col gap-1.5" aria-label="Archived shift groups">
-            <li v-for="group in archivedGroups" :key="group.id" class="flex items-center gap-2 text-sm text-slate-300">
-              <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="{ backgroundColor: group.color || '#64748b' }"></span>
-              <span>{{ group.name }}</span>
-              <button @click="restoreShiftGroup(group)" :disabled="restoringGroupId === group.id"
-                class="ml-auto px-2.5 py-1 text-xs font-medium text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition-all disabled:opacity-40">
-                Restore {{ group.name }}
-              </button>
-            </li>
-          </ul>
-        </div>
-
-        <!-- New group inline form -->
-        <Transition enter-active-class="transition-all duration-200 ease-out" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0"
-          leave-active-class="transition-all duration-150 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
-          <div v-if="showNewGroupInput && isAdmin(currentUser)" class="mt-3 flex items-center gap-2">
-            <input v-model="newGroupColor" type="color" class="w-8 h-8 rounded-lg border border-white/10 cursor-pointer bg-transparent shrink-0" />
-            <input v-model="newGroupName" type="text" placeholder="Group name (e.g. Event Coverage)"
-              class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500"
-              @keyup.enter="createShiftGroup" />
-            <button @click="createShiftGroup" :disabled="creatingGroup || !newGroupName.trim()"
-              class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed">Create</button>
-            <button @click="showNewGroupInput = false" class="px-3 py-2 text-sm text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
-          </div>
-        </Transition>
-      </div>
+      <ScheduleGroupTabs
+        v-if="shiftGroups.length > 0"
+        v-model:editingGroupId="editingGroupId"
+        v-model:editingGroupName="editingGroupName"
+        v-model:showNewGroupInput="showNewGroupInput"
+        v-model:showArchivedGroups="showArchivedGroups"
+        v-model:newGroupName="newGroupName"
+        v-model:newGroupColor="newGroupColor"
+        :shift-groups="shiftGroups"
+        :archived-groups="archivedGroups"
+        :active-group-id="activeGroupId"
+        :is-all-groups-mode="isAllGroupsMode"
+        :restoring-group-id="restoringGroupId"
+        :creating-group="creatingGroup"
+        @switch-group="switchGroup"
+        @start-rename="startGroupRename"
+        @save-rename="saveGroupRename"
+        @archive="archiveShiftGroup"
+        @open-settings="openGroupSettings"
+        @restore="restoreShiftGroup"
+        @create="createShiftGroup" />
 
       <!-- Loading -->
       <div v-if="loading" class="flex items-center justify-center py-20">
@@ -164,193 +89,29 @@
       <template v-else>
         <div class="flex gap-6">
           <!-- Left Sidebar: Employee Pool (admin only) -->
-          <div v-if="canManageSchedule" class="w-64 shrink-0">
-
-            <!-- All Groups info banner -->
-            <div v-if="isAllGroupsMode" class="mb-2 px-3 py-2.5 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="w-2 h-2 rounded-full" style="background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899)"></span>
-                <span class="text-xs font-semibold text-purple-300">All Groups View</span>
-              </div>
-              <p class="text-[10px] text-slate-400 leading-snug">Viewing shifts from all groups. Switch to a specific group to manage shifts.</p>
-            </div>
-            <div class="sticky top-4 z-10 space-y-2">
-
-              <!-- Accordion: Employees -->
-              <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-                <button @click="sideAccordion.employees = !sideAccordion.employees"
-                  class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.03] transition-colors">
-                  <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    <span class="text-sm font-semibold text-slate-300">Employees</span>
-                    <span class="text-[10px] text-slate-500 ml-1">({{ sortedEmployeePool.length }})</span>
-                  </div>
-                  <svg :class="['w-4 h-4 text-slate-500 transition-transform duration-200', sideAccordion.employees ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                <div v-show="sideAccordion.employees" class="px-4 pb-4 border-t border-white/5">
-                  <p class="text-[10px] text-slate-500 mb-2 mt-3 leading-snug">Click to preview availability · Drag to assign</p>
-
-              <!-- Sort Controls -->
-              <div class="flex items-center gap-1 mb-3">
-                <span class="text-[10px] text-slate-500 uppercase tracking-wide mr-1">Sort:</span>
-                <button @click="empSort = 'name'"
-                  :class="[
-                    'px-2 py-1 text-[10px] font-medium rounded-md border transition-all',
-                    empSort === 'name'
-                      ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300'
-                      : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300'
-                  ]">
-                  Name
-                </button>
-                <button @click="empSort = empSort === 'shifts-asc' ? 'shifts-desc' : 'shifts-asc'"
-                  :class="[
-                    'px-2 py-1 text-[10px] font-medium rounded-md border transition-all flex items-center gap-0.5',
-                    empSort.startsWith('shifts')
-                      ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300'
-                      : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300'
-                  ]">
-                  Shifts
-                  <span v-if="empSort === 'shifts-asc'" class="text-[8px]">▲</span>
-                  <span v-else-if="empSort === 'shifts-desc'" class="text-[8px]">▼</span>
-                </button>
-                <button @click="empSort = empSort === 'hours-asc' ? 'hours-desc' : 'hours-asc'"
-                  :class="[
-                    'px-2 py-1 text-[10px] font-medium rounded-md border transition-all flex items-center gap-0.5',
-                    empSort.startsWith('hours')
-                      ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-300'
-                      : 'bg-white/5 border-white/10 text-slate-500 hover:text-slate-300'
-                  ]">
-                  Hours
-                  <span v-if="empSort === 'hours-asc'" class="text-[8px]">▲</span>
-                  <span v-else-if="empSort === 'hours-desc'" class="text-[8px]">▼</span>
-                </button>
-              </div>
-
-              <!-- Selected employee indicator -->
-              <div v-if="selectedEmployee" class="mb-3 px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
-                <div class="flex items-center justify-between mb-1">
-                  <span class="text-xs text-indigo-300 font-medium">Availability for</span>
-                  <button @click="deselectEmployee" class="text-slate-400 hover:text-white text-sm leading-none">×</button>
-                </div>
-                <span class="text-sm text-white font-semibold">{{ selectedEmployee.name }}</span>
-                <div class="flex items-center gap-3 mt-1.5">
-                  <span class="flex items-center gap-1 text-[10px]"><span class="w-2 h-2 rounded bg-red-500/60"></span><span class="text-red-300">Unavail</span></span>
-                  <span class="flex items-center gap-1 text-[10px]"><span class="w-2 h-2 rounded bg-emerald-500/60"></span><span class="text-emerald-300">Preferred</span></span>
-                <span class="flex items-center gap-1 text-[10px]"><span class="w-2 h-2 rounded bg-sky-500/60"></span><span class="text-sky-300">Assigned</span></span>
-                </div>
-              </div>
-
-              <!-- Employee List -->
-              <VueDraggable
-                v-model="sortedEmployeePool"
-                :group="{ name: 'shifts', pull: 'clone', put: false }"
-                :sort="false"
-                :clone="cloneEmployee"
-                @start="onDragStart"
-                @end="onDragEnd"
-                class="space-y-1.5"
-              >
-                <div v-for="emp in sortedEmployeePool" :key="emp.id"
-                  @click="handleEmployeeClick(emp)"
-                  :class="[
-                    'flex items-center gap-2.5 px-3 py-2 border rounded-xl cursor-grab active:cursor-grabbing transition-all duration-200 select-none',
-                    selectedEmployee?.id === emp.id
-                      ? 'bg-indigo-500/20 border-indigo-500/40 ring-2 ring-indigo-500/30'
-                      : 'bg-white/5 hover:bg-white/10 border-white/10'
-                  ]">
-                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-                    {{ getInitials(emp.name) }}
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-1">
-                      <span class="text-sm text-slate-300 font-medium truncate">{{ emp.name }}</span>
-                      <span v-if="isCurrentNewbie(emp.id)" class="text-yellow-400 text-[10px]" title="Newbie">⭐</span>
-                      <span v-if="isAdmin(emp)" class="px-1 py-0.5 text-[7px] font-semibold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/20 rounded-full shrink-0">A</span>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-1 shrink-0">
-                    <span :class="[
-                      'px-2 py-0.5 text-[11px] font-bold rounded-full tabular-nums',
-                      getEmployeeShiftCount(emp.id) > 0
-                        ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/25'
-                        : 'bg-white/5 text-slate-500 border border-white/10'
-                    ]">
-                      {{ getEmployeeShiftCount(emp.id) }}
-                    </span>
-                    <span
-                      class="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 tabular-nums">
-                      {{ getEmployeeTotalHours(emp.id) }}h
-                    </span>
-                  </div>
-                </div>
-                  </VueDraggable>
-                </div>
-              </div>
-
-              <!-- Accordion: Auto-Fill -->
-              <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
-                <button @click="sideAccordion.autoFill = !sideAccordion.autoFill"
-                  class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.03] transition-colors">
-                  <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    <span class="text-sm font-semibold text-slate-300">Auto-Fill</span>
-                  </div>
-                  <svg :class="['w-4 h-4 text-slate-500 transition-transform duration-200', sideAccordion.autoFill ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                <div v-show="sideAccordion.autoFill" class="border-t border-white/5">
-                  <AutoFillPanel v-if="!isAllGroupsMode" :monthKey="monthKey" :shiftGroupId="activeGroupId" :disabled="!hasScheduleShifts" @filled="fetchSchedule" @toast="(msg, type) => showToast(msg, type)" />
-                  <div v-else class="p-3 text-[10px] text-slate-500 italic">Select a specific group to use auto-fill.</div>
-                </div>
-              </div>
-
-              <!-- Accordion: Overlays -->
-              <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
-                <button @click="sideAccordion.overlays = !sideAccordion.overlays"
-                  class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.03] transition-colors">
-                  <div class="flex items-center gap-2">
-                    <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                    </svg>
-                    <span class="text-sm font-semibold text-slate-300">Overlays</span>
-                  </div>
-                  <svg :class="['w-4 h-4 text-slate-500 transition-transform duration-200', sideAccordion.overlays ? 'rotate-180' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                <div v-show="sideAccordion.overlays" class="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" v-model="showDelegations" class="accent-purple-500 w-3.5 h-3.5 rounded" />
-                    <span class="text-xs text-slate-400">Show Delegations</span>
-                    <span class="w-2 h-2 rounded bg-purple-500/60"></span>
-                  </label>
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" v-model="showNewbies" class="accent-yellow-500 w-3.5 h-3.5 rounded" />
-                    <span class="text-xs text-slate-400">Show Newbies</span>
-                    <span class="w-2 h-2 rounded bg-yellow-500/60"></span>
-                  </label>
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" v-model="showClosures" class="accent-gray-400 w-3.5 h-3.5 rounded" />
-                    <span class="text-xs text-slate-400">Show Office Unavailability</span>
-                    <span class="w-2 h-2 rounded bg-red-500/60"></span>
-                  </label>
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" v-model="showShiftColors" class="accent-cyan-500 w-3.5 h-3.5 rounded" />
-                    <span class="text-xs text-slate-400">Show Shift Colors</span>
-                    <span class="w-2 h-2 rounded" style="background: linear-gradient(135deg, #3b82f6, #f59e0b, #10b981)"></span>
-                  </label>
-                </div>
-              </div>
-
-            </div>
-          </div>
+          <EmployeeSidePanel
+            v-if="canManageSchedule"
+            v-model:empSort="empSort"
+            v-model:showDelegations="showDelegations"
+            v-model:showNewbies="showNewbies"
+            v-model:showClosures="showClosures"
+            v-model:showShiftColors="showShiftColors"
+            :is-all-groups-mode="isAllGroupsMode"
+            :side-accordion="sideAccordion"
+            :sorted-employee-pool="sortedEmployeePool"
+            :selected-employee="selectedEmployee"
+            :get-employee-shift-count="getEmployeeShiftCount"
+            :get-employee-total-hours="getEmployeeTotalHours"
+            :is-current-newbie="isCurrentNewbie"
+            :month-key="monthKey"
+            :active-group-id="activeGroupId"
+            :has-schedule-shifts="hasScheduleShifts"
+            @deselect="deselectEmployee"
+            @drag-start="onDragStart"
+            @drag-end="onDragEnd"
+            @employee-click="handleEmployeeClick"
+            @filled="fetchSchedule"
+            @toast="(msg, type) => showToast(msg, type)" />
 
           <!-- Right: Calendar Grid -->
           <div class="flex-1 min-w-0">
@@ -764,7 +525,6 @@ import { VueDraggable } from 'vue-draggable-plus';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AutoFillPanel from '../components/AutoFillPanel.vue';
 import RestDayPolicyModal from '../components/RestDayPolicyModal.vue';
 import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
 import AdjacentShiftConfirmModal from '../components/schedule/AdjacentShiftConfirmModal.vue';
@@ -772,8 +532,10 @@ import ChangeRequestModal from '../components/schedule/ChangeRequestModal.vue';
 import ClosureConflictModal from '../components/schedule/ClosureConflictModal.vue';
 import DelegationConfirmModal from '../components/schedule/DelegationConfirmModal.vue';
 import DeleteScheduleModal from '../components/schedule/DeleteScheduleModal.vue';
+import EmployeeSidePanel from '../components/schedule/EmployeeSidePanel.vue';
 import GenerateMonthModal from '../components/schedule/GenerateMonthModal.vue';
 import GroupSettingsModal from '../components/schedule/GroupSettingsModal.vue';
+import ScheduleGroupTabs from '../components/schedule/ScheduleGroupTabs.vue';
 import ShiftChecklistsModal from '../components/schedule/ShiftChecklistsModal.vue';
 import ShiftTimesModal from '../components/schedule/ShiftTimesModal.vue';
 import UnavailableConfirmModal from '../components/schedule/UnavailableConfirmModal.vue';
@@ -788,13 +550,7 @@ import { useToast } from '../composables/useToast.js';
 import { putDayShiftCount } from '../dayShiftCount.js';
 import { isAdmin, canManageSchedule as userCanManageSchedule } from '../roles.js';
 import { currentUser } from '../router/index.js';
-import {
-  cloneEmployee,
-  getInitials,
-  groupShiftsByGroup,
-  isOvernightShift,
-} from '../schedule/helpers.js';
-import { formatDuration } from '../shiftHours.js';
+import { getInitials, groupShiftsByGroup, isOvernightShift } from '../schedule/helpers.js';
 
 const router = useRouter();
 const route = useRoute();

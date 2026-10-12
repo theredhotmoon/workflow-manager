@@ -202,6 +202,9 @@ class ScheduleController extends Controller
         return response()->json(['message' => 'Work mode updated.', 'work_mode' => $shift->work_mode]);
     }
 
+    /** Shift ids PUT /api/schedule/work-mode takes in one request (the frontend has the same cap). */
+    public const MAX_WORK_MODE_SWITCH = 2000;
+
     /**
      * Sets the work mode of several shifts in one request, all or nothing (e.g. "generate as
      * remote" switching every office shift on the month's closed dates). Same rules as the single
@@ -210,10 +213,14 @@ class ScheduleController extends Controller
     public function updateShiftsWorkMode(Request $request)
     {
         $validated = $request->validate([
-            'shift_ids' => ['required', 'array', 'min:1', 'max:500'],
+            // One count query and one update whatever the size (M4), so a whole month of several
+            // groups fits; above the cap nothing changes and the answer says so.
+            'shift_ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_WORK_MODE_SWITCH],
             // Existence is checked once for the whole set below, not with one query per id.
             'shift_ids.*' => ['required', 'integer', 'distinct'],
             'work_mode' => ['required', 'string', 'in:office,remote'],
+        ], [
+            'shift_ids.max' => 'At most '.self::MAX_WORK_MODE_SWITCH.' shifts can be switched at once.',
         ]);
 
         $updated = DB::transaction(function () use ($validated) {

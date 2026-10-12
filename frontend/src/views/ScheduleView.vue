@@ -2457,8 +2457,8 @@ function formatClosureDate(dateStr) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-// PUT /api/schedule/work-mode accepts at most this many shift ids.
-const MAX_WORK_MODE_SWITCH = 500;
+// PUT /api/schedule/work-mode accepts at most this many shift ids (ScheduleController::MAX_WORK_MODE_SWITCH).
+const MAX_WORK_MODE_SWITCH = 2000;
 
 /**
  * Generates the month. `generated`: the server created it (on failure its reason is shown);

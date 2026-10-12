@@ -66,8 +66,32 @@ test.describe('Generate month: switch closed dates to remote', () => {
       let schedule = (await getShiftGroupsAndShifts(context, MONTH, groupId)).schedule;
       expect(schedule[CLOSED].map((s) => s.work_mode)).toEqual(['office']);
 
-      // 2. Generating works: the closed date's office shifts go remote in one request.
+      // 2. Generating works but the reload after it fails: what's on screen is the old month, so
+      //    nothing is switched and the user is told (M3).
       await adminPage.unroute('**/api/schedule/generate');
+      let failReload = true;
+      const isScheduleGet = (url) => url.pathname === '/api/schedule';
+      await adminPage.route(isScheduleGet, async (route) => {
+        if (failReload && route.request().method() === 'GET') {
+          failReload = false;
+          await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+        } else {
+          await route.fallback();
+        }
+      });
+      await generateAndSwitch();
+      await expect(
+        adminPage.getByText(/the closed dates were not switched to remote/),
+      ).toBeVisible();
+      await adminPage.waitForLoadState('networkidle');
+      expect(workModeWrites).toEqual([]);
+      await adminPage.unroute(isScheduleGet);
+      // Back to a loaded month for the next step.
+      await adminPage.reload();
+      await adminPage.getByRole('button', { name: new RegExp(GROUP) }).click();
+      await adminPage.waitForLoadState('networkidle');
+
+      // 3. Generating works: the closed date's office shifts go remote in one request.
       const switched = adminPage.waitForResponse(
         (res) => new URL(res.url()).pathname === '/api/schedule/work-mode',
       );

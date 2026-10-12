@@ -2218,6 +2218,7 @@ async function onShiftTypesSaved({ updated, rebooked }) {
 const scheduleRequests = useLatestRequest();
 
 // quiet: refresh in place (no spinner, the grid keeps its scroll position).
+/** Loads the displayed month; true when this load's result is the one now on screen. */
 async function fetchSchedule({ quiet = false } = {}) {
   const token = scheduleRequests.begin();
   restPrompt.value = null; // its shift/chip objects are about to be replaced
@@ -2226,7 +2227,7 @@ async function fetchSchedule({ quiet = false } = {}) {
     const params = { month: monthKey.value };
     if (activeGroupId.value) params.shift_group_id = activeGroupId.value;
     const response = await api.get('/api/schedule', { params });
-    if (!scheduleRequests.isCurrent(token)) return;
+    if (!scheduleRequests.isCurrent(token)) return false;
     schedule.value = response.data.schedule;
     employees.value = response.data.employees;
     employeePool.value = response.data.employees.map((e) => ({
@@ -2241,8 +2242,10 @@ async function fetchSchedule({ quiet = false } = {}) {
     fetchNewbies(); // Always fetch for newbie star display
     fetchShiftColors(); // Load global color definitions
     if (showClosures.value) fetchClosures(); // Keep the closure overlay on the displayed month
+    return true;
   } catch {
     if (scheduleRequests.isCurrent(token)) showToast('Failed to load schedule.', 'error');
+    return false;
   } finally {
     if (scheduleRequests.isCurrent(token)) loading.value = false;
   }
@@ -2421,13 +2424,35 @@ async function proceedGenerateAsRemote() {
     (c) => c.date?.substring?.(0, 10) || c.date,
   );
   closureConflict.value = { show: false, closures: [] };
+  const month = monthKey.value;
+  const groupId = activeGroupId.value;
+  const { generated, reloaded } = await doGenerateMonth();
   // Nothing generated, nothing to switch (doGenerateMonth already showed why).
-  if (!(await doGenerateMonth())) return;
+  if (!generated) return;
+  // The switch is picked from the reloaded month: if that reload failed, or the screen moved to
+  // another month or group meanwhile, what's on screen isn't the generated month.
+  if (!reloaded || monthKey.value !== month || activeGroupId.value !== groupId) {
+    showToast(
+      "The month was generated, but the schedule couldn't be reloaded, so the closed dates were not switched to remote. Reload and try again, or switch them one by one.",
+      'error',
+      8000,
+    );
+    return;
+  }
   // Every office shift on a closed date goes remote, in one all-or-nothing request.
   const office = closedDates.flatMap((dateStr) =>
     (schedule.value[dateStr] ?? []).filter((shift) => shift.work_mode === 'office'),
   );
   if (office.length === 0) return;
+  if (office.length > MAX_WORK_MODE_SWITCH) {
+    // The server takes at most this many in one request (no chunking yet): say so, send nothing.
+    showToast(
+      `The month was generated, but ${office.length} shifts on closed dates are more than can be switched at once (${MAX_WORK_MODE_SWITCH}); they are still office. Switch them one by one.`,
+      'error',
+      8000,
+    );
+    return;
+  }
   try {
     await api.put('/api/schedule/work-mode', {
       shift_ids: office.map((shift) => shift.id),
@@ -2454,7 +2479,13 @@ function formatClosureDate(dateStr) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-/** Generates the month; true when it worked (on failure the server's reason is shown). */
+// PUT /api/schedule/work-mode accepts at most this many shift ids.
+const MAX_WORK_MODE_SWITCH = 500;
+
+/**
+ * Generates the month. `generated`: the server created it (on failure its reason is shown);
+ * `reloaded`: the schedule on screen was then reloaded from the server.
+ */
 async function doGenerateMonth() {
   generating.value = true;
   showGenerateModal.value = false;
@@ -2483,12 +2514,11 @@ async function doGenerateMonth() {
       work_mode_weekend: genConfig.value.workModeWeekend,
     });
     showToast(response.data.message);
-    await fetchSchedule();
-    return true;
+    return { generated: true, reloaded: await fetchSchedule() };
   } catch (err) {
     const e = describeApiError(err, 'Failed to generate month');
     if (!e.silent) showToast(e.message, 'error', 6000);
-    return false;
+    return { generated: false, reloaded: false };
   } finally {
     generating.value = false;
   }

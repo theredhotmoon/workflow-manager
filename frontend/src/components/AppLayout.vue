@@ -466,6 +466,7 @@ function getAlarmIcon(type) {
     PROCEDURE_QUESTION_REPLIED: '💬',
     PROCEDURE_ISSUE_SORTED: '✅',
     SHIFT_CHANGE_REQUEST_ACKNOWLEDGED: '👍',
+    HANDOVER_REASSIGNED: '🔁',
   };
   return icons[type] || '🔔';
 }
@@ -478,6 +479,7 @@ function getAlarmStyle(type) {
     PROCEDURE_QUESTION_REPLIED: 'bg-emerald-500/20 text-emerald-300',
     PROCEDURE_ISSUE_SORTED: 'bg-green-500/20 text-green-300',
     SHIFT_CHANGE_REQUEST_ACKNOWLEDGED: 'bg-sky-500/20 text-sky-300',
+    HANDOVER_REASSIGNED: 'bg-amber-500/20 text-amber-300',
   };
   return styles[type] || 'bg-slate-500/20 text-slate-300';
 }

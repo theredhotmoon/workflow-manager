@@ -142,6 +142,7 @@ const alarmTypes = [
   { value: 'PROCEDURE_QUESTION_REPLIED', label: '💬 Question Replied' },
   { value: 'PROCEDURE_ISSUE_SORTED', label: '✅ Issue Resolved' },
   { value: 'SHIFT_CHANGE_REQUEST_ACKNOWLEDGED', label: '👍 Change Request Seen' },
+  { value: 'HANDOVER_REASSIGNED', label: '🔁 Handover Handed to You' },
 ];
 
 const hasUnread = computed(() => alarms.value.some((a) => !a.read_at));
@@ -200,6 +201,7 @@ function getAlarmIcon(type) {
     PROCEDURE_QUESTION_REPLIED: '💬',
     PROCEDURE_ISSUE_SORTED: '✅',
     SHIFT_CHANGE_REQUEST_ACKNOWLEDGED: '👍',
+    HANDOVER_REASSIGNED: '🔁',
   };
   return icons[type] || '🔔';
 }
@@ -212,6 +214,7 @@ function getAlarmStyle(type) {
     PROCEDURE_QUESTION_REPLIED: 'bg-emerald-500/20',
     PROCEDURE_ISSUE_SORTED: 'bg-green-500/20',
     SHIFT_CHANGE_REQUEST_ACKNOWLEDGED: 'bg-sky-500/20',
+    HANDOVER_REASSIGNED: 'bg-amber-500/20',
   };
   return styles[type] || 'bg-slate-500/20';
 }

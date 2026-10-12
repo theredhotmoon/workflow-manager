@@ -1025,7 +1025,21 @@ async function submitConfirmation() {
   }
 }
 
-onMounted(loadData);
+onMounted(() => {
+  loadData();
+  // ?confirm=<id> (the "handed to you" alarm's link): open that handover's confirmation.
+  const confirmId = Number(route.query.confirm) || null;
+  if (confirmId) openConfirmationFromLink(confirmId);
+});
+
+async function openConfirmationFromLink(id) {
+  await loadPendingConfirmations();
+  if (pendingSubmissions.value.some((s) => s.id === id)) {
+    await openConfirmation({ id });
+  } else if (step.value === 'confirm') {
+    showToast('That handover is no longer waiting for your confirmation.', 'warning');
+  }
+}
 
 // Opening another procedure before the previous preview arrived supersedes it; a stale failure
 // must not toast or close the preview the user is now looking at.

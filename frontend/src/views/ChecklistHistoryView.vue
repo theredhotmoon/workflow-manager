@@ -218,8 +218,15 @@
                       {{ getInitials(sub.incoming_user?.name) }}
                     </div>
                     <span class="text-sm text-slate-300">{{ sub.incoming_user?.name }}</span>
+                    <span v-if="sub.incoming_user.deactivated_at" data-testid="incoming-deactivated"
+                      class="px-1.5 py-0.5 text-[9px] font-semibold uppercase rounded-full border bg-red-500/10 text-red-300 border-red-500/20">Deactivated</span>
                   </div>
                   <span v-else class="text-sm text-slate-600">—</span>
+                  <!-- Stuck: waiting for someone who can no longer sign in (admins only see deactivated_at). -->
+                  <button v-if="canHandToSomeoneElse(sub)" type="button" @click.stop="reassigning = sub"
+                    class="mt-1.5 px-2.5 py-1 text-[11px] font-medium text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition-all">
+                    Hand to someone else
+                  </button>
                 </td>
                 <td class="px-5 py-3.5">
                   <span :class="statusBadgeClass(sub.status)">
@@ -418,6 +425,9 @@
         </BaseModal>
       </Transition>
 
+      <HandoverReassignModal v-if="reassigning" :submission="reassigning"
+        @close="reassigning = null" @reassigned="onReassigned" />
+
       <!-- Procedure Preview Modal (stacks on top of detail modal) -->
       <Transition enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
         enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
@@ -472,6 +482,7 @@ import { describeApiError, readBlobErrorBody } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import BaseModal from '../components/BaseModal.vue';
+import HandoverReassignModal from '../components/HandoverReassignModal.vue';
 import ProcedureContent from '../components/procedure/ProcedureContent.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
@@ -674,6 +685,32 @@ async function viewDetail(id) {
 function closeDetail() {
   detailRequests.invalidate();
   detailData.value = null;
+}
+
+// "Hand to someone else" (F7): offered on a pending handover whose incoming user was deactivated,
+// the only case the API accepts (an active incoming user can still confirm it themselves). Only
+// admins get deactivated_at, so only they see the button.
+const reassigning = ref(null);
+
+function canHandToSomeoneElse(sub) {
+  return sub.status === 'pending_confirmation' && Boolean(sub.incoming_user?.deactivated_at);
+}
+
+// The row (and an open detail of it) take the new incoming user in place: no reload, same page.
+function onReassigned(updated) {
+  const fields = {
+    incoming_user_id: updated.incoming_user_id,
+    incoming_user: updated.incoming_user,
+    previous_incoming_user_id: updated.previous_incoming_user_id,
+    previous_incoming_user: updated.previous_incoming_user,
+    incoming_reassigned_by: updated.incoming_reassigned_by,
+    incoming_reassigned_at: updated.incoming_reassigned_at,
+  };
+  const row = submissions.value.find((s) => s.id === updated.id);
+  if (row) Object.assign(row, fields);
+  if (detailData.value?.id === updated.id) Object.assign(detailData.value, fields);
+  reassigning.value = null;
+  showToast(`Handed to ${updated.incoming_user?.name ?? 'the new incoming user'}.`);
 }
 
 // Helpers

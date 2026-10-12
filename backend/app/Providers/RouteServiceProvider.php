@@ -31,9 +31,9 @@ class RouteServiceProvider extends ServiceProvider
 
         $this->routes(function () {
             // Readiness probe (container healthcheck, CI). Outside the api group on purpose: no
-            // session, no Sanctum and no rate limit, so a probe every few seconds stays cheap and is
-            // never throttled (HealthController).
-            Route::get('api/health', HealthController::class)->name('health');
+            // session and no Sanctum, and its own generous per-IP limit instead of the per-user
+            // API one, so a probe every few seconds stays cheap (HealthController).
+            Route::get('api/health', HealthController::class)->middleware('throttle:health')->name('health');
 
             Route::middleware('api')
                 ->prefix('api')
@@ -53,6 +53,12 @@ class RouteServiceProvider extends ServiceProvider
     {
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(config('app.api_rate_limit'))->by($request->user()?->id ?: $request->ip());
+        });
+
+        // /api/health is public and opens a database connection: 60 a minute per client IP. The
+        // container healthcheck (every 10 s) and CI's wait (every 2 s) stay far below it.
+        RateLimiter::for('health', function (Request $request) {
+            return Limit::perMinute(60)->by('health:'.$request->ip());
         });
     }
 }

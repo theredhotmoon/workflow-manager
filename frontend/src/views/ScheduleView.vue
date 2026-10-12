@@ -568,34 +568,9 @@ const sideAccordion = ref({ employees: true, autoFill: false, overlays: false })
 const activeShiftIds = ref(new Set());
 const isActiveShift = (shift) => activeShiftIds.value.has(shift.id);
 
-// Shift groups
-const {
-  shiftGroups,
-  archivedGroups,
-  showArchivedGroups,
-  restoringGroupId,
-  activeGroupId,
-  showNewGroupInput,
-  newGroupName,
-  creatingGroup,
-  newGroupColor,
-  editingGroupId,
-  editingGroupName,
-  isAllGroupsMode,
-  fetchShiftGroups,
-  switchGroup,
-  createShiftGroup,
-  archiveShiftGroup,
-  restoreShiftGroup,
-  startGroupRename,
-  saveGroupRename,
-  showGroupSettingsModal,
-  savingGroupSettings,
-  groupSettingsTarget,
-  groupSettingsForm,
-  openGroupSettings,
-  saveGroupSettings,
-} = useShiftGroups({ fetchSchedule: (...args) => fetchSchedule(...args), showToast });
+// The active group tab (a group id, or 'all'): the month loads it, the group tabs switch it.
+const activeGroupId = ref(null);
+const isAllGroupsMode = computed(() => activeGroupId.value === 'all');
 
 // Employee availability selection (read by the month's day lookups)
 const selectedEmployee = ref(null);
@@ -637,6 +612,33 @@ const {
   restPrompt,
   showToast,
 });
+
+// Shift groups
+const {
+  shiftGroups,
+  archivedGroups,
+  showArchivedGroups,
+  restoringGroupId,
+  showNewGroupInput,
+  newGroupName,
+  creatingGroup,
+  newGroupColor,
+  editingGroupId,
+  editingGroupName,
+  fetchShiftGroups,
+  switchGroup,
+  createShiftGroup,
+  archiveShiftGroup,
+  restoreShiftGroup,
+  startGroupRename,
+  saveGroupRename,
+  showGroupSettingsModal,
+  savingGroupSettings,
+  groupSettingsTarget,
+  groupSettingsForm,
+  openGroupSettings,
+  saveGroupSettings,
+} = useShiftGroups({ activeGroupId, fetchSchedule, showToast });
 
 // The roster, the selected employee's availability and the cell styles
 const {

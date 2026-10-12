@@ -31,8 +31,7 @@
         <!-- Inline rename -->
         <template v-if="isAdmin(currentUser) && editingGroupId === group.id">
           <input v-model="editingGroupName" type="text" @keyup.enter="emit('save-rename')" @keyup.escape="editingGroupId = null" @blur="emit('save-rename')"
-            class="w-24 px-1.5 py-0.5 bg-white/10 border border-indigo-500/30 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-            ref="groupRenameInput" />
+            class="w-24 px-1.5 py-0.5 bg-white/10 border border-indigo-500/30 rounded text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50" />
         </template>
         <template v-else>
           <span @dblclick.stop="isAdmin(currentUser) && emit('start-rename', group)">{{ group.name }}</span>
@@ -122,7 +121,7 @@ const editingGroupName = defineModel('editingGroupName', { type: String, default
 const showNewGroupInput = defineModel('showNewGroupInput', { type: Boolean, default: false });
 const showArchivedGroups = defineModel('showArchivedGroups', { type: Boolean, default: false });
 const newGroupName = defineModel('newGroupName', { type: String, default: '' });
-const newGroupColor = defineModel('newGroupColor', { type: String, default: '' });
+const newGroupColor = defineModel('newGroupColor', { type: String, required: true });
 
 const emit = defineEmits([
   'switch-group',

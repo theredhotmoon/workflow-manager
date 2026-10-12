@@ -5,9 +5,9 @@
 // loaded with it — delegations, newbie periods, office closures and shift colours — with their
 // per-day lookups. Moved out of ScheduleView.vue unchanged.
 //
-// From the screen: the active group (useShiftGroups), whether the user manages the schedule, the
-// selected employee (the day lookups show only theirs) and the rest-day prompt, which a load
-// closes (its shift/chip objects are about to be replaced).
+// From the screen: the active group tab (switched by useShiftGroups), whether the user manages
+// the schedule, the selected employee (the day lookups show only theirs) and the rest-day prompt,
+// which a load closes (its shift/chip objects are about to be replaced).
 import { computed, ref, watch } from 'vue';
 import api from '../../axios.js';
 import { localDateStr, todayStr } from '../../dates.js';
@@ -28,7 +28,6 @@ export function useScheduleMonth({
   const hasScheduleShifts = computed(() =>
     Object.values(schedule.value).some((shifts) => shifts.length > 0),
   );
-  const employees = ref([]);
 
   // Delegations overlay
   const showDelegations = ref(false);
@@ -294,7 +293,6 @@ export function useScheduleMonth({
       const response = await api.get('/api/schedule', { params });
       if (!scheduleRequests.isCurrent(token)) return false;
       schedule.value = response.data.schedule;
-      employees.value = response.data.employees;
       employeePool.value = response.data.employees.map((e) => ({
         ...e,
         user_id: e.id,
@@ -322,7 +320,6 @@ export function useScheduleMonth({
     currentMonth,
     schedule,
     hasScheduleShifts,
-    employees,
     employeePool,
     weekDays,
     monthKey,
@@ -334,21 +331,15 @@ export function useScheduleMonth({
     showDelegations,
     monthDelegations,
     delegationsFailed,
-    fetchDelegations,
     getDayDelegations,
     showNewbies,
-    monthNewbies,
-    fetchNewbies,
     getDayNewbies,
     isCurrentNewbie,
     showClosures,
-    monthClosures,
-    fetchClosures,
     getClosureForDate,
     showShiftColors,
     shiftColors,
     shiftColorById,
-    fetchShiftColors,
     fetchSchedule,
   };
 }

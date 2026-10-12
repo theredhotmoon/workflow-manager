@@ -219,7 +219,7 @@ const empSort = defineModel('empSort', { type: String, default: 'name' });
 const showDelegations = defineModel('showDelegations', { type: Boolean, default: false });
 const showNewbies = defineModel('showNewbies', { type: Boolean, default: false });
 const showClosures = defineModel('showClosures', { type: Boolean, default: false });
-const showShiftColors = defineModel('showShiftColors', { type: Boolean, default: false });
+const showShiftColors = defineModel('showShiftColors', { type: Boolean, required: true });
 
 const emit = defineEmits([
   'deselect',

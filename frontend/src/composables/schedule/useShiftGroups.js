@@ -3,21 +3,21 @@
 // The Schedule screen's shift groups: the tabs (fetch, switch, create, rename), archive/restore and
 // the group's settlement settings dialog. Moved out of ScheduleView.vue unchanged.
 //
-// fetchSchedule: the screen's month loader (useScheduleMonth); called after a switch, a create or an
-// archive, exactly as before.
-import { computed, ref } from 'vue';
+// activeGroupId: the active tab (a group id, or 'all'), created by the screen because the month
+// (useScheduleMonth) loads it too. fetchSchedule: the screen's month loader (useScheduleMonth);
+// called after a switch, a create or an archive, exactly as before.
+import { ref } from 'vue';
 import api from '../../axios.js';
 import { isAdmin } from '../../roles.js';
 import { currentUser } from '../../router/index.js';
 import { confirm } from '../useConfirm.js';
 
-export function useShiftGroups({ fetchSchedule, showToast }) {
+export function useShiftGroups({ activeGroupId, fetchSchedule, showToast }) {
   // Shift groups
   const shiftGroups = ref([]);
   const archivedGroups = ref([]);
   const showArchivedGroups = ref(false);
   const restoringGroupId = ref(null);
-  const activeGroupId = ref(null);
   const showNewGroupInput = ref(false);
   const newGroupName = ref('');
   // A create in flight: a double click (or Enter + click) must not create the group twice.
@@ -25,8 +25,6 @@ export function useShiftGroups({ fetchSchedule, showToast }) {
   const newGroupColor = ref('#6366f1');
   const editingGroupId = ref(null);
   const editingGroupName = ref('');
-
-  const isAllGroupsMode = computed(() => activeGroupId.value === 'all');
 
   async function fetchShiftGroups() {
     try {
@@ -239,14 +237,12 @@ export function useShiftGroups({ fetchSchedule, showToast }) {
     archivedGroups,
     showArchivedGroups,
     restoringGroupId,
-    activeGroupId,
     showNewGroupInput,
     newGroupName,
     creatingGroup,
     newGroupColor,
     editingGroupId,
     editingGroupName,
-    isAllGroupsMode,
     fetchShiftGroups,
     switchGroup,
     createShiftGroup,

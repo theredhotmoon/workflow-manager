@@ -193,21 +193,17 @@ export function useEmployeeSelection({
   }
 
   return {
-    selectedAvailability,
     empSort,
     getEmployeeShiftCount,
     getEmployeeTotalHours,
     sortedEmployeePool,
-    wasDragging,
     onDragStart,
     onDragEnd,
     handleEmployeeClick,
-    toggleEmployeeSelect,
     deselectEmployee,
     fetchAvailability,
     getDayAvailStyle,
     isSelectedEmployeeAssigned,
-    getShiftAssignedStyle,
     getShiftCellStyle,
   };
 }

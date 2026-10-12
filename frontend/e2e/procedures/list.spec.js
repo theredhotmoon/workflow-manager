@@ -87,10 +87,20 @@ test.describe('Procedures list', () => {
     await newer.seen;
 
     // The older search answers first; the newer one is still pending, so the view is still updating.
+    const olderFinished = adminPage.waitForEvent(
+      'requestfinished',
+      (req) => new URL(req.url()).searchParams.get('search') === 'Spinner',
+    );
     await older.releaseAndSettle();
-    await adminPage.waitForTimeout(400); // longer than the indicator's 200ms fade-out
+    await olderFinished;
+    // Two animation frames: the view has handled the older answer and Vue has re-rendered, so a
+    // wrongly cleared indicator would already show as opacity-0 below (no fixed sleep needed).
+    await adminPage.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
     const indicator = adminPage.getByText('Updating results…');
     await expect(indicator).toBeVisible();
+    await expect(indicator.locator('..')).toContainClass('opacity-100');
     await expect(indicator.locator('..')).toHaveCSS('opacity', '1');
     await expect(tile(adminPage, 'Spinner Beta')).toBeVisible(); // old results still shown
 

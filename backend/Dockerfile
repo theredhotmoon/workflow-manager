@@ -25,6 +25,8 @@ RUN apk add --no-cache \
     nginx \
     supervisor \
     postgresql-dev \
+    # pg_dump, for the optional pre-migration backup (BACKUP_BEFORE_MIGRATE, entrypoint.sh)
+    postgresql-client \
     libzip-dev \
     zip \
     unzip \

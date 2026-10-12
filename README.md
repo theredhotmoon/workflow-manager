@@ -136,6 +136,31 @@ shell history, read it into the environment first
 (`read -rs SEED_ADMIN_PASSWORD && export SEED_ADMIN_PASSWORD` in bash) and pass `-e SEED_ADMIN_PASSWORD`
 without a value.
 
+### Health checks and start order
+
+Every container has a Docker healthcheck, and `docker compose up` starts them in order: `db`
+(`pg_isready`), then `backend`, then `frontend`. The backend counts as healthy once
+`GET /api/health` answers 200, which needs PHP and a database that accepts a query (it answers 503
+while the database is unreachable). Nginx's static `/healthz` only says that Nginx itself is up.
+`docker compose ps` shows each container's health.
+
+### Migrations
+
+The backend runs `php artisan migrate --force` every time its container starts
+(`backend/docker/entrypoint.sh`), so after `docker compose up -d --build` the schema always matches
+the code and there is no separate step to forget. That is safe for this stack because it runs one
+backend container. The start log says `→ Running migrations...`.
+
+- **Backup first:** set `BACKUP_BEFORE_MIGRATE=1` in `.env`. Whenever migrations are pending, the
+  container then writes a `pg_dump` (custom format) to `storage/app/backups/pre-migrate-<UTC
+  time>.dump` on the `backend_storage` volume before migrating, and logs where. If the dump fails,
+  the container stops before migrating. Restore with `pg_restore`. Old dumps are not deleted.
+- **Several backend replicas:** set `RUN_MIGRATIONS=0` so no container migrates on start (two
+  replicas would race), and run the migrations once per deploy as their own step, before starting
+  the new containers:
+  `docker compose run --rm --no-deps --entrypoint php backend artisan migrate --force`
+  (`--entrypoint php` skips the image's entrypoint, which would start the server).
+
 ### Accessing the app
 
 | Service  | URL                                              |

@@ -4,6 +4,34 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-12 — 🔧 Post-audit follow-ups: one rest question, delegation date clamp and paging, request body limits
+
+> **Deploy notes**
+> - No migrations. Rebuild **both** images (Nginx config in both, `php.ini` and a new php-fpm pool file in the backend).
+> - **Request bodies: 2 MB** (413 above it) in both the backend and the frontend Nginx, login included. Only the procedure writes keep **50 MB**: `POST /api/procedures`, `PUT /api/procedures/{id}` and `PUT /api/procedures/{id}/draft` (pasted images are stored inside the HTML as base64 `data:` URLs; there are no file uploads anywhere). PHP keeps `post_max_size = 50M` (the largest route); `upload_max_filesize` is now `2M`. If an outer proxy sits in front, it must allow 50 MB on those three paths too.
+> - **php-fpm's access log is off** (`backend/docker/php-fpm-logging.conf` → `php-fpm.d/zzz-logging.conf`, `access.log = /dev/null`). It logged every `/api/health` probe and can't skip a path; Nginx still logs every request (without the probe). php-fpm errors and the workers' output (PHP errors, Laravel's `stderr` log channel) still go to stderr.
+> - **API changes:** `GET /api/delegations` (admin) is **paginated** (`{ data, current_page, last_page, total, … }`, `per_page` 1..100, default 20) instead of a bare array. `PUT /api/delegations/{id}` answers with `adjusted_members`. `PUT /api/schedule/work-mode` takes up to **2000** shift ids (was 500). Procedure `content` (and draft content) is limited to 30 000 000 characters (422).
+
+- **Small follow-ups after the 2026-10-09 audit PRs (#40–#42).**
+
+### Fixed
+| What | Details |
+|------|---------|
+| Double rest question on a back-to-back drop | Dropping someone next to their own shift in the same group asked twice: the screen's "Back-to-Back Shifts" dialog, then the server's 409 "Less than 11 hours of rest" about the same shift. The screen now passes the shifts it showed; when the server's short-rest list is only those (no overlap, nothing in another group, no on-call callback), "Assign Anyway" stands and the request is resent with `confirm_short_rest`. Anything the screen couldn't show is still asked. Kept the client dialog rather than dropping it: sending `confirm_short_rest` on the client's "yes" alone would also have confirmed conflicts the manager never saw |
+| Shrinking a delegation left members' travel dates outside it (M5) | Changing a delegation's dates clamps every member's custom start/end into the new range in the same transaction (delegation row locked); a member whose dates no longer overlap at all goes back to the delegation's own dates. Each change is logged (`dates_adjusted`, in History) and the edit's toast says how many members were adjusted. Re-dating one member takes the same lock |
+| Unbounded admin delegation list | Paginated (above), newest start first, id as tie-break. **Manage Delegations** pages for real (Previous / Next, the total in the header; an emptied last page falls back to the new last one). The **Users** screen's "Assign Existing" picker needs every delegation and loads them all with `fetchAllPages` |
+| "Switch to Remote" refused more than 500 shifts | Cap raised to 2000 (one count query plus one update since #41). Still all or nothing; above the cap the server says "At most 2000 shifts can be switched at once." and the screen refuses before sending |
+| 50 MB bodies everywhere | See the deploy notes. The backend's procedure location goes to PHP directly, so neither a `try_files` redirect nor a chunked body ends up in a location with the bigger limit |
+| CSV export order | The checklist archive CSV is now in the list's order: the column the screen sorts by, then newest handover date, newest filed (`created_at`), highest id — one order definition shared by the list and the export. The export keyset-pages on that whole order (nulls where `ORDER BY` puts them), so rows tied on date and filing time across a 500-row chunk boundary are neither dropped nor repeated |
+
+### Tests
+| What | Details |
+|------|---------|
+| Pest | `DelegationDateClampTest` (clamp, reset, nothing on grow/rename, rollback with the edit), `DelegationIndexPaginationTest` (pages, per_page clamp, stable order), `ProcedureContentLimitTest` (3 MB pasted PNG saves; over the limit is 422 on create, update and draft), `BulkWorkModeTest` (2000 pass, 2001 refused with the message), `ChecklistArchiveExportTest` (1203 rows tied across chunks; CSV equals the list's pages for template/incoming/submitted sorts, nulls included) |
+| Playwright | `schedule/back-to-back-rest.spec.js` (confirm: one dialog, 409 then 201 with the go-ahead; cancel: nothing sent), `auth/body-limit.spec.js` (3 MB login refused with valid credentials; a procedure with a 3 MB image saves and drafts), `delegations/manage.spec.js` (shrink → toast with the count, member clamped; pager) |
+
+---
+
 ## 2026-10-10 — 🧪 Tests, CI and config hygiene: e2e isolation, readiness checks, healthchecks, Node 22, Pint
 
 > **Deploy notes**

@@ -3,6 +3,7 @@
 use App\Models\Shift;
 use App\Models\ShiftGroup;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 // L21: "Generate as remote" switches every office shift on the month's closed dates in one
 // request (PUT /api/schedule/work-mode), all or nothing, with the single update's rules.
@@ -66,7 +67,7 @@ it('validates the ids and the mode', function () {
     $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => [], 'work_mode' => 'remote'])
         ->assertStatus(422)->assertJsonValidationErrors('shift_ids');
     $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => [$id, 99999999], 'work_mode' => 'remote'])
-        ->assertStatus(422)->assertJsonValidationErrors('shift_ids.1');
+        ->assertStatus(422)->assertJsonPath('errors.shift_ids.0', 'One or more of the selected shifts do not exist.');
     $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => [$id, $id], 'work_mode' => 'remote'])
         ->assertStatus(422)->assertJsonValidationErrors('shift_ids.0');
     $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => [$id], 'work_mode' => 'hybrid'])
@@ -75,4 +76,18 @@ it('validates the ids and the mode', function () {
         ->assertStatus(422)->assertJsonValidationErrors('shift_ids');
 
     expect(Shift::where('work_mode', 'remote')->count())->toBe(0);
+});
+
+it('checks the ids with a fixed number of queries, however many there are (M4)', function () {
+    $ids = collect(range(1, 300))->map(fn ($n) => Shift::create([
+        'date' => '2029-04-01', 'shift_number' => $n, 'shift_group_id' => $this->main->id, 'work_mode' => 'office',
+    ])->id)->all();
+
+    DB::enableQueryLog();
+    $this->actingAs($this->admin)->putJson('/api/schedule/work-mode', ['shift_ids' => $ids, 'work_mode' => 'remote'])
+        ->assertOk()->assertJsonPath('updated', 300);
+    $queries = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    expect($queries)->toBeLessThan(20);
 });

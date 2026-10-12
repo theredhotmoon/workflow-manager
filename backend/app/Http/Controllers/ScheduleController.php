@@ -212,12 +212,18 @@ class ScheduleController extends Controller
     {
         $validated = $request->validate([
             'shift_ids' => ['required', 'array', 'min:1', 'max:500'],
-            'shift_ids.*' => ['required', 'integer', 'distinct', 'exists:shifts,id'],
+            // Existence is checked once for the whole set below, not with one query per id.
+            'shift_ids.*' => ['required', 'integer', 'distinct'],
             'work_mode' => ['required', 'string', 'in:office,remote'],
         ]);
 
         $updated = DB::transaction(function () use ($validated) {
             $shifts = Shift::whereIn('id', $validated['shift_ids'])->get(['id', 'shift_group_id'])->all();
+            if (count($shifts) !== count($validated['shift_ids'])) {
+                throw ValidationException::withMessages([
+                    'shift_ids' => 'One or more of the selected shifts do not exist.',
+                ]);
+            }
             // Groups first, FOR SHARE (ShiftGroup's lock order): an archive can't land halfway.
             $this->lockGroupsOrRefuse($shifts);
 

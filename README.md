@@ -325,9 +325,12 @@ Notes:
   setup still clears the cache (and with it the limiter counters) once per run. If you see 429s,
   rebuild the backend with both compose files (`docker compose -f docker-compose.yml -f
   docker-compose.dev.yml up -d --build backend`) so the dev limit is applied.
-- Specs share one database per run, so every spec claims the months, days and names it writes data
-  into, at the top of the file, with `reservationsFor()` from `e2e/fixtures/reserve.js`. A second
-  claim of the same month, day or name fails the run before any test starts, naming both files.
+- Specs share one database per run, so every spec claims, at the top of the file, the months and
+  days it writes data into and the shift-group names it creates, with `reservationsFor()` from
+  `e2e/fixtures/reserve.js`. A second claim of the same month, day or name fails the run before any
+  test starts, naming both files. The claims are declared, not derived: a date or group name
+  written inside a test must also be claimed at the top. Other titles (procedures, delegations,
+  closures, checklists) are kept unique by convention, usually with a per-file prefix.
 - Locally there are no retries, so a flake shows up as a failure. CI retries a failed test once and
   lists the tests that passed only on retry ("flaky") in the job summary. Do not use
   `--repeat-each` for whole-suite runs: specs re-create their data on every repeat.

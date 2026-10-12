@@ -13,6 +13,11 @@ import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('schedule/move-assignment');
 reserve.months('2095-01', '2095-02', '2095-03', '2095-04');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Move Cancel Team');
+reserve.name('Move Success Team');
+reserve.name('Remote Mode Team');
+reserve.name('Maintainer Delegation Team');
 
 // Months reserved for this file (delegations are global, not per group): 2095-01 (cancelled move),
 // 2095-02 (move), 2095-03 (work mode), 2095-04 (maintainer delegation warning).

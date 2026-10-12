@@ -2,8 +2,10 @@
 //
 // The e2e database is reset once per run (global-setup.js), not per test, and global data (shifts
 // of a month, delegations, closures, availability, newbie periods, checklist submissions) is seen
-// by every spec. Each spec therefore owns the months, days and names it writes data into, and
-// claims them here at the top of the file:
+// by every spec. Each spec therefore owns the months and days it writes data into and the
+// shift-group names it creates (tabs and rosters are found by name), and claims them at the top of
+// the file. Claims are declared, not derived: a literal used inside a test must be claimed too.
+// Other titles (procedures, delegations, closures) stay unique by convention.
 //
 //   const reserve = reservationsFor('schedule/move-assignment');
 //   const CANCELLED_MONTH = reserve.month('2095-01');

@@ -8,6 +8,15 @@ import {
   updateShiftGroup,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('settlement-periods/report');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Race Report Team');
+reserve.name('Report Team');
+reserve.name('OverCap Team');
+reserve.name('Streak Report Team');
+reserve.name('Empty Group');
 
 // The report opens on the settlement period containing the server's "today", so the month is
 // read from the API rather than hardcoded (a fixed month would drift out of the default view).

@@ -13,6 +13,9 @@ import { reservationsFor } from '../fixtures/reserve.js';
 const reserve = reservationsFor('checklists/fill');
 reserve.months('2097-06', '2096-01');
 reserve.days('2097-05-05', '2097-05-06', '2097-05-12');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Fill Race Team');
+reserve.name('Fill Date Team');
 
 // Dates in 2097-05/2097-06 are reserved for the checklist specs: 2097-05 has no shifts,
 // 2097-06 is generated for 'Fill Race Team' only (its test counts the 'Shift 1' options).

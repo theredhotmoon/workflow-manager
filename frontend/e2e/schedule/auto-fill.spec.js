@@ -9,6 +9,12 @@ import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('schedule/auto-fill');
 reserve.months('2027-11', '2027-12', '2028-01');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('AutoFill Team');
+reserve.name('FocusTrap Team');
+reserve.name('Caps Random Team');
+reserve.name('Caps Rotating Team');
+reserve.name('Caps Polish Team');
 
 const MONTH = reserve.month('2027-06');
 const EMPLOYEE = 'Regular Employee';

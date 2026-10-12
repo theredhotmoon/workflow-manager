@@ -14,6 +14,10 @@ import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('schedule/retro-rest-conflict');
 reserve.months('2029-03', '2029-04');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Retro Prompt Team');
+reserve.name('Retro Cancel Team');
+reserve.name('Retro Marker Team');
 
 // Months reserved for this file: 2029-03 (later-shift prompt), 2029-04 (marker after retype).
 const EMPLOYEE = 'Regular Employee';

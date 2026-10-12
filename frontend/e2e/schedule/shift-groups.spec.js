@@ -4,6 +4,12 @@ import { expect, test } from '../fixtures/auth.js';
 import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('schedule/shift-groups');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Rename Me Team');
+reserve.name('Archive Me Team');
+reserve.name('Keep Me Team');
+reserve.name('Renamed Team');
+reserve.name('Restore Archive Me Team');
 
 const MONTH = reserve.month('2027-10');
 

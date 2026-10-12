@@ -4,6 +4,8 @@ import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('schedule/generate-month');
 reserve.months('2027-04');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Generate Test Team');
 
 test.describe('Generate Month', () => {
   test('generates a month of shifts with the default single-shift template', async ({

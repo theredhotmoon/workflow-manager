@@ -21,6 +21,12 @@ reserve.months(
   '2098-07',
   '2098-12',
 );
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Delegation Overlay Race');
+reserve.name('Newbie Overlay Race');
+reserve.name('Closure Overlay Race');
+reserve.name('Availability Race Team');
+reserve.name('Deselect Race Team');
 
 // Months reserved for this file (delegations, newbie periods, closures and availability are global,
 // not per group): 2098-01/02 delegations, 2098-03/04 newbies, 2098-05/06 closures, 2098-07 and

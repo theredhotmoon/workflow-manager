@@ -3,6 +3,9 @@ import { expect, test } from '../fixtures/auth.js';
 import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('accessibility/modals-and-toasts');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('A11y Modal Team');
+reserve.name('A11y Delete Team');
 
 // Keyboard and screen-reader basics for the shared modal shell (BaseModal), the toast live
 // regions and the header's notification menu. Nothing here writes data; the month is arbitrary.

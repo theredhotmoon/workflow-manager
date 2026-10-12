@@ -9,6 +9,11 @@ import { reservationsFor } from '../fixtures/reserve.js';
 
 const reserve = reservationsFor('on-call/on-call');
 reserve.months('2027-07', '2098-08', '2098-09');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('On-Call Month Race');
+reserve.name('On-Call Group Race A');
+reserve.name('On-Call Group Race B');
+reserve.name('On-Call Loading Race');
 
 const GROUP = reserve.name('On-Call Team');
 

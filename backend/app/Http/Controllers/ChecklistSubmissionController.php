@@ -16,8 +16,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class ChecklistSubmissionController extends Controller
 {
@@ -76,12 +78,26 @@ class ChecklistSubmissionController extends Controller
             fwrite($out, "\xEF\xBB\xBF");
             self::csvRow($out, ['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Timing', 'Submitted At']);
             $last = null;
+            $written = [];
             do {
                 $chunk = $query->clone()
                     ->when($last !== null, fn ($q) => self::whereAfter($q, $order, $last))
                     ->limit(self::EXPORT_CHUNK)
                     ->get();
+                $tail = $chunk->last();
+                $next = $tail === null ? null : array_map(fn ($i) => $tail->getAttributes()["keyset_{$i}"], array_keys($order));
+                // Progress guard: each chunk must move the cursor and bring only rows not written
+                // yet. A keyset that doesn't (a bug in whereAfter) would otherwise loop forever.
+                $repeated = $chunk->first(fn ($submission) => isset($written[$submission->id]));
+                if ($tail !== null && ($next === $last || $repeated !== null)) {
+                    Log::error('Checklist archive export stopped: the keyset did not advance.', [
+                        'order' => $order, 'cursor' => $last, 'next' => $next,
+                        'repeated_id' => $repeated?->id, 'rows_written' => count($written),
+                    ]);
+                    throw new RuntimeException('Checklist archive export stopped: the keyset did not advance.');
+                }
                 foreach ($chunk as $submission) {
+                    $written[$submission->id] = true;
                     self::csvRow($out, [
                         $submission->date?->format('Y-m-d') ?? '',
                         $submission->template?->name ?? '',
@@ -94,8 +110,7 @@ class ChecklistSubmissionController extends Controller
                         $submission->submitted_at?->copy()->setTimezone(BusinessDate::timezone())->format('Y-m-d H:i') ?? '',
                     ]);
                 }
-                $tail = $chunk->last();
-                $last = $tail === null ? null : array_map(fn ($i) => $tail->getAttributes()["keyset_{$i}"], array_keys($order));
+                $last = $next;
             } while ($chunk->count() === self::EXPORT_CHUNK);
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);

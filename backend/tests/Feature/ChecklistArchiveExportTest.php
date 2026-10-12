@@ -280,3 +280,21 @@ it('exports in the list order for the timing (nullable boolean) and status sorts
     // The timing cells really vary (and blanks are there), so the boolean keyset was exercised.
     expect(array_values(array_unique(array_column($rows, 5))))->toEqualCanonicalizing(['On time', 'Late', '']);
 });
+
+it('exports an ascending sort whose nulls (last) run across chunk boundaries', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $incoming = [User::factory()->create(['name' => 'Ann']), User::factory()->create(['name' => 'Zoe'])];
+    caeInsertTied(1100, [caeTemplate()], $admin, $incoming);
+    // 7 in 10 without an incoming user (770 rows): ascending puts them last, so the boundaries at
+    // 500 and 1000 fall inside the nulls and the cursor's sort key is null twice.
+    DB::statement('update checklist_submissions set incoming_user_id = null where id % 10 < 7');
+
+    $query = ['sort' => 'incoming', 'direction' => 'asc'];
+    $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?'.http_build_query($query))), 1);
+    $submitted = array_column($rows, 6);
+
+    expect($rows)->toHaveCount(1100)
+        ->and(array_unique($submitted))->toHaveCount(1100)
+        ->and(array_values(array_unique(array_column(array_slice($rows, 330), 3))))->toBe([''])
+        ->and($submitted)->toBe(caeListOrder($this, $admin, $query));
+});

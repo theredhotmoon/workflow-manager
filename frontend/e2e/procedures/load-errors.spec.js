@@ -1,6 +1,7 @@
 // frontend/e2e/procedures/load-errors.spec.js
 import { createProcedure, getEmployeeIdByEmail } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, test } from '../fixtures/auth.js';
+import { holdRequests } from '../fixtures/hold.js';
 
 // L29: a procedure that can't be loaded says so instead of bouncing to the list; a failed list
 // load drops the previous search's results and offers a retry.
@@ -106,5 +107,28 @@ test.describe('Procedure list load errors', () => {
     await expect(tile(adminPage, 'ListErr Beta')).toBeVisible();
     await expect(tile(adminPage, 'ListErr Alpha')).toHaveCount(0);
     await expect(error).toHaveCount(0);
+  });
+
+  test('an older search that fails late does not wipe the newer results', async ({ adminPage }) => {
+    await adminProcedure(adminPage, 'LateFail Alpha');
+    await adminProcedure(adminPage, 'LateFail Beta');
+
+    // The search for 'LateFail' is held, then fails after 'LateFail Beta' has answered.
+    const older = await holdRequests(
+      adminPage,
+      (url) => url.pathname === '/api/procedures' && url.searchParams.get('search') === 'LateFail',
+      { mode: 'abort' },
+    );
+    await adminPage.goto('/procedures');
+    const search = adminPage.getByPlaceholder('Search procedures...');
+    await search.fill('LateFail');
+    await older.seen;
+    await search.fill('LateFail Beta');
+    await expect(tile(adminPage, 'LateFail Beta')).toBeVisible();
+
+    await older.releaseAndSettle();
+
+    await expect(tile(adminPage, 'LateFail Beta')).toBeVisible();
+    await expect(adminPage.locator('main').getByRole('alert')).toHaveCount(0);
   });
 });

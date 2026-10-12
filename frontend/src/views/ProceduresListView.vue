@@ -599,6 +599,8 @@ async function fetchProcedures() {
     lastPage.value = res.data.last_page;
     listError.value = '';
   } catch (err) {
+    // A superseded request that fails late must not wipe the newer results.
+    if (!procedureRequests.isCurrent(token)) return;
     // The results on screen belong to the previous search/filters: drop them rather than pass
     // them off as the answer to this one.
     procedures.value = [];

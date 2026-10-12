@@ -2576,6 +2576,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
     if (isAssigned) {
       conflicts.push({
         date: dateStr,
+        shiftId: prevShift.id,
         shiftNumber: prevShift.shift_number,
         startTime: prevShift.start_time ? prevShift.start_time.substring(0, 5) : null,
         endTime: prevShift.end_time ? prevShift.end_time.substring(0, 5) : null,
@@ -2593,6 +2594,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
     if (isAssigned) {
       conflicts.push({
         date: dateStr,
+        shiftId: nextShift.id,
         shiftNumber: nextShift.shift_number,
         startTime: nextShift.start_time ? nextShift.start_time.substring(0, 5) : null,
         endTime: nextShift.end_time ? nextShift.end_time.substring(0, 5) : null,
@@ -2613,6 +2615,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
       if (isAssigned) {
         conflicts.push({
           date: prevDateStr,
+          shiftId: lastShift.id,
           shiftNumber: lastShift.shift_number,
           startTime: lastShift.start_time ? lastShift.start_time.substring(0, 5) : null,
           endTime: lastShift.end_time ? lastShift.end_time.substring(0, 5) : null,
@@ -2637,6 +2640,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
       if (isAssigned) {
         conflicts.push({
           date: nextDateStr,
+          shiftId: firstShift.id,
           shiftNumber: firstShift.shift_number,
           startTime: firstShift.start_time ? firstShift.start_time.substring(0, 5) : null,
           endTime: firstShift.end_time ? firstShift.end_time.substring(0, 5) : null,
@@ -2658,6 +2662,7 @@ function getAdjacentConflicts(userId, targetShift, dateStr) {
       if (isAssigned) {
         conflicts.push({
           date: nextDateStr,
+          shiftId: firstShift.id,
           shiftNumber: firstShift.shift_number,
           startTime: firstShift.start_time ? firstShift.start_time.substring(0, 5) : null,
           endTime: firstShift.end_time ? firstShift.end_time.substring(0, 5) : null,
@@ -2768,6 +2773,9 @@ function abandonDrop(shift, item) {
 // laterRestPolicy goes with the ids of the later shifts the manager was shown; if the server's list
 // differs by now, it asks again. confirmShortRest is the manager's go-ahead for less than 11 h of
 // daily rest (the server asks with 409 short_daily_rest, listing the shifts too close).
+// seenShiftIds: shifts the manager already accepted next to this one in the Back-to-Back dialog. When
+// the server's short-rest list is only those shifts, that answer stands and it isn't asked twice;
+// anything else (another group's shift, an overlap, an on-call callback) is still asked.
 async function doAssign(
   shift,
   item,
@@ -2776,6 +2784,7 @@ async function doAssign(
   laterRestPolicy = null,
   expectedAffectedIds = null,
   confirmShortRest = false,
+  seenShiftIds = [],
 ) {
   const moveFrom = pendingMoves.get(item);
   try {
@@ -2805,17 +2814,32 @@ async function doAssign(
       err.response?.status === 409 &&
       (code === 'rest_window_conflict' || code === 'creates_rest_conflict')
     ) {
-      restPrompt.value = { shift, item, index, conflict: err.response.data, restPolicy };
+      restPrompt.value = {
+        shift,
+        item,
+        index,
+        conflict: err.response.data,
+        restPolicy,
+        seenShiftIds,
+      };
       return { status: 'prompted', updatedCount: 0 };
     }
     if (err.response?.status === 409 && code === 'short_daily_rest') {
       // An overlap (booked twice at the same time) is the harder case: say so in the title too.
       const overlaps = err.response.data.overlaps === true;
-      const ok = await confirm({
-        title: overlaps ? 'Overlapping shift' : 'Less than 11 hours of rest',
-        message: `${err.response.data.message} Assign anyway?`,
-        confirmLabel: 'Assign anyway',
-      });
+      const conflicts = err.response.data.conflicts ?? [];
+      const alreadyAccepted =
+        conflicts.length > 0 &&
+        conflicts.every(
+          (c) => c.type === 'shift' && !c.overlaps && seenShiftIds.includes(c.shift_id),
+        );
+      const ok =
+        alreadyAccepted ||
+        (await confirm({
+          title: overlaps ? 'Overlapping shift' : 'Less than 11 hours of rest',
+          message: `${err.response.data.message} Assign anyway?`,
+          confirmLabel: 'Assign anyway',
+        }));
       if (!ok) {
         abandonDrop(shift, item);
         return { status: 'failed', updatedCount: 0 };
@@ -2830,10 +2854,10 @@ async function doAssign(
   }
 }
 
-const restPrompt = ref(null); // { shift, item, index, conflict, restPolicy }
+const restPrompt = ref(null); // { shift, item, index, conflict, restPolicy, seenShiftIds }
 
 async function chooseRestPolicy(policy) {
-  const { shift, item, index, conflict, restPolicy } = restPrompt.value;
+  const { shift, item, index, conflict, restPolicy, seenShiftIds } = restPrompt.value;
   restPrompt.value = null;
   // A later-shift question carries the answer to the dropped day's own question, if it was asked.
   const { status, updatedCount } =
@@ -2845,8 +2869,10 @@ async function chooseRestPolicy(policy) {
           restPolicy,
           policy,
           (conflict.affected || []).map((a) => a.assignment_id),
+          false,
+          seenShiftIds,
         )
-      : await doAssign(shift, item, index, policy);
+      : await doAssign(shift, item, index, policy, null, null, false, seenShiftIds);
   if (status === 'assigned') {
     showToast(
       updatedCount === 0
@@ -2976,10 +3002,11 @@ function cancelAdjacentConfirm() {
 }
 
 async function confirmAdjacentAssign() {
-  const { shift, item, itemIndex } = adjacentConfirm.value;
+  const { shift, item, itemIndex, conflicts } = adjacentConfirm.value;
   adjacentConfirm.value.show = false;
   if (shift && item) {
-    const { status } = await doAssign(shift, item, itemIndex);
+    const seen = conflicts.map((c) => c.shiftId);
+    const { status } = await doAssign(shift, item, itemIndex, null, null, null, false, seen);
     if (status === 'assigned') showToast('Assigned to back-to-back shift.', 'success');
   }
   adjacentConfirm.value = {

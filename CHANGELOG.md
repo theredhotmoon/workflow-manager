@@ -4,6 +4,35 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-12 — 🧩 Schedule screen split into composables and components (internal refactor, no behaviour change)
+
+> **Deploy notes**
+> - Frontend only, no migrations, no API changes. Rebuild the frontend image.
+
+- **`ScheduleView.vue` (3,298 lines) is split into focused units; it is now the 865-line orchestrator.** Pure move: the same function bodies, the same order of checks and the same request bodies; only the wiring between the pieces is new.
+
+### Changed
+| What | Details |
+|------|---------|
+| Internal refactor, no behaviour change | Composables in `src/composables/schedule/`: `useShiftGroups` (tabs, create, rename, archive/restore, settlement settings), `useScheduleMonth` (the month, `fetchSchedule` and the delegation, newbie, closure and colour overlays, each with its `useLatestRequest` guard), `useEmployeeSelection` (roster sort, counts and hours, availability overlay, cell styles), `useAssignmentFlow` (drop → availability → delegation → back-to-back → assign, the server's short-rest/overlap and rest-day answers, the one-chip-per-person drop guard, unassign), `useGenerateMonth` (Generate Month, the office-closure conflict with generate-as-remote's reload check and 2000-shift cap, Delete Schedule), `useShiftEditors` (Shift Checklists and Shift Times dialogs), `useChangeRequest` (Request Day Off). Components in `src/components/schedule/`: one per dialog (10, each still a `BaseModal` with the same titles, roles, labels and busy/backdrop behaviour), `ScheduleGroupTabs` and `EmployeeSidePanel`. Pure helpers (`groupShiftsByGroup`, the clock-arc maths, `isOvernightShift`, `formatClosureDate`, `getInitials`, `cloneEmployee`) in `src/schedule/helpers.js` |
+
+### Tests
+| What | Details |
+|------|---------|
+| Unit | `src/schedule/helpers.test.js` (10 tests: angles, arcs incl. the full-circle cap, overnight, initials, closure dates, grouping, chip clone) |
+| Playwright | No spec changed; the full suite (173) passes. During the work the screen's DOM was also compared with main's in 22 states (dialogs, overlays, drops, all-groups, employee view): byte-identical, and so were the API requests and their bodies |
+
+### Follow-ups (from review, not in this change)
+| What | Details |
+|------|---------|
+| Dialogs edit their forms through props | `ShiftChecklistsModal`, `ShiftTimesModal`, `GroupSettingsModal`, `GenerateMonthModal`, `ChangeRequestModal` and the side panel's accordion change the screen's form objects in place, as the inline template did. Same objects, same behaviour, but not one-way data flow: move them to `defineModel` objects or field events |
+| File boundaries | `useGenerateMonth` also owns Delete Schedule (`deleteStep`, `clearMonth`), and `getShiftCellStyle` (mostly shift colours) sits in `useEmployeeSelection`: rename to `useMonthActions` or split out `useClearMonth` |
+| Import cycle | `router/index.js` → `ScheduleView.vue` → `useShiftGroups.js` / `ScheduleGroupTabs.vue` → `router/index.js` (`currentUser`). Harmless while `currentUser` is only read at call or render time; move it to its own module |
+| Unit tests for the composables | Only the pure helpers have unit tests. `useAssignmentFlow` can now be tested alone (request body order with `confirm_short_rest`, the back-to-back single prompt, the second-drop guard, quiet reload only for moves); and one e2e for Request Day Off from the Schedule, which no spec covers |
+| Mount race (existing) | On opening `/schedule/:month`, the month watcher fires a load without a group before the groups have loaded; if it answers first it shows briefly and costs three extra overlay requests. Older than this change |
+
+---
+
 ## 2026-10-12 — ✨ Change Requests screen for managers, and handing over stuck handovers
 
 > **Deploy notes**

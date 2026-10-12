@@ -646,213 +646,45 @@
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <BaseModal v-if="availConfirm.show"
-        role="alertdialog"
-        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
-        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
-        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-red-500/30 rounded-2xl shadow-2xl shadow-red-500/10 p-6"
-        :close-on-backdrop="false"
-        described
-        @close="cancelAvailConfirm"
-        v-slot="{ titleId, descriptionId }">
-        <div class="flex items-start gap-4 mb-5">
-          <div class="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
-            <svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <div class="flex-1">
-            <h3 :id="titleId" class="text-red-300 font-bold text-lg mb-1">⚠️ Unavailable Period</h3>
-            <p class="text-slate-300 text-sm mb-2">
-              <strong class="text-white">{{ availConfirm.userName }}</strong> has marked
-              <strong class="text-red-300">{{ availConfirm.dateStr }}</strong> as unavailable.
-            </p>
-            <div v-if="availConfirm.entries.length" class="space-y-1.5 mb-3">
-              <div v-for="(entry, idx) in availConfirm.entries" :key="idx"
-                class="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
-                <span class="text-red-400 text-sm">🚫</span>
-                <div class="text-sm">
-                  <span class="text-red-200 font-medium">{{ entry.start_time ? entry.start_time + '–' + entry.end_time : 'All day' }}</span>
-                  <span v-if="entry.note" class="text-slate-400 ml-2">— "{{ entry.note }}"</span>
-                </div>
-              </div>
-            </div>
-            <p :id="descriptionId" class="text-slate-400 text-sm">Do you still want to assign this person to the shift?</p>
-          </div>
-        </div>
-        <div class="flex items-center justify-end gap-3">
-          <button @click="cancelAvailConfirm"
-            class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-            Cancel
-          </button>
-          <button @click="confirmAvailAssign"
-            class="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl shadow-lg shadow-red-500/25 transition-all text-sm">
-            Assign Anyway
-          </button>
-        </div>
-      </BaseModal>
+      <UnavailableConfirmModal
+        v-if="availConfirm.show"
+        @cancel="cancelAvailConfirm"
+        @confirm="confirmAvailAssign"
+        :avail-confirm="availConfirm" />
     </Transition>
 
     <!-- Delegation Conflict Confirmation Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <BaseModal v-if="delegConfirm.show"
-        role="alertdialog"
-        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
-        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
-        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-purple-500/30 rounded-2xl shadow-2xl shadow-purple-500/10 p-6"
-        :close-on-backdrop="false"
-        described
-        @close="cancelDelegConfirm"
-        v-slot="{ titleId, descriptionId }">
-        <div class="flex items-start gap-4 mb-5">
-          <div class="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center shrink-0">
-            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
-          <div class="flex-1">
-            <h3 :id="titleId" class="text-purple-300 font-bold text-lg mb-1">📍 On Delegation</h3>
-            <p class="text-slate-300 text-sm mb-2">
-              <strong class="text-white">{{ delegConfirm.userName }}</strong> is on delegation during
-              <strong class="text-purple-300">{{ delegConfirm.dateStr }}</strong>.
-            </p>
-            <div v-if="delegConfirm.delegations.length" class="space-y-1.5 mb-3">
-              <div v-for="(del, idx) in delegConfirm.delegations" :key="idx"
-                class="flex items-center gap-2 px-3 py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                <span class="text-purple-400 text-sm">📍</span>
-                <div class="text-sm">
-                  <span class="text-purple-200 font-medium">{{ del.name }}</span>
-                  <span class="text-slate-400 ml-2">— {{ del.destination }}</span>
-                </div>
-              </div>
-            </div>
-            <p :id="descriptionId" class="text-slate-400 text-sm">Do you still want to assign this person to the shift?</p>
-          </div>
-        </div>
-        <div class="flex items-center justify-end gap-3">
-          <button @click="cancelDelegConfirm"
-            class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-            Cancel
-          </button>
-          <button @click="confirmDelegAssign"
-            class="px-5 py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 transition-all text-sm">
-            Assign Anyway
-          </button>
-        </div>
-      </BaseModal>
+      <DelegationConfirmModal
+        v-if="delegConfirm.show"
+        @cancel="cancelDelegConfirm"
+        @confirm="confirmDelegAssign"
+        :deleg-confirm="delegConfirm" />
     </Transition>
 
     <!-- Office Closure Conflict Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <BaseModal v-if="closureConflict.show"
-        role="alertdialog"
-        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
-        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
-        panel-class="relative w-full max-w-lg bg-slate-800/95 backdrop-blur-xl border border-orange-500/30 rounded-2xl shadow-2xl shadow-orange-500/10 p-6"
-        :close-on-backdrop="false"
-        @close="cancelClosureConflict"
-        v-slot="{ titleId }">
-        <div class="flex items-start gap-4 mb-5">
-          <div class="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center shrink-0">
-            <svg class="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-          </div>
-          <div class="flex-1">
-            <h3 :id="titleId" class="text-orange-300 font-bold text-lg mb-1">🏢❌ Office Closed on Some Dates</h3>
-            <p class="text-slate-300 text-sm mb-3">
-              You're generating <strong class="text-amber-300">office shifts</strong> but the office is
-              <strong class="text-orange-300">closed</strong> on the following dates:
-            </p>
-            <div class="space-y-1.5 mb-3 max-h-[200px] overflow-y-auto">
-              <div v-for="c in closureConflict.closures" :key="c.id"
-                class="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-                <span class="text-orange-400 text-sm">📅</span>
-                <div class="text-sm flex-1">
-                  <span class="text-orange-200 font-medium">{{ formatClosureDate(c.date) }}</span>
-                  <span class="text-white ml-2">— {{ c.title }}</span>
-                  <p v-if="c.description" class="text-slate-500 text-[10px] mt-0.5">{{ c.description }}</p>
-                </div>
-              </div>
-            </div>
-            <p class="text-slate-400 text-sm">These shifts will still be created as "office" type. You can change them individually later.</p>
-          </div>
-        </div>
-        <div class="flex items-center justify-end gap-2 flex-wrap">
-          <button @click="cancelClosureConflict"
-            class="px-4 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-            Cancel
-          </button>
-          <button @click="proceedGenerateAsRemote"
-            class="px-4 py-2.5 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition-all text-sm flex items-center gap-1.5">
-            🏠 Switch to Remote
-          </button>
-          <button @click="proceedGenerate"
-            class="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all text-sm">
-            Generate as Office
-          </button>
-        </div>
-      </BaseModal>
+      <ClosureConflictModal
+        v-if="closureConflict.show"
+        @cancel="cancelClosureConflict"
+        @generate-remote="proceedGenerateAsRemote"
+        @generate-office="proceedGenerate"
+        :closure-conflict="closureConflict" />
     </Transition>
 
     <!-- Adjacent Shift Confirmation Modal -->
     <Transition
       enter-active-class="transition-all duration-200 ease-out" leave-active-class="transition-all duration-150 ease-in"
       enter-from-class="opacity-0" enter-to-class="opacity-100" leave-from-class="opacity-100" leave-to-class="opacity-0">
-      <BaseModal v-if="adjacentConfirm.show"
-        role="alertdialog"
-        overlay-class="fixed inset-0 z-[60] flex items-center justify-center px-4"
-        backdrop-class="fixed inset-0 bg-black/60 backdrop-blur-sm"
-        panel-class="relative w-full max-w-md bg-slate-800/95 backdrop-blur-xl border border-amber-500/30 rounded-2xl shadow-2xl shadow-amber-500/10 p-6"
-        :close-on-backdrop="false"
-        described
-        @close="cancelAdjacentConfirm"
-        v-slot="{ titleId, descriptionId }">
-        <div class="flex items-start gap-4 mb-5">
-          <div class="w-12 h-12 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
-            <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div class="flex-1">
-            <h3 :id="titleId" class="text-amber-300 font-bold text-lg mb-1">⏰ Back-to-Back Shifts</h3>
-            <p class="text-slate-300 text-sm mb-2">
-              <strong class="text-white">{{ adjacentConfirm.userName }}</strong> is already assigned to an adjacent shift:
-            </p>
-            <div class="space-y-1.5 mb-3">
-              <div v-for="(conflict, idx) in adjacentConfirm.conflicts" :key="idx"
-                class="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <span class="text-amber-400 text-sm">🔄</span>
-                <div class="text-sm">
-                  <span class="text-amber-200 font-medium">
-                    {{ conflict.date }} · S{{ conflict.shiftNumber }}
-                  </span>
-                  <span v-if="conflict.startTime" class="text-slate-400 ml-1">
-                    ({{ conflict.startTime }}–{{ conflict.endTime }})
-                  </span>
-                  <span class="text-slate-500 ml-1">— {{ conflict.position }}</span>
-                </div>
-              </div>
-            </div>
-            <p :id="descriptionId" class="text-slate-400 text-sm">This employee would work consecutive shifts without a break. Assign anyway?</p>
-          </div>
-        </div>
-        <div class="flex items-center justify-end gap-3">
-          <button @click="cancelAdjacentConfirm"
-            class="px-5 py-2.5 text-sm text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all font-medium">
-            Cancel
-          </button>
-          <button @click="confirmAdjacentAssign"
-            class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 transition-all text-sm">
-            Assign Anyway
-          </button>
-        </div>
-      </BaseModal>
+      <AdjacentShiftConfirmModal
+        v-if="adjacentConfirm.show"
+        @cancel="cancelAdjacentConfirm"
+        @confirm="confirmAdjacentAssign"
+        :adjacent-confirm="adjacentConfirm" />
     </Transition>
 
     <ShiftTypeBulkEditor v-if="showShiftTypeEditor" :group-id="activeGroupId" :month-key="monthKey" :schedule="schedule"
@@ -933,15 +765,18 @@ import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AutoFillPanel from '../components/AutoFillPanel.vue';
-import BaseModal from '../components/BaseModal.vue';
 import RestDayPolicyModal from '../components/RestDayPolicyModal.vue';
 import ShiftTypeBulkEditor from '../components/ShiftTypeBulkEditor.vue';
+import AdjacentShiftConfirmModal from '../components/schedule/AdjacentShiftConfirmModal.vue';
 import ChangeRequestModal from '../components/schedule/ChangeRequestModal.vue';
+import ClosureConflictModal from '../components/schedule/ClosureConflictModal.vue';
+import DelegationConfirmModal from '../components/schedule/DelegationConfirmModal.vue';
 import DeleteScheduleModal from '../components/schedule/DeleteScheduleModal.vue';
 import GenerateMonthModal from '../components/schedule/GenerateMonthModal.vue';
 import GroupSettingsModal from '../components/schedule/GroupSettingsModal.vue';
 import ShiftChecklistsModal from '../components/schedule/ShiftChecklistsModal.vue';
 import ShiftTimesModal from '../components/schedule/ShiftTimesModal.vue';
+import UnavailableConfirmModal from '../components/schedule/UnavailableConfirmModal.vue';
 import { useAssignmentFlow } from '../composables/schedule/useAssignmentFlow.js';
 import { useEmployeeSelection } from '../composables/schedule/useEmployeeSelection.js';
 import { useGenerateMonth } from '../composables/schedule/useGenerateMonth.js';
@@ -955,7 +790,6 @@ import { isAdmin, canManageSchedule as userCanManageSchedule } from '../roles.js
 import { currentUser } from '../router/index.js';
 import {
   cloneEmployee,
-  formatClosureDate,
   getInitials,
   groupShiftsByGroup,
   isOvernightShift,

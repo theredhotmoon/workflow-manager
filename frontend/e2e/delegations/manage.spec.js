@@ -143,6 +143,46 @@ test.describe('Delegations: create, act, withdraw', () => {
     ]);
   });
 
+  test('the list is paged on the server: Next and Previous load the other page', async ({
+    adminPage,
+  }) => {
+    // A run creates fewer delegations than one page holds, so a second page is made up here: the
+    // real first page with last_page 2, and one made-up delegation on page 2.
+    const requested = [];
+    await adminPage.route(/\/api\/delegations\?/, async (route) => {
+      const page = Number(new URL(route.request().url()).searchParams.get('page'));
+      requested.push(page);
+      const response = await route.fetch();
+      const body = await response.json();
+      const second = { ...body.data[0], id: 99999999, name: 'Deleg Paged Second', users: [] };
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          current_page: page,
+          last_page: 2,
+          total: body.data.length + 1,
+          data: page === 2 ? [second] : body.data,
+        },
+      });
+    });
+
+    await adminPage.goto('/delegations-manage');
+    const pager = adminPage.getByRole('navigation', { name: 'Delegation pages' });
+    await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+    await expect(pager.getByRole('button', { name: '← Previous' })).toBeDisabled();
+
+    await pager.getByRole('button', { name: 'Next →' }).click();
+    await expect(pager.getByText('Page 2 of 2')).toBeVisible();
+    await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toBeVisible();
+    await expect(pager.getByRole('button', { name: 'Next →' })).toBeDisabled();
+
+    await pager.getByRole('button', { name: '← Previous' }).click();
+    await expect(pager.getByText('Page 1 of 2')).toBeVisible();
+    await expect(adminPage.getByRole('heading', { name: 'Deleg Paged Second' })).toHaveCount(0);
+    expect(requested).toEqual([1, 2, 1]);
+  });
+
   test("a field's server error clears once that field is changed", async ({ adminPage }) => {
     await adminPage.route('**/api/delegations', (route) =>
       route.request().method() === 'POST'

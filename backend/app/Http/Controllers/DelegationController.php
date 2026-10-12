@@ -26,15 +26,18 @@ class DelegationController extends Controller
     }
 
     /**
-     * List all delegations (with users) — admin.
+     * The delegations (with users), one page at a time (per_page 1..100, default 20) — admin.
+     * Newest start first; the id breaks ties, so pages never overlap or skip a delegation.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $delegations = Delegation::with(['users:id,name,email', 'creator:id,name'])
-            ->orderByDesc('start_datetime')
-            ->get();
+        $request->validate(['per_page' => ['sometimes', 'nullable', 'integer']]);
+        $perPage = max(1, min((int) $request->input('per_page', 20), 100));
 
-        return response()->json($delegations);
+        return response()->json(Delegation::with(['users:id,name,email', 'creator:id,name'])
+            ->orderByDesc('start_datetime')
+            ->orderByDesc('id')
+            ->paginate($perPage));
     }
 
     /**

@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Schema;
  * on-call duties; versions, FAQ, reads, access log) stays. See ShiftGroupController::destroy and
  * ProcedureController::destroy.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     private const TABLES = ['shift_groups', 'procedures'];
 
     public function up(): void

@@ -2,6 +2,7 @@
 
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Schema;
 
 it('creates a streak rule scoped to a shift group and shift type', function () {
@@ -23,7 +24,7 @@ it('rejects a second rule for the same shift group and shift type', function () 
     ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 3, 'rest_days' => 2]);
 
     expect(fn () => ShiftStreakRule::create(['shift_group_id' => $group->id, 'shift_type' => 'night', 'streak_length' => 4, 'rest_days' => 1]))
-        ->toThrow(\Illuminate\Database\QueryException::class);
+        ->toThrow(QueryException::class);
 });
 
 it('no longer has a shift_streak_states table', function () {

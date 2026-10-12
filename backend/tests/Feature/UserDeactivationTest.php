@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\ChecklistGroup;
+use App\Models\ChecklistItem;
 use App\Models\ChecklistSubmission;
 use App\Models\ChecklistTemplate;
 use App\Models\Delegation;
@@ -268,8 +270,8 @@ it('refuses a new handover to a deactivated incoming user with a clear message',
     $gone = cdlEmployee();
     $gone->forceFill(['deactivated_at' => now()])->save();
     $template = ChecklistTemplate::create(['name' => 'Handover', 'is_active' => true]);
-    $group = \App\Models\ChecklistGroup::create(['checklist_template_id' => $template->id, 'name' => 'G', 'sort_order' => 0]);
-    $item = \App\Models\ChecklistItem::create(['checklist_group_id' => $group->id, 'label' => 'Done', 'type' => 'checkbox', 'sort_order' => 0]);
+    $group = ChecklistGroup::create(['checklist_template_id' => $template->id, 'name' => 'G', 'sort_order' => 0]);
+    $item = ChecklistItem::create(['checklist_group_id' => $group->id, 'label' => 'Done', 'type' => 'checkbox', 'sort_order' => 0]);
 
     $this->actingAs($admin)->postJson('/api/checklist-submissions', [
         'checklist_template_id' => $template->id,

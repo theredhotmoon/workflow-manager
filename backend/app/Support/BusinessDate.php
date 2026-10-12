@@ -56,7 +56,7 @@ final class BusinessDate
         // DST change the night is 7 or 9 hours long, and 06:00 must stay 06:00.
         $date = $shift->date->format('Y-m-d');
         $nextDate = $shift->date->copy()->addDay()->format('Y-m-d');
-        if (!$shift->end_time) {
+        if (! $shift->end_time) {
             return self::at($nextDate);
         }
 
@@ -92,6 +92,6 @@ final class BusinessDate
      */
     private static function at(string $date, ?string $time = null): Carbon
     {
-        return Carbon::parse($date . ' ' . substr($time ?? '00:00', 0, 5), self::timezone());
+        return Carbon::parse($date.' '.substr($time ?? '00:00', 0, 5), self::timezone());
     }
 }

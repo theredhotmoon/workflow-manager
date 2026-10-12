@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Schema;
  * Existing rows without a shift can't be told apart (filed without one, or their shift was removed
  * since), so they are marked as filed without one: they keep clearing alerts as they did.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('checklist_submissions', function (Blueprint $table) {

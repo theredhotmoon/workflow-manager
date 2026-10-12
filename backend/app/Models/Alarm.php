@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 class Alarm extends Model
 {
     public $incrementing = false;
+
     protected $keyType = 'string';
 
     protected $fillable = [
@@ -23,7 +24,7 @@ class Alarm extends Model
     {
         parent::boot();
         static::creating(function ($model) {
-            if (!$model->id) {
+            if (! $model->id) {
                 $model->id = (string) Str::uuid();
             }
         });
@@ -46,16 +47,20 @@ class Alarm extends Model
 
     public function markAsRead()
     {
-        if (!$this->read_at) {
+        if (! $this->read_at) {
             $this->update(['read_at' => now()]);
         }
     }
 
     // All alarm types
     const TYPE_EMPLOYEE_CANNOT_ATTEND_SHIFT = 'EMPLOYEE_CANNOT_ATTEND_SHIFT';
+
     const TYPE_PROCEDURE_NEW_ISSUE_REPORTED = 'PROCEDURE_NEW_ISSUE_REPORTED';
+
     const TYPE_PROCEDURE_NEW_QUESTION_ADDED = 'PROCEDURE_NEW_QUESTION_ADDED';
+
     const TYPE_PROCEDURE_QUESTION_REPLIED = 'PROCEDURE_QUESTION_REPLIED';
+
     const TYPE_PROCEDURE_ISSUE_SORTED = 'PROCEDURE_ISSUE_SORTED';
 
     const ALL_TYPES = [

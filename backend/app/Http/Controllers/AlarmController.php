@@ -77,11 +77,12 @@ class AlarmController extends Controller
     public function markRead($id)
     {
         // Alarm ids are uuids: anything else can't be one (404, not a 500 from PostgreSQL).
-        if (!Str::isUuid($id)) {
+        if (! Str::isUuid($id)) {
             abort(404);
         }
         $alarm = Alarm::where('user_id', auth()->id())->findOrFail($id);
         $alarm->markAsRead();
+
         return response()->json($alarm);
     }
 

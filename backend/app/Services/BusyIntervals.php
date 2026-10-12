@@ -6,6 +6,7 @@ use App\Models\OnCallCallback;
 use App\Models\Shift;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Each employee's busy time as sorted [start, end) intervals of Unix timestamps: their shift
@@ -31,7 +32,7 @@ class BusyIntervals
      * Every assignment of the given users to a shift dated $fromDate..$toDate, in any group, in one
      * query. Returns the shifts with the assignee in `busy_user_id`, so callers can also count them.
      *
-     * @return \Illuminate\Support\Collection<int, Shift>
+     * @return Collection<int, Shift>
      */
     public static function loadAssignedShifts(array $userIds, string $fromDate, string $toDate)
     {
@@ -50,7 +51,7 @@ class BusyIntervals
     /**
      * The users' on-call callbacks overlapping $fromDate..$toDate (inclusive), in any group.
      *
-     * @return \Illuminate\Support\Collection<int, OnCallCallback>
+     * @return Collection<int, OnCallCallback>
      */
     public static function loadCallbacks(array $userIds, string $fromDate, string $toDate)
     {

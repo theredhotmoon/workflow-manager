@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ProcedureFeedback;
-use App\Models\Procedure;
 use App\Models\Alarm;
+use App\Models\Procedure;
+use App\Models\ProcedureFeedback;
 use App\Services\AlarmService;
 use Illuminate\Http\Request;
 
@@ -50,7 +50,7 @@ class ProcedureFeedbackController extends Controller
         // Notify procedure owner
         if ($procedure->owner_id && $procedure->owner_id !== $request->user()->id) {
             $typeLabel = $validated['type'] === 'error' ? 'issue' : 'suggestion';
-            (new AlarmService())->notifyUser(
+            (new AlarmService)->notifyUser(
                 Alarm::TYPE_PROCEDURE_NEW_ISSUE_REPORTED,
                 $procedure->owner_id,
                 "New {$typeLabel} reported on \"{$procedure->title}\"",
@@ -82,7 +82,7 @@ class ProcedureFeedbackController extends Controller
         // Notify the author when the feedback becomes resolved: not again on later saves of a
         // resolved one (a comment, a resolution).
         if ($feedback->wasChanged('status') && $feedback->status === 'resolved' && $feedback->user_id) {
-            (new AlarmService())->notifyUser(
+            (new AlarmService)->notifyUser(
                 Alarm::TYPE_PROCEDURE_ISSUE_SORTED,
                 $feedback->user_id,
                 "Your feedback on \"{$feedback->procedure->title}\" has been resolved",

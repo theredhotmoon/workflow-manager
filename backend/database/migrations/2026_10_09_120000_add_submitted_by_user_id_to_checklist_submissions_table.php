@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Schema;
  * filed before this column existed keep null (the filer was not recorded). Users are deactivated,
  * not deleted, so like the other authored-by references this one restricts deletes.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('checklist_submissions', function (Blueprint $table) {

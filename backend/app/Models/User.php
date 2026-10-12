@@ -18,8 +18,11 @@ class User extends Authenticatable
 
     /** role is the only source of admin / schedule-maintainer status. */
     public const ROLE_ADMIN = 'admin';
+
     public const ROLE_SCHEDULE_MAINTAINER = 'schedule_maintainer';
+
     public const ROLE_EMPLOYEE = 'employee';
+
     public const ROLES = [self::ROLE_ADMIN, self::ROLE_SCHEDULE_MAINTAINER, self::ROLE_EMPLOYEE];
 
     protected $fillable = [

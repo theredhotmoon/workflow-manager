@@ -16,7 +16,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('shifts', 'shift_type')) {
+        if (! Schema::hasColumn('shifts', 'shift_type')) {
             Schema::table('shifts', function (Blueprint $table) {
                 $table->string('shift_type', 50)->nullable()->after('shift_number');
             });

@@ -15,7 +15,7 @@ class ActiveShiftGroup implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if (!is_numeric($value) || !ShiftGroup::whereKey((int) $value)->whereNull('archived_at')->exists()) {
+        if (! is_numeric($value) || ! ShiftGroup::whereKey((int) $value)->whereNull('archived_at')->exists()) {
             $fail(ShiftGroup::ARCHIVED_OR_MISSING_MESSAGE);
         }
     }

@@ -8,12 +8,12 @@ use App\Models\ShiftChangeRequest;
 use App\Models\ShiftChecklist;
 use App\Models\ShiftGroup;
 use App\Models\User;
-use App\Models\ChecklistTemplate;
 use App\Services\BusyIntervals;
 use App\Services\RestPolicyJanitor;
 use App\Services\ShiftTypeChanger;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
+use App\Support\Month;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -23,7 +23,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use App\Support\Month;
 
 class ScheduleController extends Controller
 {
@@ -70,7 +69,7 @@ class ScheduleController extends Controller
         $schedule = [];
         foreach ($shifts as $shift) {
             $dateKey = $shift->date->format('Y-m-d');
-            if (!isset($schedule[$dateKey])) {
+            if (! isset($schedule[$dateKey])) {
                 $schedule[$dateKey] = [];
             }
             $shiftData = $this->shiftPayload($shift, $resting);
@@ -159,7 +158,7 @@ class ScheduleController extends Controller
                     );
 
                     // Create checklist assignments from template
-                    if ($shift->wasRecentlyCreated && !empty($times['checklists'])) {
+                    if ($shift->wasRecentlyCreated && ! empty($times['checklists'])) {
                         foreach ($times['checklists'] as $order => $cl) {
                             ShiftChecklist::create([
                                 'shift_id' => $shift->id,
@@ -279,13 +278,13 @@ class ScheduleController extends Controller
                 // empty-first removal, e.g. a second night); then the first preset entry the day
                 // doesn't have (the removed afternoon). Failing both, the positional entry.
                 $defaults = $this->defaultShiftTimes($desiredCount);
-                $key = fn (?string $start, ?string $end) => substr((string) $start, 0, 5) . '-' . substr((string) $end, 0, 5);
+                $key = fn (?string $start, ?string $end) => substr((string) $start, 0, 5).'-'.substr((string) $end, 0, 5);
                 $used = $currentShifts->map(fn (Shift $s) => $key($s->start_time, $s->end_time))->flip()->all();
                 for ($i = $currentCount + 1; $i <= $desiredCount; $i++) {
                     $times = $defaults[$i - 1] ?? [];
                     if ($times !== [] && isset($used[$key($times['start_time'], $times['end_time'])])) {
                         foreach ($defaults as $candidate) {
-                            if (!isset($used[$key($candidate['start_time'], $candidate['end_time'])])) {
+                            if (! isset($used[$key($candidate['start_time'], $candidate['end_time'])])) {
                                 $times = $candidate;
                                 break;
                             }
@@ -318,7 +317,7 @@ class ScheduleController extends Controller
                 $expected = $request->has('expected_remove_ids')
                     ? collect($request->input('expected_remove_ids'))->map(fn ($id) => (int) $id)->sort()->values()->all()
                     : null;
-                if (!$request->boolean('confirm_remove_staffed') || ($expected !== null && $expected !== $staffedIds)) {
+                if (! $request->boolean('confirm_remove_staffed') || ($expected !== null && $expected !== $staffedIds)) {
                     return $this->staffedRemovalRefusal($staffed);
                 }
             }
@@ -365,7 +364,7 @@ class ScheduleController extends Controller
             ->orderBy('shift_number')
             ->get();
         $resting = $this->restingAssignmentMap($dayShifts, Carbon::parse($date)->addDay());
-        $updatedShifts = $dayShifts->map(fn($s) => $this->shiftPayload($s, $resting));
+        $updatedShifts = $dayShifts->map(fn ($s) => $this->shiftPayload($s, $resting));
 
         return response()->json([
             'date' => $date,
@@ -394,7 +393,7 @@ class ScheduleController extends Controller
             'confirm_short_rest' => ['sometimes', 'boolean'],
         ]);
 
-        if (!$request->filled('move_from_assignment_id')) {
+        if (! $request->filled('move_from_assignment_id')) {
             return $this->placeAssignment($request, $streakReplay, $janitor);
         }
 
@@ -408,7 +407,7 @@ class ScheduleController extends Controller
             $this->lockGroupsOrRefuse(array_filter([$sourceShift, $targetShift]));
             // Locked so two concurrent moves of the same chip can't both succeed.
             $source = ShiftAssignment::lockForUpdate()->find($sourceId);
-            if (!$source) {
+            if (! $source) {
                 throw ValidationException::withMessages(['move_from_assignment_id' => 'The assignment to move no longer exists.']);
             }
             // Re-checked on the locked row (the exists rule above ran before the lock).
@@ -418,7 +417,7 @@ class ScheduleController extends Controller
             // Group access is not per group: whoever may manage the schedule manages every group.
             // Checked here too so the move path doesn't rely on the route middleware alone.
             // Defence in depth: the route's admin:schedule middleware already answers 403 first.
-            if (!$request->user()?->canManageSchedule()) {
+            if (! $request->user()?->canManageSchedule()) {
                 abort(403, 'You may not move assignments in this group.');
             }
             if ((int) $source->shift_id === (int) $request->input('shift_id')) {
@@ -462,7 +461,7 @@ class ScheduleController extends Controller
         // A rest day needs the manager's decision on how it counts (StreakTimeline policies).
         $timeline = $shift->shiftGroup ? $streakReplay->forGroup($shift->shiftGroup, [$userId]) : null;
         $window = $timeline ? $timeline->activeWindow($userId, $shift->date) : null;
-        if ($window !== null && !$request->filled('rest_policy')) {
+        if ($window !== null && ! $request->filled('rest_policy')) {
             // Report the window's final end (later extends_rest included), as the ⚠ chip does.
             $final = $timeline->finalWindowAt($userId, $shift->date);
             $rule = $final['rule'];
@@ -487,7 +486,7 @@ class ScheduleController extends Controller
             ? $timeline->newlyResting($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy)
             : [];
         // The confirm carries the shifts the manager was shown; if that list is stale, ask again.
-        $affectedIds = array_map(fn($a) => $a['assignment_id'], $affected);
+        $affectedIds = array_map(fn ($a) => $a['assignment_id'], $affected);
         $expectedIds = $request->has('expected_affected_ids')
             ? array_map('intval', (array) $request->input('expected_affected_ids'))
             : null;
@@ -498,9 +497,9 @@ class ScheduleController extends Controller
             sort($expectedIds);
             $stale = $fresh !== $expectedIds;
         }
-        if ($affected !== [] && (!$request->filled('later_rest_policy') || $stale)) {
+        if ($affected !== [] && (! $request->filled('later_rest_policy') || $stale)) {
             $rule = $affected[0]['rule'];
-            $dateList = array_values(array_unique(array_map(fn($a) => $a['date'], $affected)));
+            $dateList = array_values(array_unique(array_map(fn ($a) => $a['date'], $affected)));
             $last = array_pop($dateList);
             $dates = $dateList === [] ? $last : implode(', ', $dateList).' and '.$last;
             $dayNoun = $dateList === [] ? 'a rest day' : 'rest days';
@@ -508,7 +507,7 @@ class ScheduleController extends Controller
             return response()->json([
                 'code' => 'creates_rest_conflict',
                 'message' => "Assigning this shift makes {$dates} {$dayNoun} for this employee ({$rule->shift_type}: {$rule->streak_length} in a row, then {$rule->rest_days} days off).",
-                'affected' => array_map(fn($a) => [
+                'affected' => array_map(fn ($a) => [
                     'assignment_id' => $a['assignment_id'],
                     'date' => $a['date'],
                     'shift_type' => $a['shift_type'],
@@ -524,7 +523,7 @@ class ScheduleController extends Controller
 
         // Less than 11 h of rest next to the employee's other work needs the manager's go-ahead.
         // An overlap (booked twice at the same time) is said as such; the go-ahead covers both.
-        if (!$request->boolean('confirm_short_rest') && ($conflicts = $this->shortRestConflicts($shift, $userId)) !== []) {
+        if (! $request->boolean('confirm_short_rest') && ($conflicts = $this->shortRestConflicts($shift, $userId)) !== []) {
             $list = implode('; ', array_map(fn ($c) => $c['label'], $conflicts));
             $overlaps = collect($conflicts)->contains('overlaps', true);
 
@@ -533,7 +532,7 @@ class ScheduleController extends Controller
                 'overlaps' => $overlaps,
                 'message' => $overlaps
                     ? "This overlaps an existing shift of the employee (they would be booked twice at the same time): {$list}."
-                    : 'This leaves the employee less than ' . BusyIntervals::MIN_DAILY_REST_HOURS . " hours of rest: {$list}.",
+                    : 'This leaves the employee less than '.BusyIntervals::MIN_DAILY_REST_HOURS." hours of rest: {$list}.",
                 'conflicts' => array_map(fn ($c) => array_diff_key($c, ['label' => true]), $conflicts),
             ], 409);
         }
@@ -577,7 +576,7 @@ class ScheduleController extends Controller
      */
     private function shortRestConflicts(Shift $shift, int $userId): array
     {
-        if (!$shift->start_time || !$shift->end_time) {
+        if (! $shift->start_time || ! $shift->end_time) {
             return [];
         }
         // The longest shift is 24 h, so two days either side hold every neighbour that matters.
@@ -588,7 +587,7 @@ class ScheduleController extends Controller
             ->load('shiftGroup:id,name');
         $callbacks = BusyIntervals::loadCallbacks([$userId], $from, $to);
 
-        $busy = new BusyIntervals();
+        $busy = new BusyIntervals;
         foreach ($others as $other) {
             $busy->add($userId, ...BusyIntervals::shiftSpan($other));
         }
@@ -613,7 +612,7 @@ class ScheduleController extends Controller
             if ($gap < $minRest) {
                 $rest = $shown($gap);
                 $overlap = $overlaps($a, $b);
-                $times = substr($other->start_time, 0, 5) . '–' . substr($other->end_time, 0, 5);
+                $times = substr($other->start_time, 0, 5).'–'.substr($other->end_time, 0, 5);
                 $where = $other->shiftGroup?->name ? ", {$other->shiftGroup->name}" : '';
                 $conflicts[] = [
                     'type' => 'shift',
@@ -626,7 +625,7 @@ class ScheduleController extends Controller
                     'rest_hours' => $rest,
                     'overlaps' => $overlap,
                     'starts_at' => $a,
-                    'label' => self::restLabel($rest, $overlap, $a >= $end) . " shift {$other->shift_number} on {$other->date->toDateString()} ({$times}{$where})",
+                    'label' => self::restLabel($rest, $overlap, $a >= $end)." shift {$other->shift_number} on {$other->date->toDateString()} ({$times}{$where})",
                 ];
             }
         }
@@ -645,8 +644,8 @@ class ScheduleController extends Controller
                     'rest_hours' => $rest,
                     'overlaps' => $overlap,
                     'starts_at' => $a,
-                    'label' => self::restLabel($rest, $overlap, $a >= $end) . ' an on-call callback on ' . BusyIntervals::callbackDate($callback)
-                        . ' (' . $callback->starts_at->format('H:i') . '–' . $callback->ends_at->format('H:i') . ')',
+                    'label' => self::restLabel($rest, $overlap, $a >= $end).' an on-call callback on '.BusyIntervals::callbackDate($callback)
+                        .' ('.$callback->starts_at->format('H:i').'–'.$callback->ends_at->format('H:i').')',
                 ];
             }
         }
@@ -654,7 +653,7 @@ class ScheduleController extends Controller
         if ($conflicts === []) {
             return [[
                 'type' => 'other', 'rest_hours' => null, 'overlaps' => false,
-                'label' => "other work of the employee close to this shift",
+                'label' => 'other work of the employee close to this shift',
             ]];
         }
         // Overlaps first: they are the harder conflict.
@@ -671,7 +670,7 @@ class ScheduleController extends Controller
         }
         $hours = rtrim(rtrim(number_format($restHours, 1, '.', ''), '0'), '.');
 
-        return "{$hours} h " . ($otherIsLater ? 'before' : 'after');
+        return "{$hours} h ".($otherIsLater ? 'before' : 'after');
     }
 
     /** The insert of placeAssignment(), with its locks and the later shifts' policy stamps. */
@@ -684,7 +683,7 @@ class ScheduleController extends Controller
             // Re-checked under a row lock: a concurrent day-count reduction may have deleted the
             // slot since it was looked up (that removal holds the lock until it commits). Without
             // this the insert fails on the foreign key with a 500.
-            if (!Shift::whereKey($shift->id)->lockForUpdate()->first(['id'])) {
+            if (! Shift::whereKey($shift->id)->lockForUpdate()->first(['id'])) {
                 throw new HttpResponseException(response()->json(['message' => 'This shift no longer exists.'], 404));
             }
             $created = ShiftAssignment::create([
@@ -735,7 +734,7 @@ class ScheduleController extends Controller
             'work_mode' => $shift->work_mode ?? 'office',
             'color' => $shift->color,
             'color_label' => $shift->color_label,
-            'shift_checklists' => $shift->shiftChecklists->map(fn($sc) => [
+            'shift_checklists' => $shift->shiftChecklists->map(fn ($sc) => [
                 'id' => $sc->id,
                 'checklist_template_id' => $sc->checklist_template_id,
                 'checklist_template_name' => $sc->template?->name,
@@ -745,6 +744,7 @@ class ScheduleController extends Controller
             ]),
             'assignments' => $shift->assignments->map(function ($a) use ($resting, $viewer) {
                 $pendingRequest = $a->changeRequests->first();
+
                 return [
                     'id' => $a->id,
                     'user_id' => $a->user_id,
@@ -774,10 +774,10 @@ class ScheduleController extends Controller
         $map = [];
         foreach ($shifts->whereNotNull('shift_group_id')->groupBy('shift_group_id') as $groupId => $groupShifts) {
             $group = ShiftGroup::find($groupId);
-            if (!$group) {
+            if (! $group) {
                 continue;
             }
-            $userIds = $groupShifts->flatMap(fn($s) => $s->assignments->pluck('user_id'))->unique()->values()->all();
+            $userIds = $groupShifts->flatMap(fn ($s) => $s->assignments->pluck('user_id'))->unique()->values()->all();
             if ($userIds === []) {
                 continue;
             }
@@ -848,7 +848,7 @@ class ScheduleController extends Controller
             // Group, then the assignment row (ShiftGroup's lock order). The row lock makes a change
             // request being filed for it wait, and then find it gone, instead of being left pending.
             $this->lockGroupsOrRefuse(array_filter([$assignment->shift]));
-            if (!ShiftAssignment::whereKey($assignment->id)->lockForUpdate()->first(['id'])) {
+            if (! ShiftAssignment::whereKey($assignment->id)->lockForUpdate()->first(['id'])) {
                 return;
             }
             // Pending change requests on this assignment are settled; they stay on record with
@@ -906,7 +906,7 @@ class ScheduleController extends Controller
 
         return response()->json([
             'id' => $shift->id,
-            'shift_checklists' => $shift->shiftChecklists->map(fn($sc) => [
+            'shift_checklists' => $shift->shiftChecklists->map(fn ($sc) => [
                 'id' => $sc->id,
                 'checklist_template_id' => $sc->checklist_template_id,
                 'checklist_template_name' => $sc->template?->name,
@@ -1090,6 +1090,7 @@ class ScheduleController extends Controller
             ];
             $startMinutes = $endMinutes;
         }
+
         return $times;
     }
 }

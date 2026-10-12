@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ChecklistTemplate;
 use App\Models\ChecklistGroup;
 use App\Models\ChecklistItem;
+use App\Models\ChecklistTemplate;
 use App\Models\Procedure;
 use App\Models\ShiftChecklist;
 use App\Support\BusinessDate;
@@ -22,7 +22,7 @@ class ChecklistTemplateController extends Controller
     public function index(Request $request)
     {
         $templates = ChecklistTemplate::withCount('groups')
-            ->when(!$request->boolean('include_archived'), fn ($q) => $q->notArchived())
+            ->when(! $request->boolean('include_archived'), fn ($q) => $q->notArchived())
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -52,6 +52,7 @@ class ChecklistTemplateController extends Controller
     public function show(ChecklistTemplate $checklistTemplate)
     {
         $checklistTemplate->load(['groups.items.procedure:id,identifier,title,archived_at']);
+
         return response()->json($checklistTemplate);
     }
 
@@ -109,6 +110,7 @@ class ChecklistTemplateController extends Controller
         });
 
         $template->load(['groups.items.procedure:id,identifier,title,archived_at']);
+
         return response()->json($template, 201);
     }
 
@@ -162,7 +164,7 @@ class ChecklistTemplateController extends Controller
             $keptItemIds = [];
             foreach ($request->groups as $gi => $groupData) {
                 $groupFields = ['name' => $groupData['name'], 'sort_order' => $gi, 'archived_at' => null];
-                if (!empty($groupData['id'])) {
+                if (! empty($groupData['id'])) {
                     $group = ChecklistGroup::findOrFail($groupData['id']);
                     $group->forceFill($groupFields)->save();
                 } else {
@@ -182,7 +184,7 @@ class ChecklistTemplateController extends Controller
                         'min_value' => $type === 'number' ? ($itemData['min_value'] ?? null) : null,
                         'max_value' => $type === 'number' ? ($itemData['max_value'] ?? null) : null,
                     ];
-                    if (!empty($itemData['id'])) {
+                    if (! empty($itemData['id'])) {
                         $item = ChecklistItem::findOrFail($itemData['id']);
                         $item->forceFill($itemFields + ['archived_at' => null])->save();
                     } else {
@@ -203,6 +205,7 @@ class ChecklistTemplateController extends Controller
         });
 
         $checklistTemplate->load(['groups.items.procedure:id,identifier,title,archived_at']);
+
         return response()->json($checklistTemplate);
     }
 
@@ -270,7 +273,7 @@ class ChecklistTemplateController extends Controller
         foreach ($request->input('groups', []) as $gi => $group) {
             foreach ($group['items'] ?? [] as $ii => $item) {
                 $procedureId = isset($item['procedure_id']) ? (int) $item['procedure_id'] : null;
-                if ($procedureId === null || !$archived->has($procedureId)) {
+                if ($procedureId === null || ! $archived->has($procedureId)) {
                     continue;
                 }
                 $itemId = isset($item['id']) ? (int) $item['id'] : null;

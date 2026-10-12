@@ -7,7 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 uses(RefreshDatabase::class);
 
 it('seeds an admin, a plain employee, and a schedule maintainer', function () {
-    (new E2eBaselineSeeder())->run();
+    (new E2eBaselineSeeder)->run();
 
     $admin = User::where('email', 'admin@shiftchanger.com')->first();
     expect($admin)->not->toBeNull();
@@ -23,8 +23,8 @@ it('seeds an admin, a plain employee, and a schedule maintainer', function () {
 });
 
 it('is idempotent when run twice', function () {
-    (new E2eBaselineSeeder())->run();
-    (new E2eBaselineSeeder())->run();
+    (new E2eBaselineSeeder)->run();
+    (new E2eBaselineSeeder)->run();
 
     expect(User::where('email', 'admin@shiftchanger.com')->count())->toBe(1);
 });

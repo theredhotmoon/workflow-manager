@@ -50,6 +50,7 @@ class ShiftColorController extends Controller
     public function destroy(ShiftColor $shiftColor)
     {
         $shiftColor->delete();
+
         return response()->json(['message' => 'Color deleted.']);
     }
 

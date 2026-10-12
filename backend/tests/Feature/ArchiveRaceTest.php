@@ -29,7 +29,7 @@ function racArchiveAfterFirstGroupRead(ShiftGroup $group): void
 {
     $fired = false;
     DB::listen(function ($query) use (&$fired, $group) {
-        if ($fired || !str_contains($query->sql, 'from "shift_groups"')) {
+        if ($fired || ! str_contains($query->sql, 'from "shift_groups"')) {
             return;
         }
         $fired = true;
@@ -58,7 +58,7 @@ it('refuses a move into a group archived after the request checked it, leaving t
     $fired = false;
     DB::listen(function ($query) use (&$fired) {
         // The target group is read after the source's; archive it once its row was read as active.
-        if ($fired || !str_contains($query->sql, 'from "shift_groups"') || !in_array($this->group->id, $query->bindings, true)) {
+        if ($fired || ! str_contains($query->sql, 'from "shift_groups"') || ! in_array($this->group->id, $query->bindings, true)) {
             return;
         }
         $fired = true;

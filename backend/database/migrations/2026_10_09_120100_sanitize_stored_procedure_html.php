@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\DB;
  * stored before: published content, pending drafts and every version snapshot. Only rows that
  * change are written, and cleaning is idempotent, so running it again does nothing. Nothing to undo.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         $sanitizer = app(ProcedureHtmlSanitizer::class);

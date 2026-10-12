@@ -7,7 +7,9 @@ use App\Models\ArchivedDelegationLog;
 use App\Models\Delegation;
 use App\Models\DelegationLog;
 use App\Support\LikePattern;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class DelegationArchiveController extends Controller
@@ -34,7 +36,7 @@ class DelegationArchiveController extends Controller
             $query->where('start_datetime', '>=', $from);
         }
         if ($to = $request->input('start_to')) {
-            $query->where('start_datetime', '<=', $to . ' 23:59:59');
+            $query->where('start_datetime', '<=', $to.' 23:59:59');
         }
 
         // Filter by date range (end)
@@ -42,7 +44,7 @@ class DelegationArchiveController extends Controller
             $query->where('end_datetime', '>=', $from);
         }
         if ($to = $request->input('end_to')) {
-            $query->where('end_datetime', '<=', $to . ' 23:59:59');
+            $query->where('end_datetime', '<=', $to.' 23:59:59');
         }
 
         // Filter by destination
@@ -69,6 +71,7 @@ class DelegationArchiveController extends Controller
     public function logs(ArchivedDelegation $archivedDelegation)
     {
         $logs = $archivedDelegation->logs()->with('performer:id,name')->get();
+
         return response()->json($logs);
     }
 
@@ -84,7 +87,7 @@ class DelegationArchiveController extends Controller
             // Create archived copy. forceFill (not create) so created_at /
             // updated_at are copied verbatim: they are not mass-assignable, and
             // Eloquent only stamps "now" on timestamp columns that are not dirty.
-            $archived = (new ArchivedDelegation())->forceFill([
+            $archived = (new ArchivedDelegation)->forceFill([
                 'original_id' => $delegation->id,
                 'name' => $delegation->name,
                 'destination' => $delegation->destination,
@@ -123,6 +126,7 @@ class DelegationArchiveController extends Controller
             $delegation->delete();
 
             $archived->load(['users:id,name,email', 'creator:id,name']);
+
             return response()->json($archived);
         });
     }
@@ -134,7 +138,7 @@ class DelegationArchiveController extends Controller
     {
         return DB::transaction(function () use ($request, $archivedDelegation) {
             // Create active delegation, keeping its original timestamps (see archive()).
-            $delegation = (new Delegation())->forceFill([
+            $delegation = (new Delegation)->forceFill([
                 'name' => $archivedDelegation->name,
                 'destination' => $archivedDelegation->destination,
                 'description' => $archivedDelegation->description,
@@ -171,6 +175,7 @@ class DelegationArchiveController extends Controller
             $archivedDelegation->delete();
 
             $delegation->load(['users:id,name,email', 'creator:id,name']);
+
             return response()->json($delegation);
         });
     }
@@ -181,8 +186,8 @@ class DelegationArchiveController extends Controller
      * have no Eloquent timestamps and created_at is not fillable, so create()
      * silently dropped it and the column default stamped "now" on every row.
      *
-     * @param  \Illuminate\Support\Collection<int, \Illuminate\Database\Eloquent\Model>  $logs
-     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $targetModel
+     * @param  Collection<int, Model>  $logs
+     * @param  class-string<Model>  $targetModel
      * @param  array<string, int>  $parentKey
      */
     private function copyLogs($logs, string $targetModel, array $parentKey): void
@@ -222,6 +227,7 @@ class DelegationArchiveController extends Controller
     public function destinations()
     {
         $destinations = ArchivedDelegation::distinct()->pluck('destination');
+
         return response()->json($destinations);
     }
 }

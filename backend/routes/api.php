@@ -1,33 +1,39 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AlarmController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\ScheduleController;
-use App\Http\Controllers\ChecklistTemplateController;
-use App\Http\Controllers\ChecklistSubmissionController;
 use App\Http\Controllers\ChecklistAlertController;
+use App\Http\Controllers\ChecklistSubmissionController;
+use App\Http\Controllers\ChecklistTemplateController;
 use App\Http\Controllers\CurrentShiftController;
-use App\Http\Controllers\UserAvailabilityController;
-use App\Http\Controllers\ShiftAutoAssignController;
-use App\Http\Controllers\DelegationController;
 use App\Http\Controllers\DelegationArchiveController;
-use App\Http\Controllers\OfficeClosureController;
+use App\Http\Controllers\DelegationController;
 use App\Http\Controllers\NewbiePeriodController;
-use App\Http\Controllers\ShiftColorController;
-use App\Http\Controllers\ShiftChangeRequestController;
-use App\Http\Controllers\ShiftGroupController;
-use App\Http\Controllers\ProcedureTagController;
+use App\Http\Controllers\OfficeClosureController;
+use App\Http\Controllers\OnCallController;
 use App\Http\Controllers\ProcedureController;
 use App\Http\Controllers\ProcedureFaqController;
-use App\Http\Controllers\ProcedureResponseTemplateController;
 use App\Http\Controllers\ProcedureFeedbackController;
+use App\Http\Controllers\ProcedureResponseTemplateController;
 use App\Http\Controllers\ProceduresToLearnController;
-use App\Http\Controllers\AlarmController;
-use App\Http\Controllers\UserGroupController;
+use App\Http\Controllers\ProcedureTagController;
+use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\SettlementPeriodController;
-use App\Http\Controllers\OnCallController;
+use App\Http\Controllers\ShiftAutoAssignController;
+use App\Http\Controllers\ShiftChangeRequestController;
+use App\Http\Controllers\ShiftColorController;
+use App\Http\Controllers\ShiftGroupController;
+use App\Http\Controllers\UserAvailabilityController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\UserGroupController;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
+use App\Models\User;
+use App\Support\Month;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 
 /*
 |--------------------------------------------------------------------------
@@ -56,8 +62,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // Employee list (for any authenticated user). Pickers get active users only; history filters
     // pass include_deactivated to find past handovers of deactivated users too.
     Route::get('/employees', function (Request $request) {
-        return response()->json(\App\Models\User::query()
-            ->when(!$request->boolean('include_deactivated'), fn ($q) => $q->active())
+        return response()->json(User::query()
+            ->when(! $request->boolean('include_deactivated'), fn ($q) => $q->active())
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'role']));
     });
@@ -69,8 +75,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/current-shift', CurrentShiftController::class);
 
     // Shift details (for checklist context)
-    Route::get('/shifts/{shift}', function (\App\Models\Shift $shift) {
+    Route::get('/shifts/{shift}', function (Shift $shift) {
         $shift->load(['assignments.user:id,name', 'shiftChecklists.template:id,name']);
+
         return response()->json($shift);
     });
 
@@ -80,7 +87,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
             'date' => ['required', 'date_format:Y-m-d'],
             'shift_group_id' => ['sometimes', 'nullable', 'integer'],
         ]);
-        $query = \App\Models\Shift::where('date', $request->date)
+        $query = Shift::where('date', $request->date)
             ->with(['assignments.user:id,name', 'shiftChecklists.template:id,name'])
             ->orderBy('shift_number');
 
@@ -101,20 +108,20 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/my-shifts', function (Request $request) {
         $request->validate(['month' => ['required', 'date_format:Y-m']]);
         $user = $request->user();
-        $start = \App\Support\Month::start($request->month);
+        $start = Month::start($request->month);
         $end = $start->copy()->endOfMonth();
 
-        $assignments = \App\Models\ShiftAssignment::where('user_id', $user->id)
-            ->whereHas('shift', fn($q) => $q->whereBetween('date', [$start->toDateString(), $end->toDateString()]))
+        $assignments = ShiftAssignment::where('user_id', $user->id)
+            ->whereHas('shift', fn ($q) => $q->whereBetween('date', [$start->toDateString(), $end->toDateString()]))
             ->with([
-                'shift' => fn($q) => $q->with([
+                'shift' => fn ($q) => $q->with([
                     'shiftGroup:id,name',
                     'shiftChecklists.template:id,name',
-                    'submissions' => fn($sq) => $sq->where(function ($w) use ($user) {
+                    'submissions' => fn ($sq) => $sq->where(function ($w) use ($user) {
                         $w->where('outgoing_user_id', $user->id)->orWhere('incoming_user_id', $user->id);
-                    })->with('responses')
+                    })->with('responses'),
                 ]),
-                'changeRequests' => fn($q) => $q->where('status', 'pending'),
+                'changeRequests' => fn ($q) => $q->where('status', 'pending'),
             ])
             ->get();
 
@@ -125,9 +132,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
             // Build per-checklist data
             $checklistsData = $s->shiftChecklists->map(function ($sc) use ($s) {
-                $submission = $s->submissions->first(fn($sub) => $sub->checklist_template_id === $sc->checklist_template_id);
+                $submission = $s->submissions->first(fn ($sub) => $sub->checklist_template_id === $sc->checklist_template_id);
                 // Business-timezone deadline: the ISO string carries its offset (e.g. +02:00).
                 $deadline = $sc->getDeadlineDatetime($s);
+
                 return [
                     'id' => $sc->id,
                     'checklist_template_id' => $sc->checklist_template_id,
@@ -176,15 +184,15 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         $user = $request->user();
 
-        if (!\Illuminate\Support\Facades\Hash::check($request->current_password, $user->password)) {
+        if (! Hash::check($request->current_password, $user->password)) {
             return response()->json(['message' => 'Current password is incorrect.'], 422);
         }
 
         // Ends this user's other sessions: Sanctum's AuthenticateSession (config/sanctum.php) sees
         // their stored password hash go stale and answers 401; this session gets the new hash.
         $user->forceFill([
-            'password' => \Illuminate\Support\Facades\Hash::make($request->password),
-            'remember_token' => \Illuminate\Support\Str::random(60),
+            'password' => Hash::make($request->password),
+            'remember_token' => Str::random(60),
         ])->save();
 
         return response()->json(['message' => 'Password changed successfully.']);

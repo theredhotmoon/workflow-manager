@@ -1,4 +1,5 @@
 <?php
+
 // Schedule screen correctness: one shift payload shape (H7), atomic drag-moves (H9) and the reads a
 // schedule maintainer needs (H12).
 

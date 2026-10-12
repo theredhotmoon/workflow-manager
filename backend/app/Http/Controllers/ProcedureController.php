@@ -44,7 +44,7 @@ class ProcedureController extends Controller
         ]);
 
         $archived = $request->boolean('archived');
-        if ($archived && !$request->user()->isAdmin()) {
+        if ($archived && ! $request->user()->isAdmin()) {
             abort(403, 'Only admins can list archived procedures.');
         }
         $query = Procedure::with(['owner:id,name', 'tags:id,name,color'])
@@ -69,7 +69,7 @@ class ProcedureController extends Controller
 
         if ($tagIds = $request->input('tags')) {
             $ids = is_array($tagIds) ? $tagIds : explode(',', $tagIds);
-            $query->whereHas('tags', fn($q) => $q->whereIn('procedure_tags.id', $ids));
+            $query->whereHas('tags', fn ($q) => $q->whereIn('procedure_tags.id', $ids));
         }
 
         // Date range filters
@@ -77,13 +77,13 @@ class ProcedureController extends Controller
             $query->where('created_at', '>=', $createdAfter);
         }
         if ($createdBefore = $request->input('created_before')) {
-            $query->where('created_at', '<=', $createdBefore . ' 23:59:59');
+            $query->where('created_at', '<=', $createdBefore.' 23:59:59');
         }
         if ($updatedAfter = $request->input('updated_after')) {
             $query->where('updated_at', '>=', $updatedAfter);
         }
         if ($updatedBefore = $request->input('updated_before')) {
-            $query->where('updated_at', '<=', $updatedBefore . ' 23:59:59');
+            $query->where('updated_at', '<=', $updatedBefore.' 23:59:59');
         }
 
         // Location tree filter — filter by parent_id (node_id) or all assigned ('root')
@@ -115,6 +115,7 @@ class ProcedureController extends Controller
         // Pagination
         $perPage = (int) $request->input('per_page', 30);
         $perPage = min(max($perPage, 1), 100);
+
         return response()->json($query->paginate($perPage));
     }
 
@@ -128,6 +129,7 @@ class ProcedureController extends Controller
         foreach ($childIds as $childId) {
             $ids = array_merge($ids, $this->collectDescendantIds($childId));
         }
+
         return $ids;
     }
 
@@ -151,7 +153,7 @@ class ProcedureController extends Controller
 
             $procedure = Procedure::create(collect($validated)->except(['tag_ids'])->toArray());
 
-            if (!empty($validated['tag_ids'])) {
+            if (! empty($validated['tag_ids'])) {
                 $procedure->tags()->sync($validated['tag_ids']);
             }
 
@@ -171,10 +173,10 @@ class ProcedureController extends Controller
         $procedure->load([
             'owner:id,name',
             'tags:id,name,color',
-            'faqItems' => fn($q) => $q->with(['author:id,name', 'replies' => fn($r) => $r->with('author:id,name')->orderBy('created_at')]),
+            'faqItems' => fn ($q) => $q->with(['author:id,name', 'replies' => fn ($r) => $r->with('author:id,name')->orderBy('created_at')]),
             'responseTemplates',
-            'feedbacks' => fn($q) => $q->with('user:id,name')->orderByDesc('created_at'),
-            'ownerChanges' => fn($q) => $q->with(['oldOwner:id,name', 'newOwner:id,name', 'changedBy:id,name'])->orderByDesc('created_at'),
+            'feedbacks' => fn ($q) => $q->with('user:id,name')->orderByDesc('created_at'),
+            'ownerChanges' => fn ($q) => $q->with(['oldOwner:id,name', 'newOwner:id,name', 'changedBy:id,name'])->orderByDesc('created_at'),
         ]);
 
         // Log access
@@ -201,7 +203,7 @@ class ProcedureController extends Controller
 
         // Editing (update, draft, publish, delete) is admin-only: every write route sits in the admin
         // route group, so an owner who isn't an admin must not be offered the editor.
-        $procedure->can_edit = $request->user()->isAdmin() && !$procedure->isArchived();
+        $procedure->can_edit = $request->user()->isAdmin() && ! $procedure->isArchived();
 
         // The access log (who read it, when) is for admins and the owner only (L3).
         $procedure->can_view_access_log = $procedure->isAdminOrOwner($request->user());
@@ -275,13 +277,14 @@ class ProcedureController extends Controller
             return true;
         });
 
-        if (!$updated) {
+        if (! $updated) {
             return response()->json([
                 'message' => 'This procedure has an unpublished draft. Publish or discard the draft first.',
             ], 409);
         }
 
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
+
         return response()->json($procedure);
     }
 
@@ -340,6 +343,7 @@ class ProcedureController extends Controller
         }
 
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
+
         return response()->json($procedure);
     }
 
@@ -351,7 +355,7 @@ class ProcedureController extends Controller
         if ($refusal = $this->archivedRefusal($procedure)) {
             return $refusal;
         }
-        if (!$procedure->has_draft) {
+        if (! $procedure->has_draft) {
             return response()->json(['message' => 'No draft to publish.'], 422);
         }
 
@@ -363,7 +367,7 @@ class ProcedureController extends Controller
             // Lock the row, then re-read it: a concurrent edit or publish can't take the same version.
             $procedure->newQuery()->whereKey($procedure->id)->lockForUpdate()->first();
             $procedure->refresh();
-            if (!$procedure->has_draft) {
+            if (! $procedure->has_draft) {
                 return false; // a concurrent publish or discard got there first
             }
             $newVersion = $procedure->version + 1;
@@ -390,11 +394,12 @@ class ProcedureController extends Controller
             return true;
         });
 
-        if (!$published) {
+        if (! $published) {
             return response()->json(['message' => 'No draft to publish.'], 422);
         }
 
         $procedure->load(['owner:id,name', 'tags:id,name,color']);
+
         return response()->json($procedure);
     }
 
@@ -474,7 +479,7 @@ class ProcedureController extends Controller
      */
     public function restore(Procedure $procedure)
     {
-        if (!$procedure->isArchived()) {
+        if (! $procedure->isArchived()) {
             return response()->json(['message' => 'This procedure is not archived.'], 422);
         }
 
@@ -498,7 +503,7 @@ class ProcedureController extends Controller
     /** Archived procedures are read-only until restored (409). */
     private function archivedRefusal(Procedure $procedure): ?JsonResponse
     {
-        if (!$procedure->isArchived()) {
+        if (! $procedure->isArchived()) {
             return null;
         }
 
@@ -517,13 +522,14 @@ class ProcedureController extends Controller
 
         $procedure->tags()->sync($validated['tag_ids']);
         $procedure->load('tags:id,name,color');
+
         return response()->json($procedure->tags);
     }
 
     /** Who read the procedure and when: admins and the procedure's owner only (L3). */
     public function accessLog(Request $request, Procedure $procedure)
     {
-        if (!$procedure->isAdminOrOwner($request->user())) {
+        if (! $procedure->isAdminOrOwner($request->user())) {
             return response()->json(['message' => 'Only admins and the procedure owner can see its access log.'], 403);
         }
 
@@ -581,7 +587,7 @@ class ProcedureController extends Controller
             ->where('version', $version)
             ->first();
 
-        if (!$ver) {
+        if (! $ver) {
             return response()->json(['message' => 'Version not found.'], 404);
         }
 
@@ -599,11 +605,12 @@ class ProcedureController extends Controller
             ->orderBy('title')
             ->get();
 
-        $grouped = $all->groupBy(fn($p) => $p->parent_id ?? 'root');
+        $grouped = $all->groupBy(fn ($p) => $p->parent_id ?? 'root');
 
         $buildTree = function ($parentId) use (&$buildTree, $grouped) {
             $key = $parentId ?? 'root';
             $nodes = $grouped->get($key, collect());
+
             return $nodes->map(function ($proc) use ($buildTree) {
                 return [
                     'id' => $proc->id,
@@ -646,7 +653,7 @@ class ProcedureController extends Controller
             // an archive of it since validation is refused instead of hiding this procedure under it.
             if ($validated['parent_id']) {
                 $parent = Procedure::whereKey($validated['parent_id'])->sharedLock()->first(['id', 'archived_at']);
-                if (!$parent || $parent->isArchived()) {
+                if (! $parent || $parent->isArchived()) {
                     return false;
                 }
             }
@@ -654,7 +661,7 @@ class ProcedureController extends Controller
 
             return true;
         });
-        if (!$moved) {
+        if (! $moved) {
             throw ValidationException::withMessages(['parent_id' => 'The selected parent procedure is archived or no longer exists.']);
         }
 
@@ -720,7 +727,7 @@ class ProcedureController extends Controller
         $unread = [];
         foreach ($procedures as $proc) {
             $readVersion = $reads->get($proc->id);
-            if (!$readVersion || $readVersion < $proc->version) {
+            if (! $readVersion || $readVersion < $proc->version) {
                 $unread[] = [
                     'id' => $proc->id,
                     'identifier' => $proc->identifier,

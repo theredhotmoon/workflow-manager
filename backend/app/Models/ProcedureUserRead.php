@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 class ProcedureUserRead extends Model
 {
     public $timestamps = false;
+
     public $incrementing = false;
+
     protected $primaryKey = null;
 
     protected $fillable = ['procedure_id', 'user_id', 'version_read', 'read_at'];

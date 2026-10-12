@@ -11,6 +11,7 @@ use InvalidArgumentException;
 class SettlementPeriodCalculator
 {
     private const DEFAULT_MODE = 'monthly';
+
     private const DEFAULT_WEEKLY_HOUR_CAP = 48.0;
 
     public function periodContaining(ShiftGroup $group, Carbon $date): array
@@ -78,7 +79,7 @@ class SettlementPeriodCalculator
         $customLength = $group->settlement_custom_length_days;
         $weeklyCap = $group->weekly_hour_cap ?? self::DEFAULT_WEEKLY_HOUR_CAP;
 
-        if ($mode === 'custom' && !$customLength) {
+        if ($mode === 'custom' && ! $customLength) {
             throw new InvalidArgumentException('Custom settlement mode requires settlement_custom_length_days.');
         }
 

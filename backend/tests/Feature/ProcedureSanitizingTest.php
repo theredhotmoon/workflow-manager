@@ -12,14 +12,14 @@ use App\Services\ProcedureHtmlSanitizer;
 const PSAN_TIPTAP = '<h1>Title</h1><h2>Sub</h2><h3>Third</h3><p>Plain <strong>bold</strong> <em>it</em> <u>under</u> <s>strike</s> <code>inline</code> and <a target="_blank" rel="noopener noreferrer nofollow" href="https://example.com/a?b=1&amp;c=2">a link</a> and <a target="_blank" rel="noopener noreferrer nofollow" href="mailto:ops@example.com">mail</a>.<br>after break</p><ul><li><p>One</p></li><li><p>Two</p><ul><li><p>Nested</p></li></ul></li></ul><ol start="3"><li><p>Three</p></li></ol><ol><li><p>First</p></li></ol><blockquote><p>Quote</p></blockquote><pre><code class="language-bash">echo "hi" &amp;&amp; ls &lt;dir&gt;</code></pre><pre><code>plain code</code></pre><hr><p></p><img src="https://example.com/x.png" alt="diagram" title="Diagram"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" alt="pasted"><p></p>';
 
 const PSAN_EVIL = '<p>Hi<img src=x onerror=alert(1)></p>'
-    . '<script>alert(2)</script>'
-    . '<p><a href="javascript:alert(3)">js link</a> <a href="JaVaScRiPt:alert(4)">mixed case</a> '
-    . '<a href="https://ok.example" onclick="alert(5)">click</a> '
-    . '<a href="data:text/html;base64,PHNjcmlwdD5hbGVydCg2KTwvc2NyaXB0Pg==">data link</a></p>'
-    . '<img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoNyk+">'
-    . '<iframe src="https://evil.example"></iframe><style>body{display:none}</style>'
-    . '<p style="position:fixed" class="fixed inset-0">styled</p><form action="/x"><input name="p"></form>'
-    . '<pre><code class="fixed inset-0">x</code></pre>';
+    .'<script>alert(2)</script>'
+    .'<p><a href="javascript:alert(3)">js link</a> <a href="JaVaScRiPt:alert(4)">mixed case</a> '
+    .'<a href="https://ok.example" onclick="alert(5)">click</a> '
+    .'<a href="data:text/html;base64,PHNjcmlwdD5hbGVydCg2KTwvc2NyaXB0Pg==">data link</a></p>'
+    .'<img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoNyk+">'
+    .'<iframe src="https://evil.example"></iframe><style>body{display:none}</style>'
+    .'<p style="position:fixed" class="fixed inset-0">styled</p><form action="/x"><input name="p"></form>'
+    .'<pre><code class="fixed inset-0">x</code></pre>';
 
 function psanAdmin(): User
 {
@@ -58,7 +58,7 @@ it('strips them from drafts, from what a draft publishes, and from a direct upda
     psanAssertClean($procedure->fresh()->content);
     psanAssertClean(ProcedureVersion::where('procedure_id', $procedure->id)->where('version', 2)->value('content'));
 
-    test()->actingAs($admin)->putJson("/api/procedures/{$procedure->id}", ['content' => '<p>x</p>' . PSAN_EVIL])->assertOk();
+    test()->actingAs($admin)->putJson("/api/procedures/{$procedure->id}", ['content' => '<p>x</p>'.PSAN_EVIL])->assertOk();
     psanAssertClean($procedure->fresh()->content);
 });
 

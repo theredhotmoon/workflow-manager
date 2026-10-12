@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('shift_groups', function (Blueprint $table) {
@@ -18,7 +19,7 @@ return new class extends Migration {
         });
 
         // Seed a default group
-        \DB::table('shift_groups')->insert([
+        DB::table('shift_groups')->insert([
             'name' => 'Main',
             'is_default' => true,
             'sort_order' => 0,

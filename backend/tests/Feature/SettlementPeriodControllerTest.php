@@ -4,18 +4,19 @@ use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\User;
+use Carbon\Carbon;
 
 it('reports per-employee hours for the current settlement period, flagging over-cap weeks', function () {
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $employee = User::factory()->create(['name' => 'Jamie Employee']);
     $group = ShiftGroup::create([
         'name' => 'Main', 'is_default' => true, 'sort_order' => 0,
-        'settlement_mode' => 'weekly', 'settlement_anchor_date' => now()->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString(),
+        'settlement_mode' => 'weekly', 'settlement_anchor_date' => now()->startOfWeek(Carbon::MONDAY)->toDateString(),
         'weekly_hour_cap' => 20,
     ]);
 
     $shift = Shift::create([
-        'date' => now()->startOfWeek(\Carbon\Carbon::MONDAY)->toDateString(),
+        'date' => now()->startOfWeek(Carbon::MONDAY)->toDateString(),
         'shift_number' => 1,
         'shift_group_id' => $group->id,
         'start_time' => '06:00',
@@ -24,7 +25,7 @@ it('reports per-employee hours for the current settlement period, flagging over-
     ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
 
     $shift2 = Shift::create([
-        'date' => now()->startOfWeek(\Carbon\Carbon::MONDAY)->addDay()->toDateString(),
+        'date' => now()->startOfWeek(Carbon::MONDAY)->addDay()->toDateString(),
         'shift_number' => 1,
         'shift_group_id' => $group->id,
         'start_time' => '06:00',

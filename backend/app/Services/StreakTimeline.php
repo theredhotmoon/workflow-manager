@@ -1,4 +1,5 @@
 <?php
+
 // backend/app/Services/StreakTimeline.php
 
 namespace App\Services;
@@ -23,8 +24,11 @@ use Illuminate\Support\Collection;
 final class StreakTimeline
 {
     public const NOT_COUNTED = 'not_counted';
+
     public const COUNTS = 'counts';
+
     public const EXTENDS_REST = 'extends_rest';
+
     public const POLICIES = [self::NOT_COUNTED, self::COUNTS, self::EXTENDS_REST];
 
     /** @var array<int, list<array{day: int, shift_number: int, shift_type: ?string, rest_policy: ?string, assignment_id: ?int}>> */
@@ -143,7 +147,7 @@ final class StreakTimeline
         $covered = $this->baseline($userId)['covered'];
         $ids = [];
         foreach ($events as $pos => $event) {
-            if ($event['rest_policy'] !== null && $event['assignment_id'] !== null && !isset($covered[$pos])) {
+            if ($event['rest_policy'] !== null && $event['assignment_id'] !== null && ! isset($covered[$pos])) {
                 $ids[] = $event['assignment_id'];
             }
         }
@@ -247,7 +251,7 @@ final class StreakTimeline
             if ($pos % self::CHECKPOINT_EVERY === 0 && $this->sameAsBaseline($base, $pos, $events[$pos]['day'], $counts, $windows, $open)) {
                 break;
             }
-            if ($this->step($events[$pos], $counts, $windows, $open, $nextKey) !== null && !isset($base['covered'][$pos])) {
+            if ($this->step($events[$pos], $counts, $windows, $open, $nextKey) !== null && ! isset($base['covered'][$pos])) {
                 $newly[] = $pos;
                 if ($firstOnly) {
                     break;
@@ -293,7 +297,7 @@ final class StreakTimeline
             $covered = $this->coveredIds($with, $this->replayEvents($with, PHP_INT_MAX)['covered']);
             $new = [];
             foreach ($covered as $id => $pos) {
-                if (!isset($previous[$id]) && !isset($stamped[$id]) && !isset($answered[$id])) {
+                if (! isset($previous[$id]) && ! isset($stamped[$id]) && ! isset($answered[$id])) {
                     $new[$id] = $pos;
                 }
             }
@@ -581,7 +585,7 @@ final class StreakTimeline
         }
 
         $type = $event['shift_type'];
-        if ($type === null || !isset($this->streakLength[$type])) {
+        if ($type === null || ! isset($this->streakLength[$type])) {
             return $latest;
         }
 

@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Schema;
  * Safety net: these used to cascade, so one stray delete of a template, group or item silently
  * wiped every past handover response. A hard delete of anything with history now fails instead.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /** [table, column, referenced table] */
     private const FOREIGN_KEYS = [
         ['checklist_responses', 'checklist_item_id', 'checklist_items'],

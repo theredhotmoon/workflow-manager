@@ -310,7 +310,7 @@ it('refuses a move under a parent archived after the move was validated', functi
     // Deterministic stand-in for a concurrent archive: it lands right after the parent_id rule ran.
     $fired = false;
     DB::listen(function ($query) use (&$fired, $parent) {
-        if ($fired || !str_contains($query->sql, 'count(*)') || !str_contains($query->sql, 'from "procedures"')) {
+        if ($fired || ! str_contains($query->sql, 'count(*)') || ! str_contains($query->sql, 'from "procedures"')) {
             return;
         }
         $fired = true;

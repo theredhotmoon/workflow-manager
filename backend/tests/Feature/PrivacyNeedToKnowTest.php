@@ -177,7 +177,7 @@ it('hides a procedure draft from everyone but admins and the owner, in every pro
         foreach (['/api/procedures-tree', "/api/procedures/{$procedure->id}/versions", "/api/procedures/{$procedure->id}/versions/1", '/api/procedures-to-learn'] as $url) {
             $body = $this->actingAs($cast[$who])->getJson($url)->assertOk()->getContent();
             expect($body)->not->toContain('Secret draft');
-            if (!$sees) {
+            if (! $sees) {
                 expect(str_contains($body, '"has_draft"'))->toBeFalse("{$who} {$url} has_draft");
             }
         }

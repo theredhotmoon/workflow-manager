@@ -12,9 +12,7 @@ use App\Models\ShiftGroup;
  */
 class RestPolicyJanitor
 {
-    public function __construct(private StreakReplay $streakReplay)
-    {
-    }
+    public function __construct(private StreakReplay $streakReplay) {}
 
     /**
      * Nulls rest_policy on the users' assignments in $group that no rest window covers. One pass is
@@ -31,7 +29,7 @@ class RestPolicyJanitor
         }
 
         $timeline = $this->streakReplay->forGroup($group, $userIds);
-        if (!$timeline->hasRules()) {
+        if (! $timeline->hasRules()) {
             // No rules → no rest windows → no policy applies.
             return ShiftAssignment::whereIn('user_id', $userIds)
                 ->whereNotNull('rest_policy')

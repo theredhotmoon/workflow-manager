@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Auth\Middleware\Authenticate as Middleware;
+use Illuminate\Http\Request;
 
 class Authenticate extends Middleware
 {
@@ -11,7 +12,7 @@ class Authenticate extends Middleware
      * whatever the Accept header (see Handler::shouldReturnJson). There is no named 'login' route:
      * the SPA's /login screen is the shell's own route.
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param  Request  $request
      * @return string|null
      */
     protected function redirectTo($request)

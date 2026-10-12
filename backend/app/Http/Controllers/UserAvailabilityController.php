@@ -4,9 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\UserAvailability;
-use Carbon\Carbon;
-use Illuminate\Http\Request;
 use App\Support\Month;
+use Illuminate\Http\Request;
 
 class UserAvailabilityController extends Controller
 {
@@ -18,7 +17,7 @@ class UserAvailabilityController extends Controller
         $entries = UserAvailability::where('user_id', $request->user()->id)
             ->orderBy('start_date')
             ->get()
-            ->map(fn($e) => $this->formatEntry($e));
+            ->map(fn ($e) => $this->formatEntry($e));
 
         return response()->json($entries);
     }
@@ -83,7 +82,7 @@ class UserAvailabilityController extends Controller
             ->where('end_date', '>=', $start->toDateString())
             ->orderBy('start_date')
             ->get()
-            ->map(fn($e) => $this->formatEntry($e));
+            ->map(fn ($e) => $this->formatEntry($e));
 
         return response()->json($entries);
     }

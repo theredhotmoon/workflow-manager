@@ -29,7 +29,7 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $users = User::with('groups:id,name,enum')
-            ->when(!$request->boolean('include_deactivated'), fn ($q) => $q->active())
+            ->when(! $request->boolean('include_deactivated'), fn ($q) => $q->active())
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'role', 'deactivated_at', 'created_at', 'updated_at']);
 
@@ -149,7 +149,7 @@ class UserController extends Controller
             $user->forceFill(['deactivated_at' => $user->deactivated_at ?? now()])->save();
             $user->tokens()->delete();
 
-            if (!$request->boolean('remove_future_assignments')) {
+            if (! $request->boolean('remove_future_assignments')) {
                 return [0, 0];
             }
 

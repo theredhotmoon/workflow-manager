@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ChecklistGroup;
-use App\Models\ChecklistSubmission;
 use App\Models\ChecklistResponse;
+use App\Models\ChecklistSubmission;
 use App\Models\ChecklistTemplate;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
@@ -58,7 +58,7 @@ class ChecklistSubmissionController extends Controller
     public function export(Request $request)
     {
         $query = $this->archiveQuery($request)->with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name']);
-        $filename = 'checklist-archive-' . BusinessDate::todayString() . '.csv';
+        $filename = 'checklist-archive-'.BusinessDate::todayString().'.csv';
 
         return response()->streamDownload(function () use ($query) {
             $out = fopen('php://output', 'w');
@@ -72,7 +72,9 @@ class ChecklistSubmissionController extends Controller
                     $submission->outgoingUser?->name ?? '',
                     $submission->incomingUser?->name ?? '',
                     self::STATUS_LABELS[$submission->status] ?? $submission->status,
-                    match ($submission->submitted_on_time) { true => 'On time', false => 'Late', default => '' },
+                    match ($submission->submitted_on_time) {
+                        true => 'On time', false => 'Late', default => ''
+                    },
                     $submission->submitted_at?->copy()->setTimezone(BusinessDate::timezone())->format('Y-m-d H:i') ?? '',
                 ]);
             }
@@ -148,7 +150,7 @@ class ChecklistSubmissionController extends Controller
     private static function csvRow($handle, array $cells): void
     {
         $safe = array_map(
-            fn ($cell) => preg_match('/^[=+\-@\t\r]/', (string) $cell) === 1 ? "'" . $cell : (string) $cell,
+            fn ($cell) => preg_match('/^[=+\-@\t\r]/', (string) $cell) === 1 ? "'".$cell : (string) $cell,
             $cells,
         );
         fputcsv($handle, $safe, ',', '"', '');
@@ -212,7 +214,7 @@ class ChecklistSubmissionController extends Controller
         $submission = DB::transaction(function () use ($request) {
             $hasConfirmationItems = ChecklistTemplate::find($request->checklist_template_id)
                 ->groups()
-                ->whereHas('items', fn($q) => $q->where('requires_confirmation', true))
+                ->whereHas('items', fn ($q) => $q->where('requires_confirmation', true))
                 ->exists();
 
             $status = ($request->incoming_user_id && $hasConfirmationItems)
@@ -235,7 +237,7 @@ class ChecklistSubmissionController extends Controller
                 'checklist_template_id' => $request->checklist_template_id,
                 'shift_id' => $request->shift_id,
                 // Kept apart from a shift link nulled later (its shift removed): see the alerts.
-                'filed_without_shift' => !$request->filled('shift_id'),
+                'filed_without_shift' => ! $request->filled('shift_id'),
                 'date' => $request->date,
                 'outgoing_user_id' => $request->outgoing_user_id,
                 'incoming_user_id' => $request->incoming_user_id,
@@ -263,6 +265,7 @@ class ChecklistSubmissionController extends Controller
         });
 
         $submission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'submittedBy:id,name', 'responses']);
+
         return response()->json($submission, 201);
     }
 
@@ -278,7 +281,7 @@ class ChecklistSubmissionController extends Controller
         $outgoing = (int) $request->outgoing_user_id;
         $incoming = $request->filled('incoming_user_id') ? (int) $request->incoming_user_id : null;
 
-        if ($outgoing !== $callerId && !$caller->isAdmin()) {
+        if ($outgoing !== $callerId && ! $caller->isAdmin()) {
             throw ValidationException::withMessages([
                 'outgoing_user_id' => 'You can only file a handover as its outgoing employee yourself.',
             ]);
@@ -305,7 +308,7 @@ class ChecklistSubmissionController extends Controller
      */
     private function ensureShiftBelongsToHandover(Request $request): void
     {
-        if (!$request->filled('shift_id')) {
+        if (! $request->filled('shift_id')) {
             return;
         }
         $shift = Shift::find($request->shift_id);
@@ -318,7 +321,7 @@ class ChecklistSubmissionController extends Controller
         $assigned = ShiftAssignment::where('shift_id', $shift->id)
             ->where('user_id', (int) $request->outgoing_user_id)
             ->exists();
-        if (!$assigned) {
+        if (! $assigned) {
             throw ValidationException::withMessages([
                 'shift_id' => 'The outgoing employee is not assigned to this shift.',
             ]);
@@ -331,7 +334,7 @@ class ChecklistSubmissionController extends Controller
      */
     public function show(Request $request, ChecklistSubmission $checklistSubmission)
     {
-        if (!$checklistSubmission->isVisibleTo($request->user())) {
+        if (! $checklistSubmission->isVisibleTo($request->user())) {
             return response()->json(['message' => 'You can only view handovers you are part of.'], 403);
         }
 
@@ -393,7 +396,7 @@ class ChecklistSubmissionController extends Controller
                 return 'This handover is not waiting for confirmation.';
             }
             $current = User::find($submission->incoming_user_id);
-            if (!$current?->isDeactivated()) {
+            if (! $current?->isDeactivated()) {
                 return 'Only a handover whose incoming user was deactivated can be handed to someone else.';
             }
 
@@ -453,6 +456,7 @@ class ChecklistSubmissionController extends Controller
         });
 
         $checklistSubmission->load(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name', 'confirmedBy:id,name', 'responses']);
+
         return response()->json($checklistSubmission);
     }
 }

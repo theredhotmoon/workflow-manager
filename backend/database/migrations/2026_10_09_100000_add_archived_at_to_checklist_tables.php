@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Schema;
  * Templates are archived and their groups/items retired instead of deleted, so past handovers
  * keep every response (see ChecklistTemplateController::update/destroy).
  */
-return new class extends Migration {
+return new class extends Migration
+{
     private const TABLES = ['checklist_templates', 'checklist_groups', 'checklist_items'];
 
     public function up(): void

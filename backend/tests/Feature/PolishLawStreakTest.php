@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use App\Models\User;
@@ -137,7 +138,7 @@ it('counts existing in-month assignments once: two manual nights then an auto-as
 
     foreach (['2026-09-01', '2026-09-02'] as $date) {
         $shift = makeStreakShift($group->id, $date, 1, 'night', '22:00', '06:00');
-        \App\Models\ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
+        ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $employee->id]);
     }
     makeStreakShift($group->id, '2026-09-03', 1, 'night', '22:00', '06:00');
 

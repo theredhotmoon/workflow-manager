@@ -6,12 +6,12 @@ use App\Models\Delegation;
 use App\Models\DelegationLog;
 use App\Models\User;
 use App\Support\BusinessDate;
+use App\Support\Month;
 use Carbon\Carbon;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use App\Support\Month;
 
 class DelegationController extends Controller
 {
@@ -43,6 +43,7 @@ class DelegationController extends Controller
     public function logs(Delegation $delegation)
     {
         $logs = $delegation->logs()->with('performer:id,name')->get();
+
         return response()->json($logs);
     }
 
@@ -75,7 +76,7 @@ class DelegationController extends Controller
 
         $this->log($delegation->id, $request->user()->id, 'created', "Created delegation \"{$delegation->name}\"");
 
-        if (!empty($validated['user_ids'])) {
+        if (! empty($validated['user_ids'])) {
             foreach ($validated['user_ids'] as $uid) {
                 $delegation->users()->attach($uid, ['status' => 'approved']);
                 $userName = User::find($uid)?->name ?? $uid;
@@ -84,6 +85,7 @@ class DelegationController extends Controller
         }
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
+
         return response()->json($delegation, 201);
     }
 
@@ -136,7 +138,7 @@ class DelegationController extends Controller
                     break;
                 default:
                     if ((string) ($delegation->$key ?? '') !== (string) ($value ?? '')) {
-                        $changes[] = ucfirst($key) . ' changed';
+                        $changes[] = ucfirst($key).' changed';
                     }
             }
         }
@@ -148,6 +150,7 @@ class DelegationController extends Controller
         }
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
+
         return response()->json($delegation);
     }
 
@@ -163,10 +166,12 @@ class DelegationController extends Controller
         ]);
 
         $pivotData = ['status' => 'approved'];
-        if ($request->has('custom_start'))
+        if ($request->has('custom_start')) {
             $pivotData['custom_start'] = self::dateOnly($request->custom_start);
-        if ($request->has('custom_end'))
+        }
+        if ($request->has('custom_end')) {
             $pivotData['custom_end'] = self::dateOnly($request->custom_end);
+        }
         // A date not sent stays as stored, so the check uses the member's current one.
         $current = $delegation->users()->where('users.id', $request->user_id)->first()?->pivot;
         $this->ensureTravelDatesFit(
@@ -188,6 +193,7 @@ class DelegationController extends Controller
         });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
+
         return response()->json($delegation);
     }
 
@@ -215,6 +221,7 @@ class DelegationController extends Controller
         $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$member->name}");
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
+
         return response()->json($delegation);
     }
 
@@ -235,6 +242,7 @@ class DelegationController extends Controller
         });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
+
         return response()->json($delegation);
     }
 
@@ -251,6 +259,7 @@ class DelegationController extends Controller
         $this->log($delegation->id, $request->user()->id, 'user_rejected', "Rejected {$member->name}");
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
+
         return response()->json($delegation);
     }
 
@@ -266,6 +275,7 @@ class DelegationController extends Controller
         $this->log($delegation->id, $request->user()->id, 'user_removed', "Removed {$member->name}");
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
+
         return response()->json($delegation);
     }
 
@@ -285,7 +295,7 @@ class DelegationController extends Controller
             if ($joined->isNotEmpty()) {
                 return response()->json([
                     'code' => 'has_members',
-                    'message' => 'This delegation has members (' . $joined->implode(', ') . '), so it can\'t be deleted. Archive it instead.',
+                    'message' => 'This delegation has members ('.$joined->implode(', ').'), so it can\'t be deleted. Archive it instead.',
                     'members' => $joined->values()->all(),
                 ], 409);
             }
@@ -326,7 +336,7 @@ class DelegationController extends Controller
      */
     public function selfRegister(Request $request, Delegation $delegation)
     {
-        if (!$delegation->registration_open) {
+        if (! $delegation->registration_open) {
             return response()->json(['message' => 'Registration for this delegation is closed.'], 403);
         }
         // Open through its last day (business date), as the open list shows it.
@@ -350,6 +360,7 @@ class DelegationController extends Controller
         $this->log($delegation->id, $request->user()->id, 'self_registered', "{$request->user()->name} requested to join");
 
         $delegation->load([...Delegation::membersFor($request->user()), 'creator:id,name']);
+
         return response()->json($delegation->hideOthersApplicationDetails($request->user()));
     }
 
@@ -359,7 +370,7 @@ class DelegationController extends Controller
     public function selfUnregister(Request $request, Delegation $delegation)
     {
         $existing = $delegation->users()->where('user_id', $request->user()->id)->first();
-        if (!$existing || $existing->pivot->status !== 'pending') {
+        if (! $existing || $existing->pivot->status !== 'pending') {
             return response()->json(['message' => 'You can only withdraw a pending request.'], 403);
         }
 
@@ -367,6 +378,7 @@ class DelegationController extends Controller
         $this->log($delegation->id, $request->user()->id, 'self_unregistered', "{$request->user()->name} withdrew request");
 
         $delegation->load([...Delegation::membersFor($request->user()), 'creator:id,name']);
+
         return response()->json($delegation->hideOthersApplicationDetails($request->user()));
     }
 
@@ -433,7 +445,7 @@ class DelegationController extends Controller
     private function memberOr404(Delegation $delegation, int $userId): User
     {
         $member = $delegation->users()->where('users.id', $userId)->first();
-        if (!$member) {
+        if (! $member) {
             $name = User::whereKey($userId)->value('name') ?? "User {$userId}";
             abort(response()->json(['message' => "{$name} is not on this delegation."], 404));
         }

@@ -139,7 +139,7 @@ class ProcedureController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'purpose' => ['sometimes', 'nullable', 'string'],
             'requirements' => ['sometimes', 'nullable', 'string'],
-            'content' => ['sometimes', 'nullable', 'string'],
+            'content' => ['sometimes', 'nullable', 'string', 'max:'.Procedure::CONTENT_MAX_LENGTH],
             'owner_id' => ['required', User::activeExistsRule()],
             'tag_ids' => ['sometimes', 'array'],
             'tag_ids.*' => ['exists:procedure_tags,id'],
@@ -233,7 +233,7 @@ class ProcedureController extends Controller
             'title' => ['sometimes', 'string', 'max:255'],
             'purpose' => ['sometimes', 'nullable', 'string'],
             'requirements' => ['sometimes', 'nullable', 'string'],
-            'content' => ['sometimes', 'nullable', 'string'],
+            'content' => ['sometimes', 'nullable', 'string', 'max:'.Procedure::CONTENT_MAX_LENGTH],
             // Clients may send the current owner back; a different owner goes through change-owner.
             'owner_id' => ['sometimes', Rule::in([$procedure->owner_id])],
             'tag_ids' => ['sometimes', 'array'],
@@ -325,7 +325,7 @@ class ProcedureController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'purpose' => ['sometimes', 'nullable', 'string'],
             'requirements' => ['sometimes', 'nullable', 'string'],
-            'content' => ['sometimes', 'nullable', 'string'],
+            'content' => ['sometimes', 'nullable', 'string', 'max:'.Procedure::CONTENT_MAX_LENGTH],
             'tag_ids' => ['sometimes', 'array'],
             'tag_ids.*' => ['exists:procedure_tags,id'],
         ]);

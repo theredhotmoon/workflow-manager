@@ -11,6 +11,13 @@ use Illuminate\Support\Facades\DB;
 
 class Procedure extends Model
 {
+    /**
+     * Longest content (and draft content) a write takes, in characters. Pasted images live in the
+     * HTML as base64 data: URLs (about 4/3 of the image size), so this is roughly 22 MB of images.
+     * Below the 50 MB request body that Nginx and PHP allow on the procedure writes only.
+     */
+    public const CONTENT_MAX_LENGTH = 30_000_000;
+
     protected $fillable = [
         'identifier',
         'title',

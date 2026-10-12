@@ -266,8 +266,9 @@ it('exports in the list order for the timing (nullable boolean) and status sorts
     $admin = User::factory()->create(['role' => 'admin']);
     caeInsertTied(1100, [caeTemplate()], $admin);
     // On time, late and not known (null); every status, so each sort has long ties across chunks.
+    // 3 in 5 are null (660 rows), so a 500-row boundary falls inside the nulls in both directions.
     DB::statement("update checklist_submissions set
-        submitted_on_time = case id % 3 when 0 then null when 1 then true else false end,
+        submitted_on_time = case id % 5 when 0 then true when 1 then false else null end,
         status = case id % 4 when 0 then 'draft' when 1 then 'pending_confirmation' else 'completed' end");
 
     foreach ([['sort' => 'timing', 'direction' => 'asc'], ['sort' => 'timing', 'direction' => 'desc'],

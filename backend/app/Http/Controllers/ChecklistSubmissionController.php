@@ -77,8 +77,14 @@ class ChecklistSubmissionController extends Controller
             // UTF-8 BOM: without it Excel reads the file as ANSI and garbles Polish names.
             fwrite($out, "\xEF\xBB\xBF");
             self::csvRow($out, ['Date', 'Template', 'Outgoing Employee', 'Incoming Employee', 'Status', 'Timing', 'Submitted At']);
+            // Progress guard, in constant memory: each chunk must move the cursor, bring none of the
+            // previous chunk's rows, and the export can't write more rows than matched when it
+            // started (plus a chunk, for rows filed meanwhile). A keyset that doesn't advance (a bug
+            // in whereAfter) would otherwise loop forever; it is logged and the download stops.
+            $total = $query->clone()->reorder()->count();
+            $written = 0;
+            $previousIds = [];
             $last = null;
-            $written = [];
             do {
                 $chunk = $query->clone()
                     ->when($last !== null, fn ($q) => self::whereAfter($q, $order, $last))
@@ -86,18 +92,17 @@ class ChecklistSubmissionController extends Controller
                     ->get();
                 $tail = $chunk->last();
                 $next = $tail === null ? null : array_map(fn ($i) => $tail->getAttributes()["keyset_{$i}"], array_keys($order));
-                // Progress guard: each chunk must move the cursor and bring only rows not written
-                // yet. A keyset that doesn't (a bug in whereAfter) would otherwise loop forever.
-                $repeated = $chunk->first(fn ($submission) => isset($written[$submission->id]));
-                if ($tail !== null && ($next === $last || $repeated !== null)) {
+                $repeated = $chunk->first(fn ($submission) => isset($previousIds[$submission->id]));
+                if ($tail !== null && ($next === $last || $repeated !== null || $written + $chunk->count() > $total + self::EXPORT_CHUNK)) {
                     Log::error('Checklist archive export stopped: the keyset did not advance.', [
-                        'order' => $order, 'cursor' => $last, 'next' => $next,
-                        'repeated_id' => $repeated?->id, 'rows_written' => count($written),
+                        'order' => $order, 'cursor' => $last, 'next' => $next, 'repeated_id' => $repeated?->id,
+                        'rows_written' => $written, 'rows_matching' => $total,
                     ]);
                     throw new RuntimeException('Checklist archive export stopped: the keyset did not advance.');
                 }
+                $written += $chunk->count();
+                $previousIds = $chunk->pluck('id')->flip()->all();
                 foreach ($chunk as $submission) {
-                    $written[$submission->id] = true;
                     self::csvRow($out, [
                         $submission->date?->format('Y-m-d') ?? '',
                         $submission->template?->name ?? '',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Alarm;
 use App\Models\ChecklistGroup;
 use App\Models\ChecklistResponse;
 use App\Models\ChecklistSubmission;
@@ -10,6 +11,7 @@ use App\Models\Shift;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftChecklist;
 use App\Models\User;
+use App\Services\AlarmService;
 use App\Support\BusinessDate;
 use App\Support\LikePattern;
 use Illuminate\Database\Eloquent\Builder;
@@ -44,9 +46,19 @@ class ChecklistSubmissionController extends Controller
         }
 
         $perPage = max(1, min((int) $request->input('per_page', 20), 100));
-        $page = $query->with(['template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name'])->paginate($perPage);
+        $page = $query->with(['template:id,name', 'outgoingUser:id,name', self::incomingUserRelation($request->user())])->paginate($perPage);
 
         return response()->json(array_merge($page->toArray(), ['status_counts' => $statusCounts]));
+    }
+
+    /**
+     * The incoming user as a list or detail shows them. Admins also get deactivated_at: a pending
+     * handover whose incoming user is deactivated can be handed to someone else (reassignIncoming),
+     * and the archive offers that. Others see the name only.
+     */
+    private static function incomingUserRelation(?User $viewer): string
+    {
+        return $viewer?->isAdmin() ? 'incomingUser:id,name,deactivated_at' : 'incomingUser:id,name';
     }
 
     /** Rows per chunk of the streamed CSV export. */
@@ -434,7 +446,7 @@ class ChecklistSubmissionController extends Controller
         $checklistSubmission->load([
             'template',
             'outgoingUser:id,name',
-            'incomingUser:id,name',
+            self::incomingUserRelation($request->user()),
             'previousIncomingUser:id,name',
             'incomingReassignedBy:id,name',
             'submittedBy:id,name',
@@ -507,11 +519,42 @@ class ChecklistSubmissionController extends Controller
         }
 
         $checklistSubmission->refresh()->load([
-            'template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name',
+            'template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name,deactivated_at',
             'previousIncomingUser:id,name', 'incomingReassignedBy:id,name',
         ]);
+        $this->notifyIncomingReassigned($checklistSubmission, $request->user());
 
         return response()->json($checklistSubmission);
+    }
+
+    /**
+     * After a reassignment: the new incoming user is told a handover waits for their confirmation,
+     * with a link that opens it. The previous incoming user is told only while still active (the
+     * reassignment requires them deactivated today, so this is for a later, wider rule).
+     */
+    private function notifyIncomingReassigned(ChecklistSubmission $submission, User $admin): void
+    {
+        $alarms = new AlarmService;
+        $date = $submission->date?->format('Y-m-d');
+        $template = $submission->template?->name ?? 'Checklist';
+        $from = $submission->outgoingUser?->name ?? 'a colleague';
+        $alarms->notifyUser(
+            Alarm::TYPE_HANDOVER_REASSIGNED,
+            $submission->incoming_user_id,
+            "{$admin->name} handed you a handover to confirm: {$template} from {$from} on {$date}",
+            null,
+            "/checklist/fill?confirm={$submission->id}",
+            'Confirm handover'
+        );
+
+        $previous = User::find($submission->previous_incoming_user_id);
+        if ($previous && ! $previous->isDeactivated()) {
+            $alarms->notifyUser(
+                Alarm::TYPE_HANDOVER_REASSIGNED,
+                $previous->id,
+                "{$admin->name} handed your pending handover ({$template} from {$from} on {$date}) to someone else",
+            );
+        }
     }
 
     /**

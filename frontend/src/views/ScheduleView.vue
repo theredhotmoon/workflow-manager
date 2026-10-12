@@ -3062,6 +3062,8 @@ onMounted(async () => {
   const qMonth = route.params.month || route.query.month;
   const highlightUserId = route.query.highlight_user;
   const scrollDate = route.query.scroll_date;
+  // ?group=<id> (e.g. from a change request): open that group's tab, if it is an active group.
+  const groupFromQuery = Number(route.query.group) || null;
 
   // Navigate to the correct month if specified
   if (qMonth) {
@@ -3074,6 +3076,9 @@ onMounted(async () => {
 
   // Load shift groups first so activeGroupId is set
   await fetchShiftGroups();
+  if (groupFromQuery && shiftGroups.value.some((g) => g.id === groupFromQuery)) {
+    activeGroupId.value = groupFromQuery;
+  }
 
   await fetchSchedule();
   fetchTemplates();
@@ -3107,7 +3112,7 @@ onMounted(async () => {
   }
 
   // Clean up highlight/scroll query params, set month in path
-  if (highlightUserId || scrollDate) {
+  if (highlightUserId || scrollDate || groupFromQuery) {
     router.replace({ name: 'schedule', params: { month: monthKey.value } });
   } else if (!route.params.month) {
     router.replace({ name: 'schedule', params: { month: monthKey.value } });

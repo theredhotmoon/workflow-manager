@@ -29,16 +29,20 @@ class AlarmService
     }
 
     /**
-     * Create an alarm for all admins and schedule maintainers.
+     * Create an alarm for all active admins and schedule maintainers, except $exceptUserId (the
+     * manager whose own action it reports).
      */
     public function notifyAdminsAndMaintainers(
         string $type,
         string $shortMessage,
         ?string $details = null,
         ?string $linkUrl = null,
-        ?string $linkLabel = null
+        ?string $linkLabel = null,
+        ?int $exceptUserId = null
     ): void {
-        $users = User::active()->scheduleManagers()->get();
+        $users = User::active()->scheduleManagers()
+            ->when($exceptUserId !== null, fn ($q) => $q->whereKeyNot($exceptUserId))
+            ->get();
 
         foreach ($users as $user) {
             $this->createAlarm($type, $user->id, $shortMessage, $details, $linkUrl, $linkLabel);

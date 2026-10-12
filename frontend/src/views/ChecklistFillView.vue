@@ -526,7 +526,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import BaseModal from '../components/BaseModal.vue';
@@ -538,6 +538,7 @@ import { isAdmin } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
 const route = useRoute();
+const router = useRouter();
 
 // State
 const step = ref('setup'); // setup, fill, confirm, confirm-detail
@@ -1026,6 +1027,36 @@ async function submitConfirmation() {
 }
 
 onMounted(loadData);
+
+// ?confirm=<id> (the "handed to you" alarm's link) opens that handover's confirmation. Watched, not
+// read once on mount: clicking the alarm while already on Fill Checklist reuses this view. Once
+// handled, the parameter leaves the address, so a reload doesn't reopen it (or warn that it is
+// no longer waiting) and the same alarm can be followed again.
+async function openConfirmationFromLink(id) {
+  try {
+    await loadPendingConfirmations();
+    if (pendingSubmissions.value.some((s) => s.id === id)) {
+      await openConfirmation({ id });
+    } else if (step.value === 'confirm') {
+      showToast('That handover is no longer waiting for your confirmation.', 'warning');
+    }
+  } finally {
+    if (route.name === 'checklist-fill' && route.query.confirm === String(id)) {
+      const rest = { ...route.query };
+      delete rest.confirm;
+      router.replace({ query: rest });
+    }
+  }
+}
+
+watch(
+  () => (route.name === 'checklist-fill' ? route.query.confirm : undefined),
+  (value) => {
+    const id = Number(value) || null;
+    if (id) openConfirmationFromLink(id);
+  },
+  { immediate: true },
+);
 
 // Opening another procedure before the previous preview arrived supersedes it; a stale failure
 // must not toast or close the preview the user is now looking at.

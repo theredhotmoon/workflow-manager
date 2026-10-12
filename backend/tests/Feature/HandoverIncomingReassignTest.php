@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Alarm;
 use App\Models\ChecklistGroup;
 use App\Models\ChecklistItem;
 use App\Models\ChecklistResponse;
@@ -86,4 +87,35 @@ it('refuses a deactivated, outgoing or self new incoming user', function () {
 
 it('is for admins only', function () {
     hirReassign($this->outgoing, $this->replacement->id)->assertForbidden();
+});
+
+it('tells the new incoming user, with a link that opens the handover, and nobody else', function () {
+    hirReassign($this->admin, $this->replacement->id)->assertOk();
+
+    $alarms = Alarm::where('type', Alarm::TYPE_HANDOVER_REASSIGNED)->get();
+    expect($alarms)->toHaveCount(1)
+        ->and($alarms[0]->user_id)->toBe($this->replacement->id)
+        ->and($alarms[0]->short_message)->toContain('Olga Outgoing')
+        ->and($alarms[0]->short_message)->toContain('2026-10-08')
+        ->and($alarms[0]->link_url)->toBe("/checklist/fill?confirm={$this->submission->id}");
+});
+
+it('notifies nobody when the reassignment is refused', function () {
+    $this->gone->forceFill(['deactivated_at' => null])->save();
+
+    hirReassign($this->admin, $this->replacement->id)->assertUnprocessable();
+    hirReassign($this->admin, $this->outgoing->id)->assertUnprocessable();
+
+    expect(Alarm::where('type', Alarm::TYPE_HANDOVER_REASSIGNED)->count())->toBe(0);
+});
+
+it('shows admins, and only admins, whether a handover\'s incoming user is deactivated', function () {
+    $admin = $this->actingAs($this->admin)->getJson('/api/checklist-submissions?status=pending_confirmation')->assertOk();
+    expect($admin->json('data.0.incoming_user.deactivated_at'))->not->toBeNull();
+    $this->actingAs($this->admin)->getJson("/api/checklist-submissions/{$this->submission->id}")->assertOk()
+        ->assertJsonPath('incoming_user.id', $this->gone->id)
+        ->assertJsonStructure(['incoming_user' => ['deactivated_at']]);
+
+    $own = $this->actingAs($this->outgoing)->getJson('/api/checklist-submissions')->assertOk();
+    expect($own->json('data.0.incoming_user'))->toBe(['id' => $this->gone->id, 'name' => 'Gus Gone']);
 });

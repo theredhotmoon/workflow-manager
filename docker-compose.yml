@@ -88,14 +88,19 @@ services:
     networks:
       - app_network
     logging: *default-logging
-    # Ready = PHP answers and the database accepts a query (/api/health; 503 otherwise). The start
-    # period covers the migrations run on start.
+    # Ready = PHP answers and the database accepts a query (/api/health; 503 otherwise).
+    # start_period is generous on purpose: it covers the migrations run on start and the optional
+    # pre-migration pg_dump, which on a large database can take minutes. Failures inside it don't
+    # count, while the first success marks the container healthy at once, so a normal start is
+    # still seen within one interval (10 s). Without it, a slow start would be marked unhealthy and
+    # `docker compose up` would give up on the frontend, which waits for this. (No start_interval:
+    # Docker Engine < 25 and older Compose reject it.)
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/api/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 120s
+      start_period: 600s
 
   # ─── Vue 3 SPA (Nginx) ─────────────────────────────────────────────────────
   frontend:

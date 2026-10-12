@@ -176,6 +176,10 @@ backend container. The start log says `→ Running migrations...`.
   Stop the frontend first (`docker compose stop frontend`) so nobody writes during the restore. A
   restored database is at the old schema, so the next backend start migrates it again: roll back
   the code first if the migration was the problem.
+- **Slow starts:** the backend's healthcheck allows 10 minutes for migrations and the backup (its
+  `start_period`); a normal start turns healthy within seconds. If a start takes longer, `docker
+  compose up` reports the backend unhealthy and leaves the frontend stopped: run `docker compose
+  up -d` again once `docker compose ps` shows the backend healthy.
 - **Several backend replicas:** set `RUN_MIGRATIONS=0` so no container migrates on start (two
   replicas would race), and run the migrations once per deploy as their own step, before starting
   the new containers:

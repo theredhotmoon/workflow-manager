@@ -4,6 +4,26 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-12 — 🧩 Schedule screen split into composables and components (internal refactor, no behaviour change)
+
+> **Deploy notes**
+> - Frontend only, no migrations, no API changes. Rebuild the frontend image.
+
+- **`ScheduleView.vue` (3,298 lines) is split into focused units; it is now the 863-line orchestrator.** Pure move: the same function bodies, the same order of checks and the same request bodies; only the wiring between the pieces is new.
+
+### Changed
+| What | Details |
+|------|---------|
+| Internal refactor, no behaviour change | Composables in `src/composables/schedule/`: `useShiftGroups` (tabs, create, rename, archive/restore, settlement settings), `useScheduleMonth` (the month, `fetchSchedule` and the delegation, newbie, closure and colour overlays, each with its `useLatestRequest` guard), `useEmployeeSelection` (roster sort, counts and hours, availability overlay, cell styles), `useAssignmentFlow` (drop → availability → delegation → back-to-back → assign, the server's short-rest/overlap and rest-day answers, the one-chip-per-person drop guard, unassign), `useGenerateMonth` (Generate Month, the office-closure conflict with generate-as-remote's reload check and 2000-shift cap, Delete Schedule), `useShiftEditors` (Shift Checklists and Shift Times dialogs), `useChangeRequest` (Request Day Off). Components in `src/components/schedule/`: one per dialog (10, each still a `BaseModal` with the same titles, roles, labels and busy/backdrop behaviour), `ScheduleGroupTabs` and `EmployeeSidePanel`. Pure helpers (`groupShiftsByGroup`, the clock-arc maths, `isOvernightShift`, `formatClosureDate`, `getInitials`, `cloneEmployee`) in `src/schedule/helpers.js` |
+
+### Tests
+| What | Details |
+|------|---------|
+| Unit | `src/schedule/helpers.test.js` (10 tests: angles, arcs incl. the full-circle cap, overnight, initials, closure dates, grouping, chip clone) |
+| Playwright | No spec changed; the full suite (173) passes. During the work the screen's DOM was also compared with main's in 22 states (dialogs, overlays, drops, all-groups, employee view): byte-identical, and so were the API requests and their bodies |
+
+---
+
 ## 2026-10-12 — ✨ Change Requests screen for managers, and handing over stuck handovers
 
 > **Deploy notes**

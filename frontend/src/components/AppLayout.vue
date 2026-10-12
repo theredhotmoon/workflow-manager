@@ -112,12 +112,18 @@
 
             <!-- User Avatar Menu -->
             <div class="relative ml-3 pl-3 border-l border-white/10 shrink-0">
+              <!-- Below sm the page links live in this menu too: it shows a hamburger and "Menu",
+                   and is named for both. -->
               <button ref="userMenuButtonRef" @click="userMenuOpen = !userMenuOpen"
-                :aria-label="`${currentUser?.name ?? 'User'} — account menu`"
+                :aria-label="isPhone ? `Menu and account — ${currentUser?.name ?? 'User'}` : `${currentUser?.name ?? 'User'} — account menu`"
                 :aria-expanded="userMenuOpen"
                 aria-haspopup="true"
                 :aria-controls="userMenuOpen ? 'user-menu' : undefined"
                 class="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/10 transition-all duration-200 group">
+                <span class="sm:hidden flex items-center gap-1.5 text-sm font-medium text-slate-200" aria-hidden="true">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                  Menu
+                </span>
                 <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white font-bold text-[11px] shadow-lg shadow-indigo-500/20 ring-2 ring-white/10 group-hover:ring-indigo-500/40 transition-all">
                   {{ userInitials }}
                 </div>
@@ -329,6 +335,16 @@ const pwSuccess = ref('');
 const pw = ref({ current: '', password: '', confirm: '' });
 
 const isAdmin = computed(() => userIsAdmin(currentUser.value));
+
+// Below Tailwind's sm breakpoint (640 px) the account button also opens the page links.
+const phoneQuery =
+  typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(max-width: 639.98px)')
+    : null;
+const isPhone = ref(phoneQuery?.matches ?? false);
+function onPhoneQueryChange(event) {
+  isPhone.value = event.matches;
+}
 const canManageSchedule = computed(() => userCanManageSchedule(currentUser.value));
 
 // Focus trap for the Change Password modal
@@ -570,11 +586,13 @@ onMounted(() => {
   alarmPollTimer = setInterval(fetchAlarms, 60000);
   document.addEventListener('pointerdown', onDocumentPointerDown);
   document.addEventListener('keydown', onDocumentKeydown);
+  phoneQuery?.addEventListener?.('change', onPhoneQueryChange);
 });
 
 onUnmounted(() => {
   stopAlarmPoll();
   document.removeEventListener('pointerdown', onDocumentPointerDown);
   document.removeEventListener('keydown', onDocumentKeydown);
+  phoneQuery?.removeEventListener?.('change', onPhoneQueryChange);
 });
 </script>

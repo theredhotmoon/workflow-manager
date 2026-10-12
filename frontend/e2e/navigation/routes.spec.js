@@ -69,7 +69,10 @@ test.describe('Phone header', () => {
     await expect(pages).toHaveCount(0);
     await expect(header(employeePage).locator('a[href="/procedures"]')).toBeHidden();
 
-    await employeePage.getByRole('button', { name: /account menu/ }).click();
+    // The trigger says what it is on a phone: a visible "Menu" with a hamburger, and its name.
+    const trigger = employeePage.getByRole('button', { name: /^Menu and account/ });
+    await expect(trigger).toContainText('Menu');
+    await trigger.click();
     await expect(pages.getByRole('link', { name: 'Dashboard' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -83,7 +86,10 @@ test.describe('Phone header', () => {
   }) => {
     await employeePage.goto('/dashboard');
     await expect(header(employeePage).locator('a[href="/procedures"]')).toBeVisible();
-    await employeePage.getByRole('button', { name: /account menu/ }).click();
+    // At desktop width the button is the account menu, without the "Menu" label.
+    const account = employeePage.getByRole('button', { name: /account menu$/ });
+    await expect(account.getByText('Menu', { exact: true })).toBeHidden();
+    await account.click();
     await expect(employeePage.getByRole('navigation', { name: 'Pages' })).toBeHidden();
   });
 });

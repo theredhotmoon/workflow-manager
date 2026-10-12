@@ -38,17 +38,22 @@ class ShiftChangeRequestController extends Controller
         }
         [$assignment, $changeRequest] = $result;
 
-        // Dispatch alarm to admins and schedule maintainers
+        // Alarm to the admins and schedule maintainers (not the filer, when a manager files their
+        // own): it opens the Change Requests screen on the shift's group and month, where the
+        // request can be acknowledged and its row links on to the Schedule.
         $userName = auth()->user()->name;
-        $userId = auth()->id();
         $shiftDate = $assignment->shift->date->format('Y-m-d');
-        $shiftMonth = $assignment->shift->date->format('Y-m');
+        $query = http_build_query([
+            'group' => $assignment->shift->shift_group_id,
+            'month' => $assignment->shift->date->format('Y-m'),
+        ]);
         (new AlarmService)->notifyAdminsAndMaintainers(
             Alarm::TYPE_EMPLOYEE_CANNOT_ATTEND_SHIFT,
             "{$userName} cannot attend shift #{$assignment->shift->shift_number} on {$shiftDate}",
             $request->reason,
-            "/schedule/{$shiftMonth}?highlight_user={$userId}&scroll_date={$shiftDate}",
-            'View Schedule'
+            "/change-requests?{$query}",
+            'View request',
+            exceptUserId: auth()->id(),
         );
 
         return response()->json($changeRequest->load('user:id,name'), 201);
@@ -128,8 +133,9 @@ class ShiftChangeRequestController extends Controller
      * been removed are included (assignment_removed / shift_removed, with the shift's date and slot
      * kept on the request); a group filter can't match a request whose shift is gone, since its
      * group went with the shift. Requests in archived groups are listed, not dropped: the group
-     * comes with its archived_at and the screen flags them (archiving settles their pending
-     * requests, so in practice they show among the acknowledged ones).
+     * comes with its archived_at and the screen flags them. Archiving a group removes (and so
+     * settles) only work on future days; a request for a shift of today or earlier stays pending,
+     * flagged, and counts towards pending-count like any other.
      */
     public function index(Request $request)
     {
@@ -189,7 +195,8 @@ class ShiftChangeRequestController extends Controller
         [$changeRequest, $acknowledgedNow] = DB::transaction(function () use ($request, $id) {
             // Locked: two managers acknowledging at once can't both record themselves and notify.
             $changeRequest = ShiftChangeRequest::lockForUpdate()->findOrFail($id);
-            if ($changeRequest->status === 'acknowledged') {
+            // Anything but pending is left as it is (today the only other status is acknowledged).
+            if ($changeRequest->status !== 'pending') {
                 return [$changeRequest, false];
             }
             $changeRequest->forceFill([

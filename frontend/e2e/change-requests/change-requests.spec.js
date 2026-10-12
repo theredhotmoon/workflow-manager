@@ -49,20 +49,54 @@ async function fileRequest(context, assignmentId, reason) {
   });
 }
 
+/**
+ * Cleanup steps, run in reverse order of creation, each on its own: one failing step (or a test
+ * failing half-way through its setup) doesn't skip the others.
+ */
+function cleanupStack() {
+  const steps = [];
+  return {
+    add(step) {
+      steps.push(step);
+    },
+    async run() {
+      const errors = [];
+      for (const step of steps.reverse()) {
+        try {
+          await step();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length) throw errors[0];
+    },
+  };
+}
+
+/** The number on a nav link's badge (its aria-hidden digits, not the sr-only "(N pending)"). */
+function badgeNumber(link) {
+  return link.getByTestId('nav-badge').locator('[aria-hidden="true"]');
+}
+
 function changeRequestsLink(page) {
   return page.getByRole('navigation').getByRole('link', { name: /^Change Requests/ });
 }
 
 test.describe('Change requests (managers)', () => {
-  test('a schedule maintainer acknowledges a pending request, the badge drops and the employee is told', async ({
+  test('a schedule maintainer opens a request from its alarm and acknowledges it; the badge drops and the employee is told', async ({
     adminPage,
     maintainerPage,
     browser,
   }) => {
     const admin = adminPage.context();
-    const groupId = await createShiftGroupWithStreakRule(admin, { group: { name: GROUP } });
-    const requester = await throwawayEmployee(admin, browser, 'ack');
+    const cleanup = cleanupStack();
     try {
+      const groupId = await createShiftGroupWithStreakRule(admin, { group: { name: GROUP } });
+      cleanup.add(() => archiveShiftGroup(admin, groupId));
+      const requester = await throwawayEmployee(admin, browser, 'ack');
+      cleanup.add(() => deactivate(admin, requester.user.id));
+      cleanup.add(() => requester.context.close());
+
       await generateMonthShifts(admin, { monthKey: ACK_MONTH, shiftGroupId: groupId });
       const { schedule } = await getShiftGroupsAndShifts(admin, ACK_MONTH, groupId);
       const assignment = await assignShift(admin, {
@@ -75,11 +109,23 @@ test.describe('Change requests (managers)', () => {
         await api(maintainerPage.context(), 'get', '/api/shift-change-requests/pending-count')
       ).count;
       expect(before).toBeGreaterThan(0);
+      expect(before).toBeLessThan(100); // the badge shows "99+" above
 
-      await maintainerPage.goto('/change-requests');
+      // The filing alarm opens the screen on the request's group and month.
+      await maintainerPage.goto('/dashboard');
+      await maintainerPage.getByRole('button', { name: 'Notifications' }).click();
+      await maintainerPage
+        .locator('#alarm-dropdown')
+        .getByText(`${requester.user.name} cannot attend shift #1 on ${ACK_MONTH}-10`)
+        .click();
+      await expect(maintainerPage).toHaveURL(/\/change-requests$/);
       await expect(maintainerPage.getByRole('heading', { name: 'Change Requests' })).toBeVisible();
-      const badge = changeRequestsLink(maintainerPage).getByTestId('nav-badge');
-      await expect(badge).toContainText(String(before));
+      await expect(maintainerPage.getByLabel('Group')).toHaveValue(String(groupId));
+      await expect(maintainerPage.getByLabel('Month')).toHaveValue(ACK_MONTH);
+      await expect(maintainerPage.getByLabel('Status')).toHaveValue('pending');
+
+      const badge = badgeNumber(changeRequestsLink(maintainerPage));
+      await expect(badge).toHaveText(String(before));
 
       const row = maintainerPage.locator(`[data-request-id="${request.id}"]`);
       await expect(row).toContainText(requester.user.name);
@@ -94,11 +140,34 @@ test.describe('Change requests (managers)', () => {
         ),
       );
 
+      // On a phone the nav strip is hidden: the menu button carries a dot and says what waits.
+      await maintainerPage.setViewportSize({ width: 390, height: 800 });
+      const menuButton = maintainerPage.getByRole('button', { name: /^Menu and account/ });
+      await expect(maintainerPage.getByTestId('menu-dot')).toBeVisible();
+      await expect(menuButton).toHaveAccessibleName(
+        new RegExp(`${before} change requests? pending`),
+      );
+      await menuButton.click();
+      await expect(
+        badgeNumber(
+          maintainerPage.locator('#user-menu').getByRole('link', { name: /^Change Requests/ }),
+        ),
+      ).toHaveText(String(before));
+      await menuButton.click();
+      await maintainerPage.setViewportSize({ width: 1280, height: 720 });
+
       await row.getByRole('button', { name: /^Acknowledge/ }).click();
+      await expect(
+        maintainerPage.getByText(`Acknowledged the request from ${requester.user.name}.`),
+      ).toBeVisible();
+      // Under the Pending filter the page is re-read: the acknowledged request leaves it.
+      await expect(row).toHaveCount(0);
+      if (before > 1) await expect(badge).toHaveText(String(before - 1));
+      else await expect(changeRequestsLink(maintainerPage).getByTestId('nav-badge')).toHaveCount(0);
+
+      await maintainerPage.getByLabel('Status').selectOption('all');
       await expect(row.getByTestId('cr-status')).toHaveText(/^Acknowledged by /);
       await expect(row.getByRole('button', { name: /^Acknowledge/ })).toHaveCount(0);
-      if (before > 1) await expect(badge).toContainText(String(before - 1));
-      else await expect(badge).toHaveCount(0);
 
       // The requester gets a notification.
       const latest = await api(requester.context, 'get', '/api/alarms/latest');
@@ -112,9 +181,7 @@ test.describe('Change requests (managers)', () => {
         /bg-indigo-500\/20/,
       );
     } finally {
-      await requester.context.close();
-      await deactivate(admin, requester.user.id);
-      await archiveShiftGroup(admin, groupId);
+      await cleanup.run();
     }
   });
 
@@ -123,13 +190,20 @@ test.describe('Change requests (managers)', () => {
     browser,
   }) => {
     const admin = adminPage.context();
-    const groupId = await createShiftGroupWithStreakRule(admin, {
-      group: { name: REMOVED_GROUP },
-    });
-    const requester = await throwawayEmployee(admin, browser, 'removed');
-    const colleague = await throwawayEmployee(admin, browser, 'colleague');
+    const cleanup = cleanupStack();
     const day = `${REMOVED_MONTH}-12`;
     try {
+      const groupId = await createShiftGroupWithStreakRule(admin, {
+        group: { name: REMOVED_GROUP },
+      });
+      cleanup.add(() => archiveShiftGroup(admin, groupId));
+      const requester = await throwawayEmployee(admin, browser, 'removed');
+      cleanup.add(() => deactivate(admin, requester.user.id));
+      cleanup.add(() => requester.context.close());
+      const colleague = await throwawayEmployee(admin, browser, 'colleague');
+      cleanup.add(() => deactivate(admin, colleague.user.id));
+      cleanup.add(() => colleague.context.close());
+
       await generateMonthShifts(admin, { monthKey: REMOVED_MONTH, shiftGroupId: groupId });
       await setDayShiftCount(admin, { date: day, count: 2, shiftGroupId: groupId });
       const { schedule } = await getShiftGroupsAndShifts(admin, REMOVED_MONTH, groupId);
@@ -164,11 +238,7 @@ test.describe('Change requests (managers)', () => {
         new RegExp(`/schedule/${REMOVED_MONTH}\\?scroll_date=${day}&highlight_user=\\d+$`),
       );
     } finally {
-      await requester.context.close();
-      await colleague.context.close();
-      await deactivate(admin, requester.user.id);
-      await deactivate(admin, colleague.user.id);
-      await archiveShiftGroup(admin, groupId);
+      await cleanup.run();
     }
   });
 

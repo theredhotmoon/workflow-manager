@@ -226,3 +226,51 @@ it('migrates safely over existing requests (columns added empty, and removed aga
         ->and($row->acknowledged_by_id)->toBeNull()
         ->and($row->acknowledged_at)->toBeNull();
 });
+
+it('links the filing alarm to the Change Requests screen on the shift\'s group and month', function () {
+    $shift = Shift::create(['date' => '2026-10-20', 'shift_number' => 1, 'shift_group_id' => $this->other->id]);
+    $assignment = ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $this->employee->id]);
+
+    $this->actingAs($this->employee)->postJson('/api/shift-change-requests', [
+        'shift_assignment_id' => $assignment->id, 'reason' => 'Doctor appointment',
+    ])->assertCreated();
+
+    $alarm = Alarm::where('user_id', $this->admin->id)->where('type', Alarm::TYPE_EMPLOYEE_CANNOT_ATTEND_SHIFT)->sole();
+    expect($alarm->link_url)->toBe("/change-requests?group={$this->other->id}&month=2026-10")
+        ->and($alarm->link_label)->toBe('View request');
+});
+
+it('does not alert a manager about their own request', function () {
+    $shift = Shift::create(['date' => '2026-10-20', 'shift_number' => 1, 'shift_group_id' => $this->group->id]);
+    $assignment = ShiftAssignment::create(['shift_id' => $shift->id, 'user_id' => $this->maintainer->id]);
+
+    $this->actingAs($this->maintainer)->postJson('/api/shift-change-requests', [
+        'shift_assignment_id' => $assignment->id, 'reason' => 'Doctor appointment',
+    ])->assertCreated();
+
+    expect(Alarm::where('type', Alarm::TYPE_EMPLOYEE_CANNOT_ATTEND_SHIFT)->pluck('user_id')->all())->toBe([$this->admin->id]);
+});
+
+it('does not notify a requester who has been deactivated', function () {
+    $request = crsRequest($this->employee, '2026-10-20');
+    $this->employee->forceFill(['deactivated_at' => now()])->save();
+
+    $this->actingAs($this->admin)->putJson("/api/shift-change-requests/{$request->id}/acknowledge")
+        ->assertOk()->assertJsonPath('status', 'acknowledged');
+
+    expect(Alarm::where('type', Alarm::TYPE_SHIFT_CHANGE_REQUEST_ACKNOWLEDGED)->count())->toBe(0);
+});
+
+it('keeps a request for today\'s shift pending, flagged and counted, when its group is archived', function () {
+    $today = crsRequest($this->employee, '2026-10-09', 'pending', $this->other);
+    $future = crsRequest($this->employee, '2026-10-20', 'pending', $this->other);
+
+    $this->actingAs($this->admin)->deleteJson("/api/shift-groups/{$this->other->id}", ['remove_future_assignments' => true])->assertOk();
+
+    expect($today->fresh()->status)->toBe('pending')
+        ->and($future->fresh()->status)->toBe('acknowledged');
+    $row = $this->actingAs($this->maintainer)->getJson("/api/shift-change-requests?shift_group_id={$this->other->id}")->assertOk()->json('data');
+    expect(collect($row)->pluck('id')->all())->toBe([$today->id])
+        ->and($row[0]['shift']['shift_group']['archived_at'])->not->toBeNull();
+    $this->actingAs($this->maintainer)->getJson('/api/shift-change-requests/pending-count')->assertExactJson(['count' => 1]);
+});

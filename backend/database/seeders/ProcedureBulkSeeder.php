@@ -3,8 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\Procedure;
-use App\Models\ProcedureVersion;
 use App\Models\ProcedureTag;
+use App\Models\ProcedureVersion;
 use Illuminate\Database\Seeder;
 
 class ProcedureBulkSeeder extends Seeder
@@ -140,19 +140,19 @@ class ProcedureBulkSeeder extends Seeder
             ]);
 
             // Randomly assign 0-3 tags
-            if (!empty($tagIds)) {
+            if (! empty($tagIds)) {
                 $randomTags = array_slice(
                     $tagIds,
                     0,
                     rand(0, min(3, count($tagIds)))
                 );
                 shuffle($randomTags);
-                if (!empty($randomTags)) {
+                if (! empty($randomTags)) {
                     $proc->tags()->sync($randomTags);
                 }
             }
         }
 
-        $this->command->info("Created 2 folders and 50 procedures with random folder assignments and tags.");
+        $this->command->info('Created 2 folders and 50 procedures with random folder assignments and tags.');
     }
 }

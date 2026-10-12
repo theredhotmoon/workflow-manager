@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ProcedureResponseTemplate;
 use App\Models\Procedure;
+use App\Models\ProcedureResponseTemplate;
 use Illuminate\Http\Request;
 
 class ProcedureResponseTemplateController extends Controller
@@ -25,6 +25,7 @@ class ProcedureResponseTemplateController extends Controller
         ]);
 
         $template = $procedure->responseTemplates()->create($validated);
+
         return response()->json($template, 201);
     }
 
@@ -38,6 +39,7 @@ class ProcedureResponseTemplateController extends Controller
         ]);
 
         $template->update($validated);
+
         return response()->json($template);
     }
 
@@ -45,6 +47,7 @@ class ProcedureResponseTemplateController extends Controller
     {
         $template->procedure->refuseWritesIfArchived($request->user());
         $template->delete();
+
         return response()->json(['message' => 'Template deleted.']);
     }
 }

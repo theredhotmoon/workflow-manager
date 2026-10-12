@@ -18,9 +18,11 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same PR cancels its running build. Builds of main get a group per commit
+# (the sha), so none is ever cancelled or dropped while pending.
 concurrency:
-  group: docker-build-${{ github.ref }}
-  cancel-in-progress: true
+  group: docker-build-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -28,6 +30,7 @@ jobs:
     # pushed and no secrets are needed. Catches a Dockerfile, dependency-install or build:docker
     # break before deploy does. Layers are cached in the GitHub Actions cache, one scope per image.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

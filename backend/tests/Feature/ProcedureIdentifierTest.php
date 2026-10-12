@@ -54,7 +54,7 @@ it('takes the identifier lock, so a concurrent create waits instead of taking th
         expect(Procedure::count())->toBe(0);
     } finally {
         $side->rollBack();
-        DB::statement("SET LOCAL lock_timeout = 0");
+        DB::statement('SET LOCAL lock_timeout = 0');
     }
 
     expect(piCreate($admin, 'After the other one'))->toBe('PROC-01');

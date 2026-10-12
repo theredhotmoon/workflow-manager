@@ -234,6 +234,7 @@ import BaseModal from '../components/BaseModal.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast';
 import { formatCalendarDate, localDateStr } from '../dates.js';
+import { totalShiftHours } from '../shiftHours.js';
 
 const loading = ref(true);
 const shifts = ref({});
@@ -283,20 +284,9 @@ const totalShifts = computed(() => {
   return c;
 });
 
-const totalHours = computed(() => {
-  let mins = 0;
-  for (const d of sortedDates.value) {
-    for (const s of shifts.value[d]) {
-      if (!s.start_time || !s.end_time) continue;
-      const [sh, sm] = s.start_time.split(':').map(Number);
-      const [eh, em] = s.end_time.split(':').map(Number);
-      let dur = eh * 60 + em - (sh * 60 + sm);
-      if (dur <= 0) dur += 24 * 60;
-      mins += dur;
-    }
-  }
-  return Math.round(mins / 60);
-});
+const totalHours = computed(() =>
+  totalShiftHours(sortedDates.value.flatMap((d) => shifts.value[d])),
+);
 
 function prevMonth() {
   if (currentMonth.value === 0) {

@@ -16,16 +16,16 @@ class EnsureUserIsAdmin
     public function handle(Request $request, Closure $next, ?string $scope = null)
     {
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
         if ($scope === 'schedule') {
-            if (!$user->canManageSchedule()) {
+            if (! $user->canManageSchedule()) {
                 return response()->json(['message' => 'Unauthorized. Admin or Schedule Maintainer access required.'], 403);
             }
         } else {
-            if (!$user->isAdmin()) {
+            if (! $user->isAdmin()) {
                 return response()->json(['message' => 'Unauthorized. Admin access required.'], 403);
             }
         }

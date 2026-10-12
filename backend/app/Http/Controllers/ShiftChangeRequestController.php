@@ -2,17 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ShiftChangeRequest;
-use App\Models\ShiftAssignment;
-use App\Models\Shift;
 use App\Models\Alarm;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
+use App\Models\ShiftChangeRequest;
 use App\Services\AlarmService;
 use App\Support\BusinessDate;
+use App\Support\Month;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Support\Month;
 
 class ShiftChangeRequestController extends Controller
 {
@@ -42,7 +42,7 @@ class ShiftChangeRequestController extends Controller
         $userId = auth()->id();
         $shiftDate = $assignment->shift->date->format('Y-m-d');
         $shiftMonth = $assignment->shift->date->format('Y-m');
-        (new AlarmService())->notifyAdminsAndMaintainers(
+        (new AlarmService)->notifyAdminsAndMaintainers(
             Alarm::TYPE_EMPLOYEE_CANNOT_ATTEND_SHIFT,
             "{$userName} cannot attend shift #{$assignment->shift->shift_number} on {$shiftDate}",
             $request->reason,
@@ -74,7 +74,7 @@ class ShiftChangeRequestController extends Controller
             $assignment = $shiftLocked
                 ? ShiftAssignment::with('shift')->lockForUpdate()->find($request->shift_assignment_id)
                 : null;
-            if (!$assignment) {
+            if (! $assignment) {
                 return response()->json(['message' => 'This assignment no longer exists.'], 404);
             }
 
@@ -153,6 +153,7 @@ class ShiftChangeRequestController extends Controller
     {
         $changeRequest = ShiftChangeRequest::findOrFail($id);
         $changeRequest->update(['status' => 'acknowledged']);
+
         return response()->json($changeRequest);
     }
 }

@@ -30,7 +30,7 @@ beforeEach(function () {
 
 function hirReassign(User $as, int $userId)
 {
-    return test()->actingAs($as)->putJson('/api/checklist-submissions/' . test()->submission->id . '/incoming', ['incoming_user_id' => $userId]);
+    return test()->actingAs($as)->putJson('/api/checklist-submissions/'.test()->submission->id.'/incoming', ['incoming_user_id' => $userId]);
 }
 
 it('lets an admin hand a pending handover of a deactivated incoming user to someone active', function () {

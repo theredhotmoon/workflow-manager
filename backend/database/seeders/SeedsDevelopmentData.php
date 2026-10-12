@@ -18,7 +18,7 @@ trait SeedsDevelopmentData
     /** @throws RuntimeException outside local/testing, before anything is written */
     protected function refuseOutsideDevelopment(): void
     {
-        if (!$this->isDevelopmentEnvironment()) {
+        if (! $this->isDevelopmentEnvironment()) {
             throw new RuntimeException(sprintf(
                 '%s seeds demo users with published passwords, so it only runs when APP_ENV is local or testing (APP_ENV is "%s"). Nothing was seeded.',
                 class_basename(static::class),

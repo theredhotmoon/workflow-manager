@@ -1,4 +1,5 @@
 <?php
+
 // backend/database/migrations/2026_10_07_100000_add_rest_policy_to_shift_assignments.php
 
 use Illuminate\Database\Migrations\Migration;

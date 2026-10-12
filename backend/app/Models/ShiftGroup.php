@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Rules\ActiveShiftGroup;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class ShiftGroup extends Model
@@ -48,7 +49,7 @@ class ShiftGroup extends Model
     /** Validation rule for a shift_group_id that new work is planned in (not archived). */
     public static function activeExistsRule(): ActiveShiftGroup
     {
-        return new ActiveShiftGroup();
+        return new ActiveShiftGroup;
     }
 
     /*
@@ -73,7 +74,7 @@ class ShiftGroup extends Model
      * Locks the groups FOR SHARE (in id order) inside the caller's transaction and returns them by id.
      *
      * @param  array<int|null>  $ids
-     * @return \Illuminate\Support\Collection<int, self>
+     * @return Collection<int, self>
      */
     public static function lockShared(array $ids)
     {

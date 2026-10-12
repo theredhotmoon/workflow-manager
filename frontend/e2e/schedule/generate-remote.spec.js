@@ -7,14 +7,17 @@ import {
   getShiftGroupsAndShifts,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/generate-remote');
 
 // L21: "Switch to Remote" (generate, then make the closed dates' office shifts remote) stops when
 // generating fails and shows the server's reason; when it works, the switch is one request.
 // Month 2091-03 is reserved for this file (a closure on the 12th).
-const MONTH = '2091-03';
+const MONTH = reserve.month('2091-03');
 const CLOSED = '2091-03-12';
 const OPEN = '2091-03-13';
-const GROUP = 'Remote Switch Team';
+const GROUP = reserve.name('Remote Switch Team');
 
 test.describe('Generate month: switch closed dates to remote', () => {
   test('a failed generate switches nothing and says why; a working one switches in one request', async ({

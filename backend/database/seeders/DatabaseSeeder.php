@@ -2,10 +2,10 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use App\Models\User;
 use RuntimeException;
 
 class DatabaseSeeder extends Seeder
@@ -42,10 +42,10 @@ class DatabaseSeeder extends Seeder
         }
 
         User::create([
-            'email'    => self::ADMIN_EMAIL,
-            'name'     => 'Admin User',
+            'email' => self::ADMIN_EMAIL,
+            'name' => 'Admin User',
             'password' => Hash::make($this->adminPassword()),
-            'role'     => 'admin',
+            'role' => 'admin',
         ]);
     }
 
@@ -55,7 +55,7 @@ class DatabaseSeeder extends Seeder
      */
     private function warnIfStillPublishedPassword(User $admin): void
     {
-        if ($this->isDevelopmentEnvironment() || !Hash::check(self::DEVELOPMENT_ADMIN_PASSWORD, $admin->password)) {
+        if ($this->isDevelopmentEnvironment() || ! Hash::check(self::DEVELOPMENT_ADMIN_PASSWORD, $admin->password)) {
             return;
         }
 

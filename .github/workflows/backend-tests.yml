@@ -1,7 +1,9 @@
 name: Backend Tests
 
 on:
+  # Pushes to main only: a PR branch is already tested by its pull_request run.
   push:
+    branches: [main]
     paths:
       - 'backend/**'
       - '.github/workflows/backend-tests.yml'
@@ -13,9 +15,16 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same PR cancels its running checks. Pushes to main get a group per commit
+# (the sha), so no main run is ever cancelled or dropped while pending.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -54,8 +63,23 @@ jobs:
           extensions: pdo, pdo_pgsql
           coverage: none
 
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist
+
+      - name: Check code style (Pint)
+        # Formatting only; fix locally with `vendor/bin/pint` (README).
+        run: ./vendor/bin/pint --test
 
       - name: Prepare environment file
         run: |

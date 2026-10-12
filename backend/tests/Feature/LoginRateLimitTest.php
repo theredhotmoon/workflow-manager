@@ -129,7 +129,7 @@ it('has the frontend Nginx overwrite X-Forwarded-For instead of appending the cl
     $active = preg_replace('/^\s*#.*$/m', '', $conf);
     expect($active)->toMatch('/proxy_set_header\s+X-Forwarded-For\s+\$remote_addr\s*;/');
     expect($active)->not->toContain('$proxy_add_x_forwarded_for');
-})->skip(fn () => !is_file(base_path('../frontend/docker/nginx.conf')), 'frontend/ not mounted');
+})->skip(fn () => ! is_file(base_path('../frontend/docker/nginx.conf')), 'frontend/ not mounted');
 
 it('ignores X-Forwarded-For from a client that is not a trusted proxy', function () {
     $user = User::factory()->create();
@@ -154,7 +154,7 @@ it('logs a failed login as a warning without the password', function () {
             return $message === 'Failed login'
                 && $context['email'] === $user->email
                 && $context['ip'] === '127.0.0.1'
-                && !str_contains(json_encode([$message, $context]), 'Secret-Guess-42');
+                && ! str_contains(json_encode([$message, $context]), 'Secret-Guess-42');
         })
         ->once();
 });

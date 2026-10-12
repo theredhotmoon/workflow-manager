@@ -9,12 +9,15 @@ import {
   setDayShiftCount,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('checklists/fill-shift-picker');
 
 // F-c: the shift picker offers the outgoing employee's own shifts first; someone filing for
 // themselves sees only theirs. Month 2091-05 is reserved for this file.
-const MONTH = '2091-05';
+const MONTH = reserve.month('2091-05');
 const DAY = '2091-05-12';
-const GROUP = 'Fill Picker Team';
+const GROUP = reserve.name('Fill Picker Team');
 
 test.describe('Fill checklist: shift picker', () => {
   test("lists the outgoing employee's own shifts (only those for an employee)", async ({

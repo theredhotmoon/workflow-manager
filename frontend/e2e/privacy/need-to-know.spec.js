@@ -1,9 +1,13 @@
 import { createDelegation, createProcedure, createUser } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('privacy/need-to-know');
+reserve.months('2097-09');
 
 // L1-L4 "need-to-know": colleagues' emails, delegation applicants and procedure access logs are not
 // shown to employees, and the employee's screens still render without them.
-// Delegation dates in 2097-03 are reserved for this file.
+// Delegation dates in 2097-09 are reserved for this file.
 
 async function apiGet(context, url) {
   const res = await context.request.get(url, {
@@ -77,8 +81,8 @@ test.describe('Need-to-know privacy', () => {
       const delegation = await createDelegation(admin, {
         name,
         destination: 'Kraków',
-        start: '2097-03-10',
-        end: '2097-03-11',
+        start: '2097-09-10',
+        end: '2097-09-11',
         userIds: [approved.id],
       });
 

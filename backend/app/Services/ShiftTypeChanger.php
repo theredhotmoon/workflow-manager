@@ -14,9 +14,7 @@ use Illuminate\Support\Facades\DB;
  */
 class ShiftTypeChanger
 {
-    public function __construct(private RestPolicyJanitor $janitor)
-    {
-    }
+    public function __construct(private RestPolicyJanitor $janitor) {}
 
     /**
      * @param  Collection<int, Shift>  $shifts

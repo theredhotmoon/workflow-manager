@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Schema;
  * admin. The handover keeps who it was handed over from, who did it and when. Users are
  * deactivated, not deleted, so both references restrict deletes like the other authored-by ones.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('checklist_submissions', function (Blueprint $table) {

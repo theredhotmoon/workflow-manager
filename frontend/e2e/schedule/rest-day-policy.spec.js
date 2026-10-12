@@ -10,6 +10,14 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { dragToShiftDropzone } from '../fixtures/drag.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/rest-day-policy');
+reserve.months('2029-01', '2029-02', '2029-05');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Rest Prompt Team');
+reserve.name('Rest Cancel Team');
+reserve.name('Rest Escape Team');
 
 // Months reserved for this file: 2029-01 (extends rest), 2029-02 (cancel), 2029-05 (Escape).
 const EMPLOYEE = 'Regular Employee';

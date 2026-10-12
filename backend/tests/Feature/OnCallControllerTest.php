@@ -21,7 +21,7 @@ it('lists on-call assignments with their callbacks for a group and month', funct
         'ends_at' => '2026-09-15 23:30:00',
     ]);
 
-    $response = $this->actingAs($maintainer)->getJson('/api/on-call-assignments?' . http_build_query([
+    $response = $this->actingAs($maintainer)->getJson('/api/on-call-assignments?'.http_build_query([
         'shift_group_id' => $group->id,
         'month' => '2026-09',
     ]));

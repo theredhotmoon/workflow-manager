@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Schema;
  * Users are deactivated instead of deleted: a deactivated user can't log in and is left out of
  * pickers and new schedules, while everything they created or own stays.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {

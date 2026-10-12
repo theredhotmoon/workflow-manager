@@ -30,7 +30,7 @@ it('includes callback hours in the settlement periods report', function () {
         'ends_at' => '2026-09-02 01:00:00',
     ]);
 
-    $response = $this->actingAs($maintainer)->getJson('/api/settlement-periods?' . http_build_query([
+    $response = $this->actingAs($maintainer)->getJson('/api/settlement-periods?'.http_build_query([
         'shift_group_id' => $group->id,
         'offset' => 0,
     ]));
@@ -64,7 +64,7 @@ it('keeps the half hour of a callback that does not last whole hours', function 
         'ends_at' => '2026-09-01 23:30:00',
     ]);
 
-    $response = $this->actingAs($maintainer)->getJson('/api/settlement-periods?' . http_build_query([
+    $response = $this->actingAs($maintainer)->getJson('/api/settlement-periods?'.http_build_query([
         'shift_group_id' => $group->id,
         'offset' => 0,
     ]));

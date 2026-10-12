@@ -2,10 +2,13 @@
 import { createShiftGroupWithStreakRule, generateMonthShifts } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { dragToShiftDropzone } from '../fixtures/drag.js';
+import { reservationsFor } from '../fixtures/reserve.js';
 
-const MONTH = '2027-05';
+const reserve = reservationsFor('schedule/manual-assignment');
+
+const MONTH = reserve.month('2027-05');
 const DAY = '2027-05-10';
-const GROUP_NAME = 'Drag Team Manual';
+const GROUP_NAME = reserve.name('Drag Team Manual');
 const EMPLOYEE = 'Regular Employee';
 
 test.describe('Manual shift assignment (drag and drop)', () => {

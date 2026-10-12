@@ -57,7 +57,7 @@ function afrAssigned(ShiftGroup $group, User $user): array
         ->where('shifts.shift_group_id', $group->id)
         ->orderBy('shifts.date')
         ->get(['shifts.date', 'shifts.start_time'])
-        ->map(fn ($s) => $s->date->format('Y-m-d') . ' ' . substr($s->start_time, 0, 5))
+        ->map(fn ($s) => $s->date->format('Y-m-d').' '.substr($s->start_time, 0, 5))
         ->all();
 }
 
@@ -119,7 +119,7 @@ it('allows exactly 11 h of rest and refuses 10 h 59 min, before and after', func
 
     afrFill($this, $endpoint, $group, [$a])->assertOk();
 
-    $candidateKey = $candidate[0] . ' ' . $candidate[1];
+    $candidateKey = $candidate[0].' '.$candidate[1];
     expect(in_array($candidateKey, afrAssigned($group, $a), true))->toBe($allowed);
 })->with('afrModes')->with([
     'rest before, 11 h' => [['2026-10-05', '06:00', '14:00'], ['2026-10-06', '01:00', '05:00'], true],

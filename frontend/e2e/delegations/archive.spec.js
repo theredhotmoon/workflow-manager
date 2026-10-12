@@ -1,6 +1,10 @@
 import { archiveDelegation, createDelegation } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('delegations/archive');
+reserve.months('2097-08');
 
 // Delegation dates in 2097-08 are reserved for this file.
 test.describe('Delegation archive', () => {

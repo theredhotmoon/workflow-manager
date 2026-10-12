@@ -1,5 +1,12 @@
 import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/group-settings');
+reserve.months('2027-03');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Support Team');
+reserve.name('Cleanup Team');
 
 test.describe('Shift group settlement + streak-rule settings', () => {
   test('sets settlement mode, weekly cap, and a streak rule from the shared settings modal', async ({

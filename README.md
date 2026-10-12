@@ -63,6 +63,10 @@ Copy the printed `base64:...` string and paste it as `APP_KEY` in your `.env`.
 | `LOGIN_RATE_LIMIT`          | Failed logins allowed per minute for one email from one IP before `429` (default `5`) |
 | `TRUSTED_PROXIES`           | Proxies whose `X-Forwarded-For` is believed (default: private ranges, i.e. the compose network) |
 | `SESSION_SECURE_COOKIE`     | `true` to send the session cookie over HTTPS only. Set it in production (see below) |
+| `BUSINESS_TIMEZONE`         | The organisation's timezone, what "today" means for business rules (default `Europe/Warsaw`) |
+| `RUN_MIGRATIONS`            | `0` to skip migrating on container start (default `1`; see [Migrations](#migrations)) |
+| `BACKUP_BEFORE_MIGRATE`     | `1` to `pg_dump` the database before pending migrations run (default `0`) |
+| `BACKEND_PORT`, `SESSION_DOMAIN` | Hybrid dev only (`docker-compose.dev.yml`): backend host port (default `8090`) and cookie domain (default `localhost`) |
 
 ### HTTPS in production
 
@@ -90,13 +94,13 @@ real_ip_header    X-Forwarded-For;
 real_ip_recursive on;
 ```
 
+In the same file, also forward the proxy's scheme so Laravel knows the request was HTTPS:
+`proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;` instead of `$scheme`. Do neither
+without a proxy in front: a client could then forge both headers.
+
 If the TLS proxy runs on the same host, it reaches Nginx from the Docker bridge gateway, so also
 bind the frontend port to `127.0.0.1` in `docker-compose.yml`. Otherwise anything else that arrives
 from the gateway (e.g. IPv6 clients) could set its own `X-Forwarded-For` again.
-
-and, in the same file, forward the proxy's scheme so Laravel knows the request was HTTPS:
-`proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;` instead of `$scheme`. Do neither
-without a proxy in front: a client could then forge both headers.
 
 ### Content Security Policy and procedure HTML
 
@@ -135,6 +139,52 @@ Re-running the seeder never changes an existing admin's password and then needs 
 shell history, read it into the environment first
 (`read -rs SEED_ADMIN_PASSWORD && export SEED_ADMIN_PASSWORD` in bash) and pass `-e SEED_ADMIN_PASSWORD`
 without a value.
+
+### Health checks and start order
+
+Every container has a Docker healthcheck, and `docker compose up` starts them in order: `db`
+(`pg_isready`), then `backend`, then `frontend`. The backend counts as healthy once
+`GET /api/health` answers 200, which needs PHP and a database that accepts a query (it answers 503
+while the database is unreachable). Nginx's static `/healthz` only says that Nginx itself is up.
+`docker compose ps` shows each container's health.
+
+### Migrations
+
+The backend runs `php artisan migrate --force` every time its container starts
+(`backend/docker/entrypoint.sh`), so after `docker compose up -d --build` the schema always matches
+the code and there is no separate step to forget. That is safe for this stack because it runs one
+backend container. The start log says `→ Running migrations...`.
+
+- **Backup first:** set `BACKUP_BEFORE_MIGRATE=1` in `.env` (`1`, `true` and `yes` all mean on,
+  for `RUN_MIGRATIONS` too). Whenever migrations are pending, the container then writes a `pg_dump`
+  (custom format) to `/var/www/html/storage/app/backups/pre-migrate-<UTC time>.dump`, on the
+  `backend_storage` volume, before migrating, and logs the file name. If the dump fails, the
+  container stops before migrating. The dumps contain password hashes, so they are readable by root
+  only (mode 600). Only the newest `BACKUP_KEEP` dumps are kept (default 5). The backend image ships
+  PostgreSQL **15** client tools, the db server's version: a dump from a newer `pg_dump` can't be
+  read by an older `pg_restore`.
+
+  List and restore a dump with the backend's own `pg_restore` (it replaces the current data):
+
+  ```bash
+  docker compose exec backend ls -l storage/app/backups
+  docker compose exec backend sh -c 'PGPASSWORD="$DB_PASSWORD" pg_restore --clean --if-exists \
+    -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" \
+    storage/app/backups/pre-migrate-<UTC time>.dump'
+  ```
+
+  Stop the frontend first (`docker compose stop frontend`) so nobody writes during the restore. A
+  restored database is at the old schema, so the next backend start migrates it again: roll back
+  the code first if the migration was the problem.
+- **Slow starts:** the backend's healthcheck allows 10 minutes for migrations and the backup (its
+  `start_period`); a normal start turns healthy within seconds. If a start takes longer, `docker
+  compose up` reports the backend unhealthy and leaves the frontend stopped: run `docker compose
+  up -d` again once `docker compose ps` shows the backend healthy.
+- **Several backend replicas:** set `RUN_MIGRATIONS=0` so no container migrates on start (two
+  replicas would race), and run the migrations once per deploy as their own step, before starting
+  the new containers:
+  `docker compose run --rm --no-deps --entrypoint php backend artisan migrate --force`
+  (`--entrypoint php` skips the image's entrypoint, which would start the server).
 
 ### Accessing the app
 
@@ -211,6 +261,11 @@ docker run --rm --network workflow-manager_app_network \
   --entrypoint php workflow-manager_backend vendor/bin/pest
 ```
 
+**Code style.** The backend follows [Laravel Pint](https://laravel.com/docs/pint)'s Laravel preset
+(`backend/pint.json`); CI runs `vendor/bin/pint --test` and fails on unformatted code. Format with
+`vendor/bin/pint` (or, without PHP on the host, the same `docker run` as above with
+`vendor/bin/pint` in place of `vendor/bin/pest`).
+
 On Windows in Git Bash, put `MSYS_NO_PATHCONV=1` in front of `docker run`
 (`MSYS_NO_PATHCONV=1 docker run ...`); otherwise Git Bash rewrites `/var/www/html` into a Windows
 path and the container can't find the mount.
@@ -238,7 +293,7 @@ npx playwright install chromium
 **Commands** (run from `frontend/`)
 
 ```bash
-npm run lint       # Biome (lint + format + import order), errors only — CI gate
+npm run lint       # Biome (lint + format + import order), errors only — CI gate (frontend/README.md)
 npm run test       # unit tests (composables), no backend needed
 npm run test:e2e   # end-to-end tests; starts `npm run dev:hybrid` on :5173 itself
 npm run test:all   # unit, then e2e
@@ -247,6 +302,12 @@ npm run test:all   # unit, then e2e
 > **Warning: `npm run test:e2e` resets your local development database** (`migrate:fresh` plus the
 > e2e baseline seed, run inside the `shift_changer_backend` container). Never run it against data
 > you want to keep.
+>
+> The reset has two guards. It needs `E2E_ALLOW_RESET=1`, which `npm run test:e2e` sets for you (a
+> bare `npx playwright test` refuses; pass files and flags through the script instead:
+> `npm run test:e2e -- e2e/schedule --headed`). And it refuses unless the backend container runs
+> with `APP_ENV=local` or `testing` (the dev override sets `local`; the production stack runs
+> `production`), so it never wipes a production database that shares the container name.
 
 Notes:
 
@@ -264,8 +325,15 @@ Notes:
   setup still clears the cache (and with it the limiter counters) once per run. If you see 429s,
   rebuild the backend with both compose files (`docker compose -f docker-compose.yml -f
   docker-compose.dev.yml up -d --build backend`) so the dev limit is applied.
-- Specs share one database per run, so give every group a unique name and use a month no other spec
-  uses. Do not enable Playwright `retries` or `--repeat-each`.
+- Specs share one database per run, so every spec claims, at the top of the file, the months and
+  days it writes data into and the shift-group names it creates, with `reservationsFor()` from
+  `e2e/fixtures/reserve.js`. A second claim of the same month, day or name fails the run before any
+  test starts, naming both files. The claims are declared, not derived: a date or group name
+  written inside a test must also be claimed at the top. Other titles (procedures, delegations,
+  closures, checklists) are kept unique by convention, usually with a per-file prefix.
+- Locally there are no retries, so a flake shows up as a failure. CI retries a failed test once and
+  lists the tests that passed only on retry ("flaky") in the job summary. Do not use
+  `--repeat-each` for whole-suite runs: specs re-create their data on every repeat.
 
 ---
 
@@ -281,7 +349,7 @@ locally, but you still get instant frontend HMR.
 
 This brings up `db` and `backend` (using `docker-compose.dev.yml`, which exposes
 the backend on `http://localhost:8090` — override with `BACKEND_PORT` in `.env`
-if that's taken too — and relaxes a few env vars for local use), waits for the
+if that port is taken — and relaxes a few env vars for local use), waits for the
 backend to respond, then runs `npm run dev:hybrid` in `frontend/`.
 
 Open **`http://localhost:5173`**. The Vite dev server (`frontend/vite.config.hybrid.js`)
@@ -314,7 +382,7 @@ In local dev mode the Laravel backend and the Vite dev server run as separate pr
 
 - **PHP** ≥ 8.4 with extensions: `pdo_pgsql`, `zip`, `opcache`
 - **Composer** ≥ 2
-- **Node.js** ≥ 20 and **npm**
+- **Node.js** 22 (LTS) and **npm**
 - **PostgreSQL** ≥ 14 running locally
 
 ---
@@ -334,7 +402,8 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Open `backend/.env` and configure the database connection to point at your local Postgres instance:
+`backend/.env.example` is set up for PostgreSQL and lists every variable the app reads. Point the
+database connection at your local Postgres instance:
 
 ```dotenv
 DB_CONNECTION=pgsql
@@ -381,6 +450,7 @@ Vite will start and Laravel will automatically inject the HMR script. Open **`ht
 ```
 workflow-manager/
 ├── docker-compose.yml        # Orchestrates db, backend, frontend
+├── docker-compose.dev.yml    # Hybrid dev / e2e override (backend on 127.0.0.1:8090)
 ├── .env.example              # Root env template for Docker
 ├── backend/                  # Laravel 13 API (PHP 8.4)
 │   ├── Dockerfile

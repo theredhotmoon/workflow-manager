@@ -15,9 +15,7 @@ use Illuminate\Database\Eloquent\Collection;
  */
 class FutureWorkRemover
 {
-    public function __construct(private RestPolicyJanitor $janitor)
-    {
-    }
+    public function __construct(private RestPolicyJanitor $janitor) {}
 
     /**
      * @param  Collection<int, ShiftAssignment>  $assignments

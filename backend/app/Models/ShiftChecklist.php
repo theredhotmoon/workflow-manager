@@ -43,7 +43,7 @@ class ShiftChecklist extends Model
      */
     public function getDeadlineDatetime(Shift $shift): ?Carbon
     {
-        if (!$this->deadline_minutes) {
+        if (! $this->deadline_minutes) {
             return null;
         }
 

@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\DB;
  * pending and the older ones are settled (acknowledged, as removing an assignment settles its
  * requests). Nothing is deleted; how many were settled is printed.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         $settled = DB::update(<<<'SQL'
@@ -30,7 +31,7 @@ return new class extends Migration {
 
         DB::statement(
             'CREATE UNIQUE INDEX shift_change_requests_one_pending_per_assignment ON shift_change_requests (shift_assignment_id) '
-            . "WHERE status = 'pending' AND shift_assignment_id IS NOT NULL"
+            ."WHERE status = 'pending' AND shift_assignment_id IS NOT NULL"
         );
     }
 

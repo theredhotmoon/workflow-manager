@@ -98,7 +98,7 @@ it('stores a submission at 12:00 during a 24-hour shift as on time', function ()
 });
 
 it('counts a 24-hour shift as 24 h, and 25 h on the Warsaw fall-back day', function () {
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
 
     expect($calc->shiftTiming(rollShift('2026-10-09', '00:00', '00:00'))['duration_hours'])->toEqual(24);
 

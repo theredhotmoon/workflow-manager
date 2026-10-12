@@ -2,6 +2,16 @@ import { expect, test } from '../fixtures/auth.js';
 
 // M16: a session that ends after the page loaded, and logging out when the first attempt fails.
 
+// The page's /api/ requests that have not finished (or failed) yet.
+function trackApiRequests(page) {
+  const pending = new Set();
+  const isApi = (request) => new URL(request.url()).pathname.startsWith('/api/');
+  page.on('request', (request) => isApi(request) && pending.add(request));
+  page.on('requestfinished', (request) => pending.delete(request));
+  page.on('requestfailed', (request) => pending.delete(request));
+  return pending;
+}
+
 async function openAccountMenu(page) {
   await page.getByRole('button', { name: /account menu/ }).click();
 }
@@ -10,12 +20,16 @@ test.describe('Session expiry and logout', () => {
   test('an expired session sends the next action to login, and signing in returns there', async ({
     adminPage,
   }) => {
-    const loaded = adminPage.waitForResponse(
-      (r) => new URL(r.url()).pathname === '/api/my-delegations',
-    );
+    // Clearing cookies only simulates an expired session if no request of the signed-in page is
+    // still in flight: its response carries Set-Cookie and would put the (still valid) session
+    // cookie back, so the next click succeeds and the page stays put. The page fires more than the
+    // view's own loads (the header bell's /api/alarms/latest and /api/alarms/unread-count), so wait
+    // for every API request to settle, not one named response (on a slow CI runner the bell's
+    // responses landed after clearCookies() and the redirect never came).
+    const inFlight = trackApiRequests(adminPage);
     await adminPage.goto('/my-shifts');
-    await loaded;
     await expect(adminPage.getByRole('button', { name: 'Next month' })).toBeVisible();
+    await expect.poll(() => inFlight.size).toBe(0);
 
     // The session is gone (expired, or ended elsewhere) while the page stays open.
     await adminPage.context().clearCookies();

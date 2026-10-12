@@ -6,6 +6,7 @@ use App\Models\ChecklistResponse;
 use App\Models\ChecklistSubmission;
 use App\Models\ChecklistTemplate;
 use App\Models\Shift;
+use App\Models\ShiftAssignment;
 use App\Models\ShiftChecklist;
 use App\Models\ShiftGroup;
 use App\Models\User;
@@ -208,7 +209,7 @@ it('does not raise overdue alerts or accept new handovers for an archived templa
     $t = cdlTemplateWithSubmission($admin);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
     $past = Shift::create(['date' => '2026-10-05', 'shift_number' => 1, 'shift_group_id' => $group->id]);
-    \App\Models\ShiftAssignment::create(['shift_id' => $past->id, 'user_id' => $admin->id]);
+    ShiftAssignment::create(['shift_id' => $past->id, 'user_id' => $admin->id]);
     ShiftChecklist::create(['shift_id' => $past->id, 'checklist_template_id' => $t['template']->id, 'is_required' => true]);
 
     $this->actingAs($admin)->deleteJson("/api/checklist-templates/{$t['template']->id}")->assertOk();

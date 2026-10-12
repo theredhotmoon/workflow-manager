@@ -8,11 +8,14 @@ import {
   setDayShiftCount,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/day-shift-count');
 
 // Month reserved for this file: 2094-03.
-const MONTH = '2094-03';
+const MONTH = reserve.month('2094-03');
 const DAY = '2094-03-10';
-const GROUP_NAME = 'Slot Count Team';
+const GROUP_NAME = reserve.name('Slot Count Team');
 
 test.describe("Reducing a day's shift count", () => {
   test('asks before removing a staffed shift; cancel keeps it, confirm removes it', async ({

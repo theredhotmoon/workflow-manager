@@ -25,7 +25,7 @@ function urAfterQuery(string $pattern, callable $insert): void
 {
     $done = false;
     DB::listen(function ($query) use ($pattern, $insert, &$done) {
-        if (!$done && preg_match($pattern, $query->sql)) {
+        if (! $done && preg_match($pattern, $query->sql)) {
             $done = true;
             $insert();
         }

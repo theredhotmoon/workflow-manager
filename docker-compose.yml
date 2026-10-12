@@ -1,3 +1,11 @@
+# Docker's json-file log driver, rotated: at most 5 × 10 MB per container (the default keeps
+# growing until the disk is full). Every service logs to stdout/stderr.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
 
   # ─── PostgreSQL ────────────────────────────────────────────────────────────
@@ -14,6 +22,7 @@ services:
       - db_data:/var/lib/postgresql/data
     networks:
       - app_network
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_DATABASE:-shift_changer}"]
       interval: 10s
@@ -62,14 +71,36 @@ services:
 
       # Allow the frontend container (same-origin via Nginx proxy) as stateful domain
       SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost}
+
+      # Migrations run on every container start (docker/entrypoint.sh). 0 = skip them, for a deploy
+      # that runs them as a separate step (README, "Migrations").
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
+      # 1 = pg_dump the database to storage/app/backups (backend_storage volume) before migrating,
+      # whenever migrations are pending; the newest BACKUP_KEEP dumps are kept. (1/true/yes = on.)
+      BACKUP_BEFORE_MIGRATE: ${BACKUP_BEFORE_MIGRATE:-0}
+      BACKUP_KEEP: ${BACKUP_KEEP:-5}
     volumes:
+      # Logs go to stderr (LOG_CHANNEL above) and so to Docker's rotated log, not to a volume.
       - backend_storage:/var/www/html/storage/app
-      - backend_logs:/var/www/html/storage/logs
     depends_on:
       db:
         condition: service_healthy
     networks:
       - app_network
+    logging: *default-logging
+    # Ready = PHP answers and the database accepts a query (/api/health; 503 otherwise).
+    # start_period is generous on purpose: it covers the migrations run on start and the optional
+    # pre-migration pg_dump, which on a large database can take minutes. Failures inside it don't
+    # count, while the first success marks the container healthy at once, so a normal start is
+    # still seen within one interval (10 s). Without it, a slow start would be marked unhealthy and
+    # `docker compose up` would give up on the frontend, which waits for this. (No start_interval:
+    # Docker Engine < 25 and older Compose reject it.)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 600s
 
   # ─── Vue 3 SPA (Nginx) ─────────────────────────────────────────────────────
   frontend:
@@ -80,15 +111,24 @@ services:
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-80}:80"
+    # Nginx resolves the `backend` upstream when it starts, and has nothing to serve /api from
+    # before the backend is ready.
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - app_network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   db_data:
   backend_storage:
-  backend_logs:
 
 networks:
   app_network:

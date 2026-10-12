@@ -6,6 +6,11 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('checklists/history');
+reserve.months('2096-12');
+reserve.days('2097-05-01', '2097-05-02', '2097-05-03', '2097-05-04');
 
 // Submission dates in 2097-05 are reserved for the checklist specs.
 test.describe('Checklist archive', () => {

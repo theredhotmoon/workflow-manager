@@ -11,7 +11,7 @@ it('finds procedures whatever the case of the search', function () {
     Procedure::create(['identifier' => 'PROC-01', 'title' => 'Server Escalation', 'owner_id' => $admin->id]);
     Procedure::create(['identifier' => 'PROC-02', 'title' => 'Backups', 'purpose' => 'Nightly DATABASE dumps', 'owner_id' => $admin->id]);
 
-    $titles = fn (string $search) => collect($this->actingAs($admin)->getJson('/api/procedures?search=' . urlencode($search))->assertOk()->json('data'))
+    $titles = fn (string $search) => collect($this->actingAs($admin)->getJson('/api/procedures?search='.urlencode($search))->assertOk()->json('data'))
         ->pluck('title')->sort()->values()->all();
 
     expect($titles('escalation'))->toBe(['Server Escalation'])
@@ -26,7 +26,7 @@ it('matches % and _ in a procedure search literally', function () {
     Procedure::create(['identifier' => 'PROC-03', 'title' => 'snake_case names', 'owner_id' => $admin->id]);
     Procedure::create(['identifier' => 'PROC-04', 'title' => 'snakeXcase names', 'owner_id' => $admin->id]);
 
-    $titles = fn (string $search) => collect($this->actingAs($admin)->getJson('/api/procedures?search=' . urlencode($search))->assertOk()->json('data'))
+    $titles = fn (string $search) => collect($this->actingAs($admin)->getJson('/api/procedures?search='.urlencode($search))->assertOk()->json('data'))
         ->pluck('title')->all();
 
     expect($titles('100%'))->toBe(['100% uptime'])

@@ -1,4 +1,5 @@
 <?php
+
 // M12: reducing a day's shift count removes empty slots first and never deletes a staffed slot
 // without the manager's confirmation.
 
@@ -9,6 +10,9 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftChangeRequest;
 use App\Models\ShiftGroup;
 use App\Models\User;
+use App\Services\StreakReplay;
+use App\Services\StreakTimeline;
+use Carbon\Carbon;
 
 beforeEach(function () {
     $this->maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
@@ -55,7 +59,7 @@ it('removes the empty slot, not the staffed one after it, without asking', funct
     dscReduce($this, 3)->assertOk();
     $day = Shift::where('date', '2029-02-12')->orderBy('shift_number')->get();
     expect($day->pluck('shift_number')->all())->toBe([1, 2, 3]);
-    expect($day->map(fn ($s) => substr($s->start_time, 0, 5) . '-' . substr($s->end_time, 0, 5))->all())
+    expect($day->map(fn ($s) => substr($s->start_time, 0, 5).'-'.substr($s->end_time, 0, 5))->all())
         ->toBe(['06:00-14:00', '22:00-06:00', '14:00-22:00']);
 });
 
@@ -71,7 +75,7 @@ function dscDay($test, array $slots): void
 function dscTimes(): array
 {
     return Shift::where('date', '2029-02-12')->orderBy('shift_number')->get()
-        ->map(fn ($s) => substr($s->start_time, 0, 5) . '-' . substr($s->end_time, 0, 5))->all();
+        ->map(fn ($s) => substr($s->start_time, 0, 5).'-'.substr($s->end_time, 0, 5))->all();
 }
 
 it('gives a new slot its positional preset times when the day does not have them yet', function () {
@@ -166,10 +170,11 @@ it('answers 404 when the shift is deleted while an assign is being placed', func
     // Deterministic stand-in for a concurrent slot removal: the shift goes away after the request's
     // validation and lookup, just before the assignment is written.
     $shift = $this->slots[2];
-    app()->bind(\App\Services\StreakReplay::class, fn () => new class($shift->id) extends \App\Services\StreakReplay {
+    app()->bind(StreakReplay::class, fn () => new class($shift->id) extends StreakReplay
+    {
         public function __construct(private int $doomedShiftId) {}
 
-        public function forGroup(\App\Models\ShiftGroup $group, array $userIds, ?\Carbon\Carbon $until = null): \App\Services\StreakTimeline
+        public function forGroup(ShiftGroup $group, array $userIds, ?Carbon $until = null): StreakTimeline
         {
             Shift::whereKey($this->doomedShiftId)->delete();
 

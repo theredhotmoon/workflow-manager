@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
 
 class UsersSeeder extends Seeder
 {
@@ -29,6 +29,6 @@ class UsersSeeder extends Seeder
             );
         }
 
-        echo "Created/verified " . count($users) . " users\n";
+        echo 'Created/verified '.count($users)." users\n";
     }
 }

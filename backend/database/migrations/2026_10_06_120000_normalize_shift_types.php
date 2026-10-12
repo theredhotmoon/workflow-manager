@@ -1,6 +1,5 @@
 <?php
 
-use App\Support\ShiftType;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 

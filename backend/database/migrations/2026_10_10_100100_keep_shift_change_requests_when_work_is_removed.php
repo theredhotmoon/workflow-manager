@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Schema;
  * shift (day-count reduction, clear month). Both links now null out instead, and the request keeps
  * the shift's date and slot number so it still says which shift it was about.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('shift_change_requests', function (Blueprint $table) {
@@ -21,7 +22,7 @@ return new class extends Migration {
         // One statement (PostgreSQL UPDATE ... FROM): every existing request takes its shift's date and slot.
         DB::statement(
             'UPDATE shift_change_requests SET shift_date = shifts.date, shift_number = shifts.shift_number '
-            . 'FROM shifts WHERE shifts.id = shift_change_requests.shift_id'
+            .'FROM shifts WHERE shifts.id = shift_change_requests.shift_id'
         );
 
         Schema::table('shift_change_requests', function (Blueprint $table) {

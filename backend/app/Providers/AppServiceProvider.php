@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\ProcedureHtmlSanitizer;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -14,7 +15,7 @@ class AppServiceProvider extends ServiceProvider
     public function register()
     {
         // One purifier per process: building its HTML definition is the expensive part.
-        $this->app->singleton(\App\Services\ProcedureHtmlSanitizer::class);
+        $this->app->singleton(ProcedureHtmlSanitizer::class);
     }
 
     /**

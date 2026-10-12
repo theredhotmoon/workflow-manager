@@ -1,5 +1,12 @@
 import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/navigation');
+reserve.months('2027-09', '2028-07');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Quick Switch Team');
+reserve.name('Navigation Empty Group');
 
 // Every other schedule/on-call spec in this suite runs against a single, never-reset-between-files
 // database (playwright.config.js has workers: 1, and global-setup only resets once for the whole run —

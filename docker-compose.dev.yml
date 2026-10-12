@@ -20,7 +20,8 @@ services:
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
-      LOG_CHANNEL: stack
+      # Same as production: Laravel's log goes to `docker compose logs backend` (rotated).
+      LOG_CHANNEL: stderr
       LOG_LEVEL: debug
       # Local dev and the e2e suite share one user, so don't throttle them at the production 60/min.
       API_RATE_LIMIT: ${API_RATE_LIMIT:-1000}

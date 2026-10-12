@@ -56,10 +56,10 @@ class Procedure extends Model
      */
     public function refuseWritesIfArchived(?User $user): void
     {
-        if (!$this->isArchived()) {
+        if (! $this->isArchived()) {
             return;
         }
-        if (!$user?->isAdmin()) {
+        if (! $user?->isAdmin()) {
             abort(404);
         }
 
@@ -73,7 +73,7 @@ class Procedure extends Model
     public function resolveRouteBinding($value, $field = null)
     {
         return $this->resolveRouteBindingQuery($this->newQuery(), $value, $field)
-            ->when(!request()->user()?->isAdmin(), fn ($query) => $query->whereNull('archived_at'))
+            ->when(! request()->user()?->isAdmin(), fn ($query) => $query->whereNull('archived_at'))
             ->first();
     }
 
@@ -169,9 +169,9 @@ class Procedure extends Model
 
         $highest = (int) static::query()
             ->whereRaw("identifier ~ '^PROC-[0-9]+$'")
-            ->max(DB::raw("CAST(SUBSTRING(identifier FROM 6) AS BIGINT)"));
+            ->max(DB::raw('CAST(SUBSTRING(identifier FROM 6) AS BIGINT)'));
 
-        return 'PROC-' . str_pad((string) ($highest + 1), 2, '0', STR_PAD_LEFT);
+        return 'PROC-'.str_pad((string) ($highest + 1), 2, '0', STR_PAD_LEFT);
     }
 
     public function ownerChanges()

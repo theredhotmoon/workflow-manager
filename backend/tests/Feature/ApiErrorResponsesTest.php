@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Alarm;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;

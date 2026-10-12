@@ -1,6 +1,10 @@
 import { createDelegation, getEmployeeIdByEmail } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('my-availability/my-availability');
+reserve.months('2097-01', '2097-02', '2097-03', '2097-04');
 
 // Months 2097-01/02 (delegations) and 2097-03/04 (availability entries) are reserved for this file.
 test.describe('My Availability', () => {

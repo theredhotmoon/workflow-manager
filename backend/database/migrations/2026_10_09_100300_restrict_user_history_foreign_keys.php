@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Schema;
  * rows (checklist_submissions.incoming_user_id, procedure_owner_changes.old_owner_id,
  * procedure_versions.published_by — set null).
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /** [table, column] — all reference users.id and cascaded on delete before this migration. */
     private const FOREIGN_KEYS = [
         // Authored / owned

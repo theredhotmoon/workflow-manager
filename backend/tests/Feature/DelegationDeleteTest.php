@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ArchivedDelegation;
 use App\Models\Delegation;
 use App\Models\DelegationLog;
 use App\Models\User;
@@ -75,7 +76,7 @@ it('answers 404, not a server error, when the delegation is deleted while a memb
     // Deterministic stand-in for a concurrent delete: it lands right after route binding found the row.
     $fired = false;
     DB::listen(function ($query) use (&$fired, $delegation) {
-        if ($fired || !str_contains($query->sql, 'from "delegations"')) {
+        if ($fired || ! str_contains($query->sql, 'from "delegations"')) {
             return;
         }
         $fired = true;
@@ -95,7 +96,7 @@ it('answers 404 and archives nothing when the delegation is deleted while it is 
     // Deterministic stand-in for a concurrent delete: it lands right after route binding found the row.
     $fired = false;
     DB::listen(function ($query) use (&$fired, $delegation) {
-        if ($fired || !str_contains($query->sql, 'from "delegations"')) {
+        if ($fired || ! str_contains($query->sql, 'from "delegations"')) {
             return;
         }
         $fired = true;
@@ -106,5 +107,5 @@ it('answers 404 and archives nothing when the delegation is deleted while it is 
         ->assertNotFound()
         ->assertJsonPath('message', 'This delegation no longer exists.');
 
-    expect(\App\Models\ArchivedDelegation::where('original_id', $delegation->id)->count())->toBe(0);
+    expect(ArchivedDelegation::where('original_id', $delegation->id)->count())->toBe(0);
 });

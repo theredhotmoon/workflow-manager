@@ -8,6 +8,6 @@ final class LikePattern
     /** "%term%" with \, % and _ escaped (PostgreSQL's default LIKE escape character is \). */
     public static function contains(string $term): string
     {
-        return '%' . addcslashes($term, '\\%_') . '%';
+        return '%'.addcslashes($term, '\\%_').'%';
     }
 }

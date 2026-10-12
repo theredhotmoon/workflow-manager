@@ -31,7 +31,7 @@ class Delegation extends Model
     public static function lockOrGone(int $id): self
     {
         $delegation = static::whereKey($id)->lockForUpdate()->first();
-        if (!$delegation) {
+        if (! $delegation) {
             abort(404, 'This delegation no longer exists.');
         }
 
@@ -54,7 +54,7 @@ class Delegation extends Model
     {
         return ['users' => function ($query) use ($viewer) {
             $query->select('users.id', 'users.name');
-            if (!$viewer->isAdmin()) {
+            if (! $viewer->isAdmin()) {
                 $query->where(fn ($q) => $q->where('delegation_user.status', 'approved')
                     ->orWhere('users.id', $viewer->id));
             }
@@ -70,7 +70,7 @@ class Delegation extends Model
      */
     public function hideOthersApplicationDetails(User $viewer): static
     {
-        if ($viewer->isAdmin() || !$this->relationLoaded('users')) {
+        if ($viewer->isAdmin() || ! $this->relationLoaded('users')) {
             return $this;
         }
         foreach ($this->users as $member) {

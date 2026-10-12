@@ -4,8 +4,8 @@ use App\Models\Shift;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use App\Models\User;
-use Illuminate\Support\Carbon;
 use App\Services\StreakReplay;
+use Illuminate\Support\Carbon;
 
 function stlMaintainer(): User
 {

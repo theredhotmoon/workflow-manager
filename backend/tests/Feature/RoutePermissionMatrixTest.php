@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Route;
 // - Guests get 401 everywhere but login. Admin-only routes answer 403 to employees and schedule
 //   maintainers; admin:schedule routes 403 to employees. Allowed roles get past the middleware
 //   (any status but 401/403: 404 for the dummy id, 422 for the empty body, 200...).
-/// - Route parameters are filled with a dummy id (999999). App/Http/Kernel runs the active/role
+// / - Route parameters are filled with a dummy id (999999). App/Http/Kernel runs the active/role
 //   middleware before route-model binding, so a denied role gets 403 even for a missing record
 //   (without that, binding answered 404 first and let callers probe which ids exist).
 //
@@ -25,6 +25,8 @@ function rpmExpected(): array
     return [
         // No session needed.
         'public' => [
+            // The container healthcheck's readiness probe: no data, says only whether the DB is up.
+            'GET /api/health',
             'POST /api/login',
         ],
         // Open to every logged-in, active user, whatever their role.
@@ -196,7 +198,7 @@ function rpmActual(): array
 {
     $groups = ['public' => [], 'authenticated' => [], 'admin' => [], 'schedule' => []];
     foreach (Route::getRoutes() as $route) {
-        if (!str_starts_with($route->uri(), 'api/')) {
+        if (! str_starts_with($route->uri(), 'api/')) {
             continue;
         }
         $middleware = $route->gatherMiddleware();
@@ -245,9 +247,9 @@ it('keeps every api route in its reviewed access group', function () {
     }
 });
 
-it('puts every route but login behind a session and an active account', function () {
+it('puts every route but login and the health probe behind a session and an active account', function () {
     foreach (Route::getRoutes() as $route) {
-        if (!str_starts_with($route->uri(), 'api/') || $route->uri() === 'api/login') {
+        if (! str_starts_with($route->uri(), 'api/') || in_array($route->uri(), ['api/login', 'api/health'], true)) {
             continue;
         }
         expect($route->gatherMiddleware())->toContain('auth:sanctum', 'active');

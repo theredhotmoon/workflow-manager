@@ -5,11 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\OfficeClosure;
 use App\Models\Shift;
 use App\Models\ShiftGroup;
+use App\Support\Month;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use App\Support\Month;
 
 class OfficeClosureController extends Controller
 {
@@ -51,7 +51,7 @@ class OfficeClosureController extends Controller
         $days = (int) $start->diffInDays($end) + 1;
         if ($days > self::MAX_RANGE_DAYS) {
             throw ValidationException::withMessages([
-                'end_date' => 'A closure can cover at most ' . self::MAX_RANGE_DAYS . " days at once ({$days} requested).",
+                'end_date' => 'A closure can cover at most '.self::MAX_RANGE_DAYS." days at once ({$days} requested).",
             ]);
         }
 
@@ -76,7 +76,7 @@ class OfficeClosureController extends Controller
 
         $alreadyClosed = $days - $created;
         $message = "Created {$created} closure(s)."
-            . ($alreadyClosed > 0 ? " {$alreadyClosed} day(s) were already closed." : '');
+            .($alreadyClosed > 0 ? " {$alreadyClosed} day(s) were already closed." : '');
 
         return response()->json([
             'message' => $message,
@@ -106,6 +106,7 @@ class OfficeClosureController extends Controller
     public function destroy(OfficeClosure $officeClosure)
     {
         $officeClosure->delete();
+
         return response()->json(['message' => 'Office closure removed.']);
     }
 

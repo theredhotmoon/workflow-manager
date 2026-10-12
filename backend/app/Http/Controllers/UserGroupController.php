@@ -45,6 +45,7 @@ class UserGroupController extends Controller
     public function destroy(UserGroup $userGroup): JsonResponse
     {
         $userGroup->delete();
+
         return response()->json(null, 204);
     }
 

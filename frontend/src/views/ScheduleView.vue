@@ -1243,10 +1243,10 @@
                 </div>
                 <div v-if="donutGapMinutes > 0" class="flex items-center gap-2 px-3 py-1.5">
                   <div class="w-3 h-3 rounded-sm shrink-0 bg-white/5"></div>
-                  <span class="text-[10px] text-slate-500 italic">Uncovered: {{ formatDonutDuration(donutGapMinutes) }}</span>
+                  <span class="text-[10px] text-slate-500 italic">Uncovered: {{ formatDuration(donutGapMinutes) }}</span>
                 </div>
                 <div v-if="donutOverlapMinutes > 0" class="flex items-center gap-2 px-3 py-1.5 bg-red-500/5 border border-red-500/10 rounded-lg">
-                  <span class="text-[10px] text-red-400">⚠ Overlap: {{ formatDonutDuration(donutOverlapMinutes) }}</span>
+                  <span class="text-[10px] text-red-400">⚠ Overlap: {{ formatDuration(donutOverlapMinutes) }}</span>
                 </div>
               </div>
             </div>
@@ -1392,6 +1392,7 @@ import { localDateStr, todayStr } from '../dates.js';
 import { putDayShiftCount } from '../dayShiftCount.js';
 import { isAdmin, canManageSchedule as userCanManageSchedule } from '../roles.js';
 import { currentUser } from '../router/index.js';
+import { formatDuration, timeToMinutes, totalShiftHours } from '../shiftHours.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -1953,12 +1954,6 @@ const defaultDonutColors = [
   '#14b8a6',
 ];
 
-function timeToMinutes(t) {
-  if (!t) return 0;
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-
 function minutesToAngle(minutes) {
   return (minutes / (24 * 60)) * 360;
 }
@@ -1996,7 +1991,7 @@ const donutSegments = computed(() => {
       color,
       startTime: shift.start_time || '00:00',
       endTime: shift.end_time || '00:00',
-      durationLabel: formatDonutDuration(duration),
+      durationLabel: formatDuration(duration),
       durationMinutes: duration,
     };
   });
@@ -2011,12 +2006,6 @@ const donutOverlapMinutes = computed(() => {
   const total = donutSegments.value.reduce((sum, s) => sum + s.durationMinutes, 0);
   return Math.max(0, total - 24 * 60);
 });
-
-function formatDonutDuration(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
 
 // Checklist config
 const checklistTemplates = ref([]);
@@ -2076,21 +2065,10 @@ function getEmployeeShiftCount(userId) {
 
 // Calculate total hours for an employee across all assigned shifts this month
 function getEmployeeTotalHours(userId) {
-  let totalMinutes = 0;
-  for (const dateStr in schedule.value) {
-    const dayShifts = schedule.value[dateStr];
-    if (!dayShifts) continue;
-    for (const shift of dayShifts) {
-      if (!shift.assignments || !shift.start_time || !shift.end_time) continue;
-      if (!shift.assignments.some((a) => a.user_id === userId)) continue;
-      const [sh, sm] = shift.start_time.split(':').map(Number);
-      const [eh, em] = shift.end_time.split(':').map(Number);
-      let dur = eh * 60 + em - (sh * 60 + sm);
-      if (dur <= 0) dur += 24 * 60; // overnight shift
-      totalMinutes += dur;
-    }
-  }
-  return Math.round(totalMinutes / 60);
+  const assigned = Object.values(schedule.value)
+    .flatMap((dayShifts) => dayShifts ?? [])
+    .filter((shift) => shift.assignments?.some((a) => a.user_id === userId));
+  return totalShiftHours(assigned);
 }
 
 // Get overnight shifts from previous day that spill into this day

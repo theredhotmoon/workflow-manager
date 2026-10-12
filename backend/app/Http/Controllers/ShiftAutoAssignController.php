@@ -10,14 +10,15 @@ use App\Models\User;
 use App\Models\UserAvailability;
 use App\Services\BusyIntervals;
 use App\Services\RestPolicyJanitor;
+use App\Services\SettlementPeriodCalculator;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
 use App\Support\AdvisoryLock;
 use App\Support\BusinessDate;
+use App\Support\Month;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Support\Month;
 
 class ShiftAutoAssignController extends Controller
 {
@@ -177,7 +178,7 @@ class ShiftAutoAssignController extends Controller
         $assignmentTracker = []; // dateStr:shiftNumber => [user_ids]
         foreach ($shifts as $shift) {
             $dateStr = $shift->date->format('Y-m-d');
-            $key = $dateStr . ':' . $shift->shift_number;
+            $key = $dateStr.':'.$shift->shift_number;
             $assignmentTracker[$key] = $shift->assignments->pluck('user_id')->toArray();
         }
 
@@ -194,12 +195,13 @@ class ShiftAutoAssignController extends Controller
                 $isWeekend = $dayOfWeek >= 6;
                 $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
 
-                $currentKey = $dateStr . ':' . $shift->shift_number;
+                $currentKey = $dateStr.':'.$shift->shift_number;
                 $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
                 $spotsToFill = $needed - count($alreadyAssigned);
 
-                if ($spotsToFill <= 0)
+                if ($spotsToFill <= 0) {
                     continue;
+                }
 
                 // Get available users for this shift
                 $available = $this->getAvailableUsers(
@@ -219,8 +221,9 @@ class ShiftAutoAssignController extends Controller
 
                 $assigned = 0;
                 foreach ($available as $userId) {
-                    if ($assigned >= $spotsToFill)
+                    if ($assigned >= $spotsToFill) {
                         break;
+                    }
 
                     ShiftAssignment::create([
                         'shift_id' => $shift->id,
@@ -230,8 +233,9 @@ class ShiftAutoAssignController extends Controller
                     $assignmentTracker[$currentKey][] = $userId;
                     $runUserIds[] = $userId;
                     $busy->add($userId, ...$spans[$shift->id]);
-                    if ($streakTimeline !== null)
+                    if ($streakTimeline !== null) {
                         $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
+                    }
                     $assigned++;
                     $totalAssigned++;
                 }
@@ -249,7 +253,7 @@ class ShiftAutoAssignController extends Controller
 
         $message = "Auto-assigned {$totalAssigned} slots.";
         if (count($warnings) > 0) {
-            $message .= ' Warnings: ' . count($warnings) . ' shifts could not be fully filled.';
+            $message .= ' Warnings: '.count($warnings).' shifts could not be fully filled.';
         }
 
         return response()->json([
@@ -320,7 +324,7 @@ class ShiftAutoAssignController extends Controller
         $assignmentTracker = [];
         foreach ($shifts as $shift) {
             $dateStr = $shift->date->format('Y-m-d');
-            $key = $dateStr . ':' . $shift->shift_number;
+            $key = $dateStr.':'.$shift->shift_number;
             $assignmentTracker[$key] = $shift->assignments->pluck('user_id')->toArray();
         }
 
@@ -338,7 +342,7 @@ class ShiftAutoAssignController extends Controller
 
         // One transaction: a failure part-way leaves no partial month behind.
         DB::transaction(function () use (
-            $request, $shifts, $shiftsByDate, $dateChunks, $employees, $employeeIds, $poolIndex, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
+            $request, $shiftsByDate, $dateChunks, $employees, $employeeIds, $poolIndex, $blockedMap, $assignmentTracker, $streakTimeline, $busy, $spans, $group, $janitor, $runUserIds, &$totalAssigned, &$warnings
         ) {
             // The group first (ShiftGroup's lock order): an archive since validation is refused here
             // instead of a whole month landing in an archived group.
@@ -367,7 +371,7 @@ class ShiftAutoAssignController extends Controller
                         }
                     }
 
-                    if (!$blockedForBlock && !in_array($candidateId, $subteam)) {
+                    if (! $blockedForBlock && ! in_array($candidateId, $subteam)) {
                         $subteam[] = $candidateId;
                     }
 
@@ -382,39 +386,47 @@ class ShiftAutoAssignController extends Controller
                     foreach ($dateBlock as $dateStr) {
                         $warnings[] = "No available users for block starting {$dateStr}";
                     }
+
                     continue;
                 }
 
                 // Now assign the subteam across shifts in this date block
                 foreach ($dateBlock as $dateStr) {
-                    if (!isset($shiftsByDate[$dateStr]))
+                    if (! isset($shiftsByDate[$dateStr])) {
                         continue;
+                    }
 
                     $dayOfWeek = Carbon::parse($dateStr)->dayOfWeekIso;
                     $isWeekend = $dayOfWeek >= 6;
                     $needed = $isWeekend ? $request->users_per_shift_weekend : $request->users_per_shift_weekday;
 
                     foreach ($shiftsByDate[$dateStr] as $shift) {
-                        $currentKey = $dateStr . ':' . $shift->shift_number;
+                        $currentKey = $dateStr.':'.$shift->shift_number;
                         $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
                         $spotsToFill = $needed - count($alreadyAssigned);
 
-                        if ($spotsToFill <= 0)
+                        if ($spotsToFill <= 0) {
                             continue;
+                        }
 
                         // Filter subteam to those available for this specific shift
                         $availableFromTeam = [];
                         foreach ($subteam as $userId) {
-                            if (in_array($userId, $alreadyAssigned))
+                            if (in_array($userId, $alreadyAssigned)) {
                                 continue;
-                            if ($this->isUserBlockedOnDate($userId, $dateStr, $blockedMap))
+                            }
+                            if ($this->isUserBlockedOnDate($userId, $dateStr, $blockedMap)) {
                                 continue;
-                            if ($streakTimeline !== null && $streakTimeline->wouldConflict($userId, $shift->shift_type, $shift->date, $shift->shift_number))
+                            }
+                            if ($streakTimeline !== null && $streakTimeline->wouldConflict($userId, $shift->shift_type, $shift->date, $shift->shift_number)) {
                                 continue;
-                            if (!$busy->allowsDailyRest($userId, ...$spans[$shift->id]))
+                            }
+                            if (! $busy->allowsDailyRest($userId, ...$spans[$shift->id])) {
                                 continue;
-                            if ($this->isAlreadyAssignedOnDate($userId, $dateStr, $shift->shift_number, $assignmentTracker))
+                            }
+                            if ($this->isAlreadyAssignedOnDate($userId, $dateStr, $shift->shift_number, $assignmentTracker)) {
                                 continue;
+                            }
                             $availableFromTeam[] = $userId;
                         }
 
@@ -423,8 +435,9 @@ class ShiftAutoAssignController extends Controller
 
                         $assigned = 0;
                         foreach ($availableFromTeam as $userId) {
-                            if ($assigned >= $spotsToFill)
+                            if ($assigned >= $spotsToFill) {
                                 break;
+                            }
 
                             ShiftAssignment::create([
                                 'shift_id' => $shift->id,
@@ -434,8 +447,9 @@ class ShiftAutoAssignController extends Controller
                             $assignmentTracker[$currentKey][] = $userId;
                             $runUserIds[] = $userId;
                             $busy->add($userId, ...$spans[$shift->id]);
-                            if ($streakTimeline !== null)
+                            if ($streakTimeline !== null) {
                                 $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
+                            }
                             $assigned++;
                             $totalAssigned++;
                         }
@@ -456,8 +470,9 @@ class ShiftAutoAssignController extends Controller
                             shuffle($fallbackAvailable);
 
                             foreach ($fallbackAvailable as $userId) {
-                                if ($assigned >= $spotsToFill)
+                                if ($assigned >= $spotsToFill) {
                                     break;
+                                }
 
                                 ShiftAssignment::create([
                                     'shift_id' => $shift->id,
@@ -467,8 +482,9 @@ class ShiftAutoAssignController extends Controller
                                 $assignmentTracker[$currentKey][] = $userId;
                                 $runUserIds[] = $userId;
                                 $busy->add($userId, ...$spans[$shift->id]);
-                                if ($streakTimeline !== null)
+                                if ($streakTimeline !== null) {
                                     $streakTimeline->append($userId, $shift->shift_type, $shift->date, $shift->shift_number);
+                                }
                                 $assigned++;
                                 $totalAssigned++;
                             }
@@ -489,7 +505,7 @@ class ShiftAutoAssignController extends Controller
 
         $message = "Auto-assigned {$totalAssigned} slots using {$rotationDays}-day rotation.";
         if (count($warnings) > 0) {
-            $message .= ' Warnings: ' . count($warnings) . ' shifts could not be fully filled.';
+            $message .= ' Warnings: '.count($warnings).' shifts could not be fully filled.';
         }
 
         return response()->json([
@@ -569,7 +585,7 @@ class ShiftAutoAssignController extends Controller
      */
     private function dailyRestState(array $userIds, $shifts, Carbon $start, Carbon $end): array
     {
-        $busy = new BusyIntervals();
+        $busy = new BusyIntervals;
         $from = $start->copy()->subDays(2)->toDateString();
         $to = $end->copy()->addDays(2)->toDateString();
         foreach (BusyIntervals::loadAssignedShifts($userIds, $from, $to) as $assigned) {
@@ -601,16 +617,21 @@ class ShiftAutoAssignController extends Controller
         $available = [];
 
         foreach ($employees as $emp) {
-            if (in_array($emp->id, $excludeUserIds))
+            if (in_array($emp->id, $excludeUserIds)) {
                 continue;
-            if ($this->isUserBlockedOnDate($emp->id, $dateStr, $blockedMap))
+            }
+            if ($this->isUserBlockedOnDate($emp->id, $dateStr, $blockedMap)) {
                 continue;
-            if (!$busy->allowsDailyRest($emp->id, ...$span))
+            }
+            if (! $busy->allowsDailyRest($emp->id, ...$span)) {
                 continue;
-            if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
+            }
+            if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker)) {
                 continue;
-            if ($streakTimeline !== null && $streakTimeline->wouldConflict($emp->id, $shift->shift_type, $shift->date, $shift->shift_number))
+            }
+            if ($streakTimeline !== null && $streakTimeline->wouldConflict($emp->id, $shift->shift_type, $shift->date, $shift->shift_number)) {
                 continue;
+            }
 
             $available[] = $emp->id;
         }
@@ -624,13 +645,15 @@ class ShiftAutoAssignController extends Controller
     private function isAlreadyAssignedOnDate(int $userId, string $dateStr, int $currentShiftNumber, array $assignmentTracker): bool
     {
         for ($sn = 1; $sn <= 10; $sn++) {
-            if ($sn === $currentShiftNumber)
+            if ($sn === $currentShiftNumber) {
                 continue;
-            $key = $dateStr . ':' . $sn;
+            }
+            $key = $dateStr.':'.$sn;
             if (isset($assignmentTracker[$key]) && in_array($userId, $assignmentTracker[$key])) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -666,7 +689,7 @@ class ShiftAutoAssignController extends Controller
         $end = $start->copy()->endOfMonth();
         $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
         $group = ShiftGroup::findOrFail($groupId);
-        $calculator = new \App\Services\SettlementPeriodCalculator();
+        $calculator = new SettlementPeriodCalculator;
 
         $shifts = Shift::whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->where('shift_group_id', $groupId)
@@ -781,7 +804,7 @@ class ShiftAutoAssignController extends Controller
         // on-call callbacks (read only; polishLaw never creates or changes on-call data). A callback
         // counts as worked time on its start date, the convention Shift.date uses for overnight
         // shifts, and may fall on a date with no shift at all.
-        $busy = new BusyIntervals();
+        $busy = new BusyIntervals;
         $busyEntries = [];
         foreach (BusyIntervals::loadAssignedShifts($userIds, $from, $to) as $assigned) {
             $busyEntries[] = [(int) $assigned->busy_user_id, $assigned->date->format('Y-m-d'), BusyIntervals::shiftSpan($assigned)];
@@ -805,7 +828,7 @@ class ShiftAutoAssignController extends Controller
         // Track assignments
         $assignmentTracker = [];
         foreach ($shifts as $shift) {
-            $key = $shift->date->format('Y-m-d') . ':' . $shift->shift_number;
+            $key = $shift->date->format('Y-m-d').':'.$shift->shift_number;
             $assignmentTracker[$key] = $shift->assignments->pluck('user_id')->toArray();
         }
 
@@ -828,12 +851,13 @@ class ShiftAutoAssignController extends Controller
                 $weekNum = $weekKeyByDate[$dateStr];
                 $weekCap = $weekCapByDate[$dateStr];
 
-                $currentKey = $dateStr . ':' . $shift->shift_number;
+                $currentKey = $dateStr.':'.$shift->shift_number;
                 $alreadyAssigned = $assignmentTracker[$currentKey] ?? [];
                 $spotsToFill = $needed - count($alreadyAssigned);
 
-                if ($spotsToFill <= 0)
+                if ($spotsToFill <= 0) {
                     continue;
+                }
 
                 $st = $shiftTimes[$shift->id];
                 [$shiftStartTs, $shiftEndTs] = $st['span'];
@@ -841,40 +865,48 @@ class ShiftAutoAssignController extends Controller
                 // Check shift doesn't exceed 13h
                 if ($st['duration_hours'] > 13) {
                     $warnings[] = "{$dateStr} S{$shift->shift_number}: shift exceeds 13h limit ({$st['duration_hours']}h)";
+
                     continue;
                 }
 
                 // Build list of eligible employees for this shift
                 $candidates = [];
                 foreach ($employees as $emp) {
-                    if (in_array($emp->id, $alreadyAssigned))
+                    if (in_array($emp->id, $alreadyAssigned)) {
                         continue;
-                    if ($this->isUserBlockedOnDate($emp->id, $dateStr, $blockedMap))
+                    }
+                    if ($this->isUserBlockedOnDate($emp->id, $dateStr, $blockedMap)) {
                         continue;
-                    if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker))
+                    }
+                    if ($this->isAlreadyAssignedOnDate($emp->id, $dateStr, $shift->shift_number, $assignmentTracker)) {
                         continue;
+                    }
 
                     $state = $employeeState[$emp->id];
 
                     // Rule: 11h rest before and after the shift, against every busy interval
                     // (shifts in any group, callbacks, earlier picks of this run).
-                    if (!$busy->allowsDailyRest($emp->id, $shiftStartTs, $shiftEndTs))
+                    if (! $busy->allowsDailyRest($emp->id, $shiftStartTs, $shiftEndTs)) {
                         continue;
+                    }
 
                     // Rule: max weekly_hour_cap this settlement-anchored week
                     $weekHours = $state['weekly_hours'][$weekNum] ?? 0;
-                    if ($weekHours + $st['duration_hours'] > $weekCap)
+                    if ($weekHours + $st['duration_hours'] > $weekCap) {
                         continue;
+                    }
 
                     // Rule: max 5 working days this week
                     $weekDays = $state['weekly_days'][$weekNum] ?? [];
-                    if (!isset($weekDays[$dateStr]) && count($weekDays) >= 5)
+                    if (! isset($weekDays[$dateStr]) && count($weekDays) >= 5) {
                         continue;
+                    }
 
                     // Rule: 35h uninterrupted weekly rest is still left in every week the shift touches
                     foreach ($windowsByShift[$shift->id] as [$windowStart, $windowEnd]) {
-                        if ($busy->longestRestWith($emp->id, $windowStart, $windowEnd, $shiftStartTs, $shiftEndTs) < BusyIntervals::MIN_WEEKLY_REST_HOURS * 3600)
+                        if ($busy->longestRestWith($emp->id, $windowStart, $windowEnd, $shiftStartTs, $shiftEndTs) < BusyIntervals::MIN_WEEKLY_REST_HOURS * 3600) {
                             continue 2;
+                        }
                     }
 
                     // Rule: shift-streak mandatory rest (see StreakTimeline)
@@ -887,12 +919,13 @@ class ShiftAutoAssignController extends Controller
                 }
 
                 // Sort by fewest hours first (fair distribution)
-                usort($candidates, fn($a, $b) => $a['score'] <=> $b['score']);
+                usort($candidates, fn ($a, $b) => $a['score'] <=> $b['score']);
 
                 $assigned = 0;
                 foreach ($candidates as $c) {
-                    if ($assigned >= $spotsToFill)
+                    if ($assigned >= $spotsToFill) {
                         break;
+                    }
 
                     $userId = $c['id'];
 
@@ -933,7 +966,7 @@ class ShiftAutoAssignController extends Controller
 
         $message = "Auto-assigned {$totalAssigned} slots (Polish Labor Code mode). {$nightShiftCount} night shifts identified.";
         if (count($warnings) > 0) {
-            $message .= ' ' . count($warnings) . ' shifts could not be fully filled.';
+            $message .= ' '.count($warnings).' shifts could not be fully filled.';
         }
 
         return response()->json([
@@ -952,10 +985,12 @@ class ShiftAutoAssignController extends Controller
         $endHour = (int) $end->format('H');
 
         // Night shift: any part falls between 22:00 and 06:00
-        if ($startHour >= 22 || $startHour < 6)
+        if ($startHour >= 22 || $startHour < 6) {
             return true;
-        if ($endHour > 22 || ($endHour >= 0 && $endHour <= 6 && $end->day !== $start->day))
+        }
+        if ($endHour > 22 || ($endHour >= 0 && $endHour <= 6 && $end->day !== $start->day)) {
             return true;
+        }
 
         return false;
     }
@@ -968,11 +1003,11 @@ class ShiftAutoAssignController extends Controller
         $mode = $request->input('player_mode', 'all');
         $ids = $request->input('player_ids', []);
 
-        if ($mode === 'include' && !empty($ids)) {
+        if ($mode === 'include' && ! empty($ids)) {
             return $employees->whereIn('id', $ids)->values();
         }
 
-        if ($mode === 'exclude' && !empty($ids)) {
+        if ($mode === 'exclude' && ! empty($ids)) {
             return $employees->whereNotIn('id', $ids)->values();
         }
 

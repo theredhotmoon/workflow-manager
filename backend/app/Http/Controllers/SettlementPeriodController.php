@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\OnCallCallback;
 use App\Models\ShiftAssignment;
 use App\Models\ShiftGroup;
 use App\Services\BusyIntervals;
 use App\Services\SettlementPeriodCalculator;
 use App\Services\StreakReplay;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class SettlementPeriodController extends Controller
@@ -20,7 +22,7 @@ class SettlementPeriodController extends Controller
 
         $group = ShiftGroup::findOrFail($request->shift_group_id);
         $offset = (int) $request->input('offset', 0);
-        $calculator = new SettlementPeriodCalculator();
+        $calculator = new SettlementPeriodCalculator;
 
         try {
             $period = $calculator->periodByOffset($group, $offset);
@@ -56,7 +58,7 @@ class SettlementPeriodController extends Controller
         // — filtered directly on the callback's own starts_at date, so
         // weekFor() is only ever called with a date guaranteed to fall
         // inside $period, matching how the shift loop above stays safe.
-        $callbacks = \App\Models\OnCallCallback::whereHas('onCallAssignment', function ($q) use ($group) {
+        $callbacks = OnCallCallback::whereHas('onCallAssignment', function ($q) use ($group) {
             $q->where('shift_group_id', $group->id);
         })
             ->whereBetween('starts_at', [$period['start'], $period['end']->copy()->endOfDay()])
@@ -79,7 +81,7 @@ class SettlementPeriodController extends Controller
             }
         }
 
-        $weeks = array_map(fn($w) => [
+        $weeks = array_map(fn ($w) => [
             'start' => $w['start']->toDateString(),
             'end' => $w['end']->toDateString(),
             'cap_hours' => $w['cap_hours'],
@@ -113,7 +115,7 @@ class SettlementPeriodController extends Controller
             ];
         }
 
-        usort($employees, fn($a, $b) => strcmp($a['name'], $b['name']));
+        usort($employees, fn ($a, $b) => strcmp($a['name'], $b['name']));
 
         return response()->json([
             'period' => [
@@ -130,8 +132,8 @@ class SettlementPeriodController extends Controller
      * Union of [starts_at, ends_at) intervals: overlapping ones are merged, touching ones
      * (one ends when the next starts) stay apart, which sums the same.
      *
-     * @param  iterable<\App\Models\OnCallCallback>  $items
-     * @return list<array{0: \Carbon\Carbon, 1: \Carbon\Carbon}>
+     * @param  iterable<OnCallCallback>  $items
+     * @return list<array{0: Carbon, 1: Carbon}>
      */
     private static function mergeIntervals(iterable $items): array
     {
@@ -143,6 +145,7 @@ class SettlementPeriodController extends Controller
                 if ($item->ends_at->gt($merged[$last][1])) {
                     $merged[$last][1] = $item->ends_at;
                 }
+
                 continue;
             }
             $merged[] = [$item->starts_at, $item->ends_at];

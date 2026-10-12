@@ -253,7 +253,7 @@ it('picks the current settlement period by the Warsaw date', function () {
         'weekly_hour_cap' => 40,
     ]);
 
-    $period = (new SettlementPeriodCalculator())->periodByOffset($group, 0);
+    $period = (new SettlementPeriodCalculator)->periodByOffset($group, 0);
 
     expect($period['start']->toDateString())->toBe('2026-09-08');
     expect($period['end']->toDateString())->toBe('2026-09-14');

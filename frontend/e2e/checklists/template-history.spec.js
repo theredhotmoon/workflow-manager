@@ -4,6 +4,10 @@ import {
   getEmployeeIdByEmail,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('checklists/template-history');
+reserve.days('2097-05-10', '2097-05-11');
 
 // Submission dates in 2097-05 are reserved for the checklist specs (10–11 for this file).
 test.describe('Checklist templates keep their handover history', () => {

@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Schema;
  * Who confirmed a handover (only its incoming user may). Users are deactivated, not deleted, so like
  * the other authored-by references this one restricts deletes instead of losing the record.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('checklist_submissions', function (Blueprint $table) {

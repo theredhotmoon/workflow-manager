@@ -1,10 +1,12 @@
 <?php
+
 // backend/tests/Feature/ShiftTypeNormalizationTest.php
 
 use App\Models\Shift;
 use App\Models\ShiftGroup;
 use App\Models\ShiftStreakRule;
 use App\Support\ShiftType;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 it('normalises shift types: trims, lower-cases, blank becomes null', function () {
@@ -62,7 +64,7 @@ it('migration normalises every shift across more than one chunk', function () {
     // Insert 300 shifts with blank shift_type (will become NULL)
     for ($i = 0; $i < 300; $i++) {
         $dayOffset = intdiv($i, 10);
-        $date = \Carbon\Carbon::parse('2027-01-01')->addDays($dayOffset)->format('Y-m-d');
+        $date = Carbon::parse('2027-01-01')->addDays($dayOffset)->format('Y-m-d');
         $shifts[] = [
             'date' => $date,
             'shift_number' => ($i % 10) + 1,
@@ -81,7 +83,7 @@ it('migration normalises every shift across more than one chunk', function () {
     // Insert 800 shifts with 'Night ' (will become 'night')
     for ($i = 0; $i < 800; $i++) {
         $dayOffset = 30 + intdiv($i, 10);
-        $date = \Carbon\Carbon::parse('2027-01-01')->addDays($dayOffset)->format('Y-m-d');
+        $date = Carbon::parse('2027-01-01')->addDays($dayOffset)->format('Y-m-d');
         $shifts[] = [
             'date' => $date,
             'shift_number' => ($i % 10) + 1,

@@ -1,4 +1,5 @@
 <?php
+
 // M13: a person's on-call periods (and callbacks) must not overlap, and overlapping rows already in
 // the database are counted once in the settlement report.
 
@@ -107,7 +108,7 @@ it('counts overlapping callbacks already in the database once in the settlement 
         ['on_call_assignment_id' => $first->id, 'starts_at' => '2026-09-02 02:00:00', 'ends_at' => '2026-09-02 03:30:00', 'created_at' => now(), 'updated_at' => now()],
     ]);
 
-    $res = $this->actingAs($this->maintainer)->getJson('/api/settlement-periods?' . http_build_query([
+    $res = $this->actingAs($this->maintainer)->getJson('/api/settlement-periods?'.http_build_query([
         'shift_group_id' => $this->group->id,
         'offset' => 0,
     ]))->assertOk();

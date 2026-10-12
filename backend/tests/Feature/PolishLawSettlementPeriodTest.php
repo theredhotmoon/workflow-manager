@@ -3,6 +3,7 @@
 use App\Models\Shift;
 use App\Models\ShiftGroup;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 
 function makeShiftForPolishLaw(int $groupId, string $date, int $shiftNumber, string $start, string $end): Shift
 {
@@ -74,7 +75,7 @@ it('caps at 48h/week (the fallback default) for a group with no settlement confi
     // falls into (and therefore whether the cap accumulates across all 5, or
     // splits across two weeks) would depend on whatever real date the test
     // suite happens to run on.
-    \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-09-01'));
+    Carbon::setTestNow(Carbon::parse('2026-09-01'));
 
     $maintainer = User::factory()->create(['role' => 'schedule_maintainer']);
     $group = ShiftGroup::create(['name' => 'Main', 'is_default' => true, 'sort_order' => 0]);
@@ -99,7 +100,7 @@ it('caps at 48h/week (the fallback default) for a group with no settlement confi
     // 48h / 12h per shift = 4 shifts max before the cap blocks the 5th.
     expect($response->json('total_assigned'))->toBe(4);
 
-    \Illuminate\Support\Carbon::setTestNow();
+    Carbon::setTestNow();
 });
 
 it('returns a 422 with a clear message instead of a 500 when the group is misconfigured (custom mode, null length)', function () {

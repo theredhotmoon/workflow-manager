@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -17,7 +17,7 @@ return new class extends Migration
         });
 
         DB::statement(
-            "UPDATE shift_groups SET settlement_mode = ?, weekly_hour_cap = ?, settlement_anchor_date = DATE(created_at) WHERE settlement_mode IS NULL",
+            'UPDATE shift_groups SET settlement_mode = ?, weekly_hour_cap = ?, settlement_anchor_date = DATE(created_at) WHERE settlement_mode IS NULL',
             ['monthly', 48]
         );
     }

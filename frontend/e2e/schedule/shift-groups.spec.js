@@ -1,8 +1,17 @@
 // frontend/e2e/schedule/shift-groups.spec.js
 import { createShiftGroupWithStreakRule, listShiftGroups } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
 
-const MONTH = '2027-10';
+const reserve = reservationsFor('schedule/shift-groups');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Rename Me Team');
+reserve.name('Archive Me Team');
+reserve.name('Keep Me Team');
+reserve.name('Renamed Team');
+reserve.name('Restore Archive Me Team');
+
+const MONTH = reserve.month('2027-10');
 
 test.describe('Shift group rename, archive and restore', () => {
   test('renames a group inline (double-click) and the new name survives a reload', async ({

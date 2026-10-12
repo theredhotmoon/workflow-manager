@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('shifts', function (Blueprint $table) {
@@ -12,13 +13,13 @@ return new class extends Migration {
         });
 
         // Backfill all existing shifts with the default group
-        $defaultGroupId = \DB::table('shift_groups')->where('is_default', true)->value('id');
+        $defaultGroupId = DB::table('shift_groups')->where('is_default', true)->value('id');
         if ($defaultGroupId) {
-            \DB::table('shifts')->whereNull('shift_group_id')->update(['shift_group_id' => $defaultGroupId]);
+            DB::table('shifts')->whereNull('shift_group_id')->update(['shift_group_id' => $defaultGroupId]);
         }
 
         // Make NOT NULL via raw SQL (avoids Doctrine DBAL requirement)
-        \DB::statement('ALTER TABLE shifts ALTER COLUMN shift_group_id SET NOT NULL');
+        DB::statement('ALTER TABLE shifts ALTER COLUMN shift_group_id SET NOT NULL');
 
         Schema::table('shifts', function (Blueprint $table) {
             // Add FK constraint

@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Schema;
  * (admin / schedule_maintainer / employee). role is now the only one: everyone flagged is_admin
  * becomes role 'admin' (as they already were in practice), then the flag goes.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         DB::table('users')->where('is_admin', true)->update(['role' => 'admin']);

@@ -19,7 +19,7 @@ function makeGroup(string $mode, string $anchor, float $cap = 40.0, ?int $custom
 
 it('computes a 7-day weekly period containing a date, with one full-cap week', function () {
     $group = makeGroup('weekly', '2026-09-01'); // a Tuesday
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
 
     $period = $calc->periodContaining($group, Carbon::parse('2026-09-05'));
 
@@ -37,7 +37,7 @@ it('computes weekly periods before and after the anchor via offset and by-date l
     Carbon::setTestNow(Carbon::parse('2026-09-03'));
 
     $group = makeGroup('weekly', '2026-09-01');
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
 
     $viaOffset = $calc->periodByOffset($group, -1);
     $viaDate = $calc->periodContaining($group, Carbon::parse('2026-08-27'));
@@ -52,7 +52,7 @@ it('computes weekly periods before and after the anchor via offset and by-date l
 
 it('anchors monthly periods to the anchor date, not calendar month boundaries', function () {
     $group = makeGroup('monthly', '2026-02-15');
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
 
     $period = $calc->periodContaining($group, Carbon::parse('2026-03-01'));
 
@@ -66,7 +66,7 @@ it('computes quarterly periods spanning 3 months from the anchor', function () {
     Carbon::setTestNow(Carbon::parse('2026-03-15'));
 
     $group = makeGroup('quarterly', '2026-02-01');
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
 
     $current = $calc->periodContaining($group, Carbon::parse('2026-03-15'));
     $next = $calc->periodByOffset($group, 1);
@@ -81,7 +81,7 @@ it('computes quarterly periods spanning 3 months from the anchor', function () {
 
 it('computes a custom-length period', function () {
     $group = makeGroup('custom', '2026-01-01', 40.0, 45);
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
 
     $period = $calc->periodContaining($group, Carbon::parse('2026-01-01'));
 
@@ -92,7 +92,7 @@ it('computes a custom-length period', function () {
 it('prorates the trailing partial week of a period not divisible by 7', function () {
     // Quarterly from 2026-02-01 to 2026-04-30 is 89 days = 12 full weeks + 5 leftover days.
     $group = makeGroup('quarterly', '2026-02-01', 40.0);
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
 
     $period = $calc->periodContaining($group, Carbon::parse('2026-02-01'));
 
@@ -107,7 +107,7 @@ it('prorates the trailing partial week of a period not divisible by 7', function
 
 it('finds which week a date falls into within a period', function () {
     $group = makeGroup('quarterly', '2026-02-01', 40.0);
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
     $period = $calc->periodContaining($group, Carbon::parse('2026-02-01'));
 
     $match = $calc->weekFor($period, Carbon::parse('2026-02-10'));
@@ -123,7 +123,7 @@ it('falls back to monthly/48h defaults when a group has no settlement config at 
     // the calculator's own fallback rather than the migration's backfill.
     $group = ShiftGroup::create(['name' => 'Unconfigured', 'sort_order' => 0]);
 
-    $calc = new SettlementPeriodCalculator();
+    $calc = new SettlementPeriodCalculator;
     $period = $calc->periodContaining($group, Carbon::today());
 
     expect($period['weeks'][0]['cap_hours'])->toBeGreaterThan(0.0);
@@ -134,7 +134,7 @@ it('keeps the half hour of a shift that does not last whole hours', function (st
     $shift = new Shift(['date' => '2026-09-01', 'start_time' => $start, 'end_time' => $end]);
 
     // toEqual: an exact division (480 / 60) is the int 8, as before the upgrade.
-    expect((new SettlementPeriodCalculator())->shiftTiming($shift)['duration_hours'])->toEqual($hours);
+    expect((new SettlementPeriodCalculator)->shiftTiming($shift)['duration_hours'])->toEqual($hours);
 })->with([
     'day shift 06:00-13:30' => ['06:00', '13:30', 7.5],
     'overnight 22:00-05:30' => ['22:00', '05:30', 7.5],

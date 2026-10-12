@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\DB;
  * dates the admin entered and yields a valid range they can correct; how many were swapped is
  * printed per table.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     /** table => [constraint, start column, end column] */
     private const RANGES = [
         'newbie_periods' => ['newbie_periods_end_after_start', 'start_date', 'end_date'],

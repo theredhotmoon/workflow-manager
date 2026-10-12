@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\NewbiePeriod;
 use App\Models\User;
+use App\Support\Month;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
-use App\Support\Month;
 
 class NewbiePeriodController extends Controller
 {
@@ -102,6 +102,7 @@ class NewbiePeriodController extends Controller
     public function destroy(NewbiePeriod $newbiePeriod)
     {
         $newbiePeriod->delete();
+
         return response()->json(['message' => 'Newbie period removed.']);
     }
 }

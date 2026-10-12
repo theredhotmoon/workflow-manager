@@ -25,7 +25,7 @@ class ShiftGroupController extends Controller
     public function index(Request $request)
     {
         $groups = ShiftGroup::with('streakRules')
-            ->when(!$request->boolean('include_archived'), fn ($q) => $q->notArchived())
+            ->when(! $request->boolean('include_archived'), fn ($q) => $q->notArchived())
             ->orderBy('sort_order')->orderBy('id')->get();
 
         return response()->json($groups);
@@ -131,7 +131,7 @@ class ShiftGroupController extends Controller
                 ->orderBy('starts_at')
                 ->get();
 
-            if (($assignments->isNotEmpty() || $onCall->isNotEmpty()) && !$request->boolean('remove_future_assignments')) {
+            if (($assignments->isNotEmpty() || $onCall->isNotEmpty()) && ! $request->boolean('remove_future_assignments')) {
                 return $this->futureWorkRefusal($shiftGroup, $assignments, $onCall);
             }
 
@@ -163,7 +163,7 @@ class ShiftGroupController extends Controller
      */
     public function restore(ShiftGroup $shiftGroup)
     {
-        if (!$shiftGroup->isArchived()) {
+        if (! $shiftGroup->isArchived()) {
             return response()->json(['message' => "Shift group \"{$shiftGroup->name}\" is not archived."], 422);
         }
 
@@ -191,8 +191,8 @@ class ShiftGroupController extends Controller
 
         return response()->json([
             'code' => 'future_work',
-            'message' => "\"{$group->name}\" has " . implode(' and ', $parts) . ' from tomorrow on. '
-                . 'Confirm to remove them and archive the group; today\'s and past work stays.',
+            'message' => "\"{$group->name}\" has ".implode(' and ', $parts).' from tomorrow on. '
+                .'Confirm to remove them and archive the group; today\'s and past work stays.',
             'assignments' => $assignments->map(fn (ShiftAssignment $a) => [
                 'id' => $a->id,
                 'date' => $a->shift->date->toDateString(),

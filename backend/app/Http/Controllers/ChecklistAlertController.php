@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Shift;
-use App\Models\ShiftChecklist;
-use App\Models\ShiftAssignment;
 use App\Models\ChecklistSubmission;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
+use App\Models\ShiftChecklist;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -70,7 +70,7 @@ class ChecklistAlertController extends Controller
 
         $submittedKeys = [];
         foreach ($submissionsByShift as $s) {
-            $submittedKeys[$s->shift_id . '-' . $s->checklist_template_id] = true;
+            $submittedKeys[$s->shift_id.'-'.$s->checklist_template_id] = true;
         }
 
         // Also find submissions by date+template, for handovers filed without a shift (the form's
@@ -87,7 +87,7 @@ class ChecklistAlertController extends Controller
 
         $submittedByDate = [];
         foreach ($submissionsByDate as $s) {
-            $submittedByDate[Carbon::parse($s->date)->format('Y-m-d') . '-' . $s->checklist_template_id] = true;
+            $submittedByDate[Carbon::parse($s->date)->format('Y-m-d').'-'.$s->checklist_template_id] = true;
         }
 
         $currentAlerts = [];
@@ -95,19 +95,22 @@ class ChecklistAlertController extends Controller
 
         foreach ($shiftChecklists as $sc) {
             $shift = $sc->shift;
-            if (!$shift)
+            if (! $shift) {
                 continue;
+            }
 
             // Skip if already submitted (by shift_id match)
-            $key = $shift->id . '-' . $sc->checklist_template_id;
-            if (isset($submittedKeys[$key]))
+            $key = $shift->id.'-'.$sc->checklist_template_id;
+            if (isset($submittedKeys[$key])) {
                 continue;
+            }
 
             // Skip if already submitted (by date+template fallback)
             $dateStr = $shift->date->format('Y-m-d');
-            $dateKey = $dateStr . '-' . $sc->checklist_template_id;
-            if (isset($submittedByDate[$dateKey]))
+            $dateKey = $dateStr.'-'.$sc->checklist_template_id;
+            if (isset($submittedByDate[$dateKey])) {
                 continue;
+            }
             $deadline = $sc->getDeadlineDatetime($shift);
 
             $alert = [

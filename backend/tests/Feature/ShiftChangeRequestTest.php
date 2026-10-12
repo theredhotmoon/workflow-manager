@@ -7,6 +7,7 @@ use App\Models\ShiftChangeRequest;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /*
  * The change-request flow as built: an employee says they cannot attend one of their own shifts
@@ -220,7 +221,7 @@ it('migrates existing requests: backfills date and slot, then nulls links instea
     $migration = require database_path('migrations/2026_10_10_100100_keep_shift_change_requests_when_work_is_removed.php');
     $migration->down();
     $assignment = scrAssign($this->employee, '2026-10-20', 3);
-    $id = \Illuminate\Support\Facades\DB::table('shift_change_requests')->insertGetId([
+    $id = DB::table('shift_change_requests')->insertGetId([
         'shift_assignment_id' => $assignment->id, 'user_id' => $this->employee->id, 'shift_id' => $assignment->shift_id,
         'reason' => 'Doctor', 'status' => 'pending', 'created_at' => now(), 'updated_at' => now(),
     ]);
@@ -256,12 +257,12 @@ it('answers 404 with a clear message when the assignment is removed while the re
     $assignment = scrAssign($this->employee, '2026-10-20');
     // Deterministic stand-in for a concurrent unassign: it lands right after validation found the row.
     $fired = false;
-    \Illuminate\Support\Facades\DB::listen(function ($query) use (&$fired, $assignment) {
-        if ($fired || !str_contains($query->sql, 'from "shift_assignments"')) {
+    DB::listen(function ($query) use (&$fired, $assignment) {
+        if ($fired || ! str_contains($query->sql, 'from "shift_assignments"')) {
             return;
         }
         $fired = true;
-        \Illuminate\Support\Facades\DB::table('shift_assignments')->where('id', $assignment->id)->delete();
+        DB::table('shift_assignments')->where('id', $assignment->id)->delete();
     });
 
     $this->actingAs($this->employee)->postJson('/api/shift-change-requests', [

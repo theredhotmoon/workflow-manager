@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\ChecklistSubmission;
 use App\Models\ChecklistTemplate;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -82,7 +81,7 @@ it('exports only the rows matching the filters', function () {
     caeInsert(4, $lights, $bob, null, ['date' => '2026-09-01']);
 
     $count = fn (array $query) => count(caeCsv($this->actingAs($admin)
-        ->get('/api/checklist-submissions/export?' . http_build_query($query)))) - 1;
+        ->get('/api/checklist-submissions/export?'.http_build_query($query)))) - 1;
 
     expect($count([]))->toBe(9)
         ->and($count(['template_id' => $doors->id]))->toBe(5)
@@ -164,7 +163,7 @@ it('searches and sorts the list on the server', function () {
     caeInsert(1, caeTemplate('Gamma checks'), $admin, $zed, ['date' => '2026-10-02']);
 
     $names = fn (array $query) => collect($this->actingAs($admin)
-        ->getJson('/api/checklist-submissions?' . http_build_query($query))->json('data'))
+        ->getJson('/api/checklist-submissions?'.http_build_query($query))->json('data'))
         ->pluck('template.name')->all();
 
     expect($names([]))->toBe(['Beta checks', 'Gamma checks', 'Alpha checks'])

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Procedure;
-use App\Models\ProcedureUserRead;
 use Illuminate\Http\Request;
 
 class ProceduresToLearnController extends Controller

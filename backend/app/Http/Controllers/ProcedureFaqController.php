@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Alarm;
+use App\Models\Procedure;
 use App\Models\ProcedureFaqItem;
 use App\Models\ProcedureFaqReply;
-use App\Models\Procedure;
-use App\Models\Alarm;
 use App\Services\AlarmService;
 use Illuminate\Http\Request;
 
@@ -14,7 +14,7 @@ class ProcedureFaqController extends Controller
     public function index(Procedure $procedure)
     {
         $items = $procedure->faqItems()
-            ->with(['author:id,name', 'replies' => fn($q) => $q->with('author:id,name')->orderBy('created_at')])
+            ->with(['author:id,name', 'replies' => fn ($q) => $q->with('author:id,name')->orderBy('created_at')])
             ->orderByDesc('created_at')
             ->get();
 
@@ -38,7 +38,7 @@ class ProcedureFaqController extends Controller
 
         // Notify procedure owner about new question
         if ($procedure->owner_id && $procedure->owner_id !== $request->user()->id) {
-            (new AlarmService())->notifyUser(
+            (new AlarmService)->notifyUser(
                 Alarm::TYPE_PROCEDURE_NEW_QUESTION_ADDED,
                 $procedure->owner_id,
                 "New question on procedure \"{$procedure->title}\"",
@@ -70,7 +70,7 @@ class ProcedureFaqController extends Controller
 
         // Notify question author about the reply
         if ($item->created_by && $item->created_by !== $request->user()->id) {
-            (new AlarmService())->notifyUser(
+            (new AlarmService)->notifyUser(
                 Alarm::TYPE_PROCEDURE_QUESTION_REPLIED,
                 $item->created_by,
                 "Your question on \"{$procedure->title}\" received a reply",
@@ -87,11 +87,12 @@ class ProcedureFaqController extends Controller
     {
         $procedure = $item->procedure;
         $procedure->refuseWritesIfArchived($request->user());
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
+        if ($request->user()->id !== $procedure->owner_id && ! $request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        $item->update(['is_outdated' => !$item->is_outdated]);
+        $item->update(['is_outdated' => ! $item->is_outdated]);
+
         return response()->json($item);
     }
 
@@ -99,31 +100,34 @@ class ProcedureFaqController extends Controller
     {
         $procedure = $reply->faqItem->procedure;
         $procedure->refuseWritesIfArchived($request->user());
-        if ($request->user()->id !== $procedure->owner_id && !$request->user()->isAdmin()) {
+        if ($request->user()->id !== $procedure->owner_id && ! $request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        $reply->update(['is_outdated' => !$reply->is_outdated]);
+        $reply->update(['is_outdated' => ! $reply->is_outdated]);
+
         return response()->json($reply);
     }
 
     public function destroyItem(Request $request, ProcedureFaqItem $item)
     {
         $item->procedure->refuseWritesIfArchived($request->user());
-        if ($item->created_by !== $request->user()->id && !$request->user()->isAdmin()) {
+        if ($item->created_by !== $request->user()->id && ! $request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
         $item->delete();
+
         return response()->json(['message' => 'FAQ item deleted.']);
     }
 
     public function destroyReply(Request $request, ProcedureFaqReply $reply)
     {
         $reply->faqItem->procedure->refuseWritesIfArchived($request->user());
-        if ($reply->created_by !== $request->user()->id && !$request->user()->isAdmin()) {
+        if ($reply->created_by !== $request->user()->id && ! $request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
         $reply->delete();
+
         return response()->json(['message' => 'Reply deleted.']);
     }
 }

@@ -40,7 +40,7 @@ class ProcedureHtmlSanitizer
     private function config(): HTMLPurifier_Config
     {
         // data: images as the editor stores pasted ones; the stock scheme rejects webp.
-        HTMLPurifier_URISchemeRegistry::instance()->register('data', new ImageDataUriScheme());
+        HTMLPurifier_URISchemeRegistry::instance()->register('data', new ImageDataUriScheme);
 
         $config = HTMLPurifier_Config::createDefault();
         $config->set('Cache.DefinitionImpl', null);
@@ -64,7 +64,7 @@ class ProcedureHtmlSanitizer
         $config->set('HTML.DefinitionRev', 1);
         if ($def = $config->maybeGetRawHTMLDefinition()) {
             // A code block's language, as TipTap writes it (class="language-bash"); no other class.
-            $def->addAttribute('code', 'class', new CodeLanguageClass());
+            $def->addAttribute('code', 'class', new CodeLanguageClass);
         }
 
         return $config;

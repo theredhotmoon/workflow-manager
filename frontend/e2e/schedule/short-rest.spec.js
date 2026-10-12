@@ -10,15 +10,18 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { dragToShiftDropzone } from '../fixtures/drag.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/short-rest');
 
 // F3: a manual assign that leaves less than 11 h of rest next to the employee's other work (here a
 // shift in another group, which the screen's own back-to-back check can't see) asks first; Cancel
 // leaves nothing assigned, "Assign anyway" saves it. Month 2093-01 is reserved for this file.
-const MONTH = '2093-01';
+const MONTH = reserve.month('2093-01');
 const TARGET_DAY = '2093-01-11';
 const EMPLOYEE = 'Regular Employee';
-const GROUP_A = 'Short Rest Target';
-const GROUP_B = 'Short Rest Other';
+const GROUP_A = reserve.name('Short Rest Target');
+const GROUP_B = reserve.name('Short Rest Other');
 
 test.describe('Manual assign: short daily rest', () => {
   test('asks before assigning into less than 11 h of rest, then assigns on confirm', async ({

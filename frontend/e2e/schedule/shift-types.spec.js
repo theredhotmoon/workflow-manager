@@ -5,6 +5,16 @@ import {
   setShiftTypes,
 } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/shift-types');
+reserve.months('2028-02', '2028-03', '2028-04', '2028-05', '2028-06');
+// Shift-group names: schedule tabs and rosters are found by name across the whole run.
+reserve.name('Types Template Team');
+reserve.name('Types Single Team');
+reserve.name('Types Bulk Team');
+reserve.name('Types Mixed Team');
+reserve.name('Types Slow Team');
 
 // Months reserved for this file: 2028-02 (template), 2028-03 (single edit), 2028-04 (bulk editor), 2028-05 (mixed slot left blank), 2028-06 (editor opened while the schedule loads).
 

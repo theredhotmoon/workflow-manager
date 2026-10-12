@@ -44,7 +44,7 @@ afterEach(function () {
 it('refuses to seed in production without SEED_ADMIN_PASSWORD and creates nothing', function () {
     $this->app['env'] = 'production';
 
-    expect(fn () => (new DatabaseSeeder())->run())
+    expect(fn () => (new DatabaseSeeder)->run())
         ->toThrow(RuntimeException::class, 'SEED_ADMIN_PASSWORD');
 
     expect(User::count())->toBe(0);
@@ -54,7 +54,7 @@ it('refuses a SEED_ADMIN_PASSWORD shorter than 12 characters in production', fun
     $this->app['env'] = 'production';
     setSeedAdminPassword('elevenchars');
 
-    expect(fn () => (new DatabaseSeeder())->run())
+    expect(fn () => (new DatabaseSeeder)->run())
         ->toThrow(RuntimeException::class, 'at least 12 characters');
 
     expect(User::count())->toBe(0);
@@ -64,7 +64,7 @@ it('refuses a published development password as SEED_ADMIN_PASSWORD in productio
     $this->app['env'] = 'production';
     setSeedAdminPassword($published);
 
-    expect(fn () => (new DatabaseSeeder())->run())->toThrow(RuntimeException::class);
+    expect(fn () => (new DatabaseSeeder)->run())->toThrow(RuntimeException::class);
 
     expect(User::count())->toBe(0);
 })->with(['1234', 'password123']);
@@ -72,7 +72,7 @@ it('refuses a published development password as SEED_ADMIN_PASSWORD in productio
 it('applies the same rule to any environment other than local and testing', function () {
     $this->app['env'] = 'staging';
 
-    expect(fn () => (new DatabaseSeeder())->run())->toThrow(RuntimeException::class);
+    expect(fn () => (new DatabaseSeeder)->run())->toThrow(RuntimeException::class);
     expect(User::count())->toBe(0);
 });
 
@@ -80,7 +80,7 @@ it('seeds the admin with SEED_ADMIN_PASSWORD in production, and no demo users', 
     $this->app['env'] = 'production';
     setSeedAdminPassword('a-long-production-secret');
 
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     $admin = User::where('email', 'admin@shiftchanger.com')->first();
     expect($admin)->not->toBeNull();
@@ -95,7 +95,7 @@ it('accepts a password of exactly 12 characters in production', function () {
     $this->app['env'] = 'production';
     setSeedAdminPassword('twelve-chars');
 
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     expect(Hash::check('twelve-chars', User::where('email', 'admin@shiftchanger.com')->value('password')))
         ->toBeTrue();
@@ -105,7 +105,7 @@ it('refuses the demo-user seeders outside local and testing', function (string $
     $this->app['env'] = 'production';
     setSeedAdminPassword('a-long-production-secret');
 
-    expect(fn () => (new $seeder())->run())
+    expect(fn () => (new $seeder)->run())
         ->toThrow(RuntimeException::class, 'only runs when APP_ENV is local or testing');
 
     // E2eBaselineSeeder checks before calling DatabaseSeeder, so not even the admin is left behind.
@@ -115,10 +115,10 @@ it('refuses the demo-user seeders outside local and testing', function (string $
 it('does not reset an existing admin password when re-seeded', function () {
     $this->app['env'] = 'production';
     setSeedAdminPassword('a-long-production-secret');
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     setSeedAdminPassword('a-different-long-secret');
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     $admin = User::where('email', 'admin@shiftchanger.com')->first();
     expect(User::where('email', 'admin@shiftchanger.com')->count())->toBe(1);
@@ -128,10 +128,10 @@ it('does not reset an existing admin password when re-seeded', function () {
 it('re-seeds production without SEED_ADMIN_PASSWORD when the admin already exists', function () {
     $this->app['env'] = 'production';
     setSeedAdminPassword('a-long-production-secret');
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
     setSeedAdminPassword(null);
 
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     expect(Hash::check('a-long-production-secret', User::where('email', 'admin@shiftchanger.com')->value('password')))
         ->toBeTrue();
@@ -142,7 +142,7 @@ it('warns on a production re-seed when the existing admin still has the password
     $this->app['env'] = 'production';
     Log::spy();
 
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     Log::shouldHaveReceived('warning')
         ->withArgs(fn ($message) => str_contains($message, 'still has the published default password'))
@@ -155,7 +155,7 @@ it('does not warn about 1234 in local and testing', function () {
     $this->app['env'] = 'local';
     Log::spy();
 
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     Log::shouldNotHaveReceived('warning');
 });
@@ -163,7 +163,7 @@ it('does not warn about 1234 in local and testing', function () {
 it('keeps the dev defaults in local and testing: admin with 1234 and the demo users', function (string $env) {
     $this->app['env'] = $env;
 
-    (new E2eBaselineSeeder())->run();
+    (new E2eBaselineSeeder)->run();
 
     $admin = User::where('email', 'admin@shiftchanger.com')->first();
     expect(Hash::check('1234', $admin->password))->toBeTrue();
@@ -178,7 +178,7 @@ it('lets SEED_ADMIN_PASSWORD override the dev default locally', function () {
     $this->app['env'] = 'local';
     setSeedAdminPassword('my-local-pass');
 
-    (new DatabaseSeeder())->run();
+    (new DatabaseSeeder)->run();
 
     $admin = User::where('email', 'admin@shiftchanger.com')->first();
     expect(Hash::check('my-local-pass', $admin->password))->toBeTrue();

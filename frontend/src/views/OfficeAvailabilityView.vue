@@ -282,6 +282,7 @@ async function fetchClosures() {
 }
 
 async function saveClosure() {
+  if (saving.value) return;
   saving.value = true;
   const trimmedTitle = form.value.title.trim();
   if (!trimmedTitle) {

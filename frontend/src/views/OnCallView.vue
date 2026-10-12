@@ -6,11 +6,19 @@
         <p class="text-slate-400 mt-1">Manage on-call assignments and log callbacks</p>
       </div>
 
-      <div class="flex items-center gap-3 mb-6">
-        <select v-model.number="selectedGroupId" @change="fetchAssignments"
+      <div class="flex flex-wrap items-center gap-3 mb-6">
+        <select v-model.number="selectedGroupId" @change="fetchAssignments" aria-label="Shift group"
           class="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-          <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
+          <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}{{ group.archived_at ? ' (archived)' : '' }}</option>
         </select>
+
+        <!-- Archived groups keep their on-call history: listed on request so past duties and
+             callbacks can still be corrected. -->
+        <label class="flex items-center gap-2 text-sm text-slate-300 cursor-pointer select-none">
+          <input v-model="includeArchived" type="checkbox" @change="onIncludeArchivedChange"
+            class="w-4 h-4 rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500/50" />
+          Include archived groups
+        </label>
 
         <button aria-label="Previous month" @click="stepMonth(-1)"
           class="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
@@ -22,10 +30,15 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
         </button>
 
-        <button @click="openAddModal" class="ml-auto px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all">
+        <button v-if="!selectedGroupArchived" @click="openAddModal" class="ml-auto px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-violet-500/25 transition-all">
           + Add On-Call Period
         </button>
       </div>
+
+      <p v-if="selectedGroupArchived" role="status" data-testid="archived-group-note"
+        class="mb-4 p-3 text-sm text-slate-300 bg-slate-500/10 border border-slate-400/30 rounded-xl">
+        <strong>Archived group.</strong> Its past on-call periods and callbacks can be corrected here; new on-call periods can't be added until the group is restored.
+      </p>
 
       <div v-if="loading" class="p-10 text-center text-slate-400">Loading…</div>
 
@@ -168,6 +181,10 @@ const currentYear = ref(new Date().getFullYear());
 const currentMonth = ref(new Date().getMonth());
 const assignments = ref([]);
 const loading = ref(true);
+const includeArchived = ref(false);
+const selectedGroupArchived = computed(
+  () => !!groups.value.find((g) => g.id === selectedGroupId.value)?.archived_at,
+);
 
 const monthKey = computed(
   () => `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`,
@@ -203,14 +220,25 @@ function formatRange(startsAt, endsAt) {
 
 async function fetchGroups() {
   try {
-    const res = await api.get('/api/shift-groups');
+    const res = await api.get(
+      '/api/shift-groups',
+      includeArchived.value ? { params: { include_archived: 1 } } : {},
+    );
     groups.value = res.data;
-    if (groups.value.length > 0) {
-      selectedGroupId.value = groups.value.find((g) => g.is_default)?.id ?? groups.value[0].id;
+    // Keep the chosen group while it's still listed; otherwise the default (or first) one.
+    if (!groups.value.some((g) => g.id === selectedGroupId.value)) {
+      const active = groups.value.filter((g) => !g.archived_at);
+      selectedGroupId.value =
+        active.find((g) => g.is_default)?.id ?? active[0]?.id ?? groups.value[0]?.id ?? null;
     }
   } catch {
     groups.value = [];
   }
+}
+
+async function onIncludeArchivedChange() {
+  await fetchGroups();
+  await fetchAssignments();
 }
 
 async function fetchEmployees() {
@@ -257,6 +285,7 @@ function openAddModal() {
 }
 
 async function saveAssignment() {
+  if (savingAssignment.value) return;
   savingAssignment.value = true;
   try {
     await api.post('/api/on-call-assignments', {
@@ -304,7 +333,7 @@ function openCallbackModal(assignment) {
 }
 
 async function saveCallback() {
-  if (!callbackTarget.value) return;
+  if (!callbackTarget.value || savingCallback.value) return;
   savingCallback.value = true;
   try {
     await api.post(`/api/on-call-assignments/${callbackTarget.value.id}/callbacks`, {

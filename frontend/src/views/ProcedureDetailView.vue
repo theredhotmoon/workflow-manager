@@ -2,6 +2,23 @@
   <AppLayout>
     <main class="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div v-if="loading" class="text-center py-16"><p class="text-slate-400">Loading procedure...</p></div>
+      <!-- Couldn't load: a missing (or, for non-admins, archived) procedure says so; anything else
+           can be retried. -->
+      <div v-else-if="loadError" role="alert" data-testid="procedure-load-error"
+        class="max-w-lg mx-auto mt-10 p-6 bg-white/5 border border-white/10 rounded-2xl text-center">
+        <h1 class="text-lg font-bold text-white mb-2">{{ loadError.notFound ? 'Procedure not found' : 'Could not load the procedure' }}</h1>
+        <p class="text-sm text-slate-400 mb-5">{{ loadError.message }}</p>
+        <div class="flex items-center justify-center gap-3">
+          <button v-if="!loadError.notFound" @click="fetchProcedure"
+            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm transition-all">
+            Retry
+          </button>
+          <router-link to="/procedures"
+            class="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
+            Back to procedures
+          </router-link>
+        </div>
+      </div>
       <template v-else-if="procedure">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row items-start gap-4 mb-6">
@@ -197,6 +214,8 @@ const route = useRoute();
 const router = useRouter();
 const procedure = ref(null);
 const loading = ref(true);
+// Set when the procedure couldn't be loaded: { notFound, message }.
+const loadError = ref(null);
 const showFeedbackModal = ref(false);
 const showTemplateModal = ref(false);
 const showDiffModal = ref(false);
@@ -282,11 +301,17 @@ const feedbackForm = reactive({ type: 'error', description: '', proposed_changes
 const templateForm = reactive({ id: null, title: '', body: '', language: 'en' });
 
 async function fetchProcedure() {
+  // A reload (after an edit) that fails keeps the procedure on screen and says so in a toast.
+  const reloading = procedure.value !== null;
   loading.value = true;
+  loadError.value = null;
   try {
     const [procRes, usersRes] = await Promise.all([
       api.get(`/api/procedures/${route.params.id}`),
-      isAdmin.value ? api.get('/api/users') : Promise.resolve({ data: [] }),
+      // The owner picker's user list is optional: the procedure still shows without it.
+      isAdmin.value
+        ? api.get('/api/users').catch(() => ({ data: [] }))
+        : Promise.resolve({ data: [] }),
     ]);
     procedure.value = procRes.data;
     users.value = usersRes.data;
@@ -315,8 +340,21 @@ async function fetchProcedure() {
         published_at: null,
       };
     }
-  } catch {
-    router.push('/procedures');
+  } catch (err) {
+    const e = describeApiError(err, 'Could not load the procedure, try again');
+    if (e.silent) return; // 401/419: sessionExpiry.js takes the user to the login page
+    if (reloading && e.status !== 404) {
+      showToast(e.message, 'error', 6000);
+      return;
+    }
+    procedure.value = null;
+    loadError.value =
+      e.status === 404
+        ? {
+            notFound: true,
+            message: 'It may have been archived, or the link is wrong.',
+          }
+        : { notFound: false, message: e.message };
   } finally {
     loading.value = false;
   }

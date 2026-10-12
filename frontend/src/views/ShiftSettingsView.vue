@@ -41,7 +41,7 @@
                 <input v-model="editHex" type="text" placeholder="#hex"
                   class="w-20 px-2 py-1.5 bg-white/5 border border-white/10 rounded-xl text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 font-mono" />
               </div>
-              <button @click="saveEdit" class="px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-all">Save</button>
+              <button @click="saveEdit" :disabled="savingEdit" class="disabled:opacity-40 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg hover:bg-emerald-500/20 transition-all">Save</button>
               <button @click="editId = null" class="px-3 py-1.5 text-xs font-medium text-slate-400 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all">Cancel</button>
             </template>
             <template v-else>
@@ -79,7 +79,7 @@
             @keyup.enter="addColor" />
           <input v-model="newHex" type="text" placeholder="#hex"
             class="w-24 px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/50 font-mono placeholder-slate-600" />
-          <button @click="addColor" :disabled="!newName.trim() || !newHex"
+          <button @click="addColor" :disabled="adding || !newName.trim() || !newHex"
             class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
             + Add
           </button>
@@ -106,6 +106,9 @@ const newHex = ref('#3b82f6');
 const editId = ref(null);
 const editName = ref('');
 const editHex = ref('');
+// A save in flight: a second click (or Enter) must not create a duplicate.
+const adding = ref(false);
+const savingEdit = ref(false);
 const { showToast } = useToast();
 
 async function fetchColors() {
@@ -121,7 +124,8 @@ async function fetchColors() {
 }
 
 async function addColor() {
-  if (!newName.value.trim() || !newHex.value) return;
+  if (adding.value || !newName.value.trim() || !newHex.value) return;
+  adding.value = true;
   try {
     const res = await api.post('/api/shift-colors', {
       name: newName.value.trim(),
@@ -133,6 +137,8 @@ async function addColor() {
     showToast('Color added.');
   } catch (e) {
     showToast(e.response?.data?.message || 'Failed to add color.', 'error');
+  } finally {
+    adding.value = false;
   }
 }
 
@@ -143,7 +149,8 @@ function startEdit(color) {
 }
 
 async function saveEdit() {
-  if (!editId.value) return;
+  if (!editId.value || savingEdit.value) return;
+  savingEdit.value = true;
   try {
     const res = await api.put(`/api/shift-colors/${editId.value}`, {
       name: editName.value.trim(),
@@ -155,6 +162,8 @@ async function saveEdit() {
     showToast('Color updated.');
   } catch (e) {
     showToast(e.response?.data?.message || 'Failed to update.', 'error');
+  } finally {
+    savingEdit.value = false;
   }
 }
 

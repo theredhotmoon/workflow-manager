@@ -28,11 +28,12 @@
             </router-link>
           </div>
 
-          <!-- Center: Top nav links (non-admin items). On a narrow screen they scroll sideways in
-               their own strip, so the bell and the account menu stay on screen; below xl, where
-               they can overflow, the strip's right edge fades out to hint that it scrolls. -->
+          <!-- Center: Top nav links (non-admin items). Between sm and xl they scroll sideways in
+               their own strip, so the bell and the account menu stay on screen, and the strip's
+               right edge fades out to hint that it scrolls. On a phone (< sm) they move into the
+               account menu instead. -->
           <div class="flex items-center gap-1 min-w-0">
-            <div class="flex items-center gap-1 min-w-0 overflow-x-auto max-xl:pr-6 max-xl:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
+            <div class="hidden sm:flex items-center gap-1 min-w-0 overflow-x-auto max-xl:pr-6 max-xl:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)]">
               <router-link v-for="link in topLinks" :key="link.to" :to="link.to"
                 :aria-current="$route.path === link.to ? 'page' : undefined"
                 :class="[
@@ -133,12 +134,24 @@
                 leave-active-class="transition-all duration-150 ease-in"
                 leave-from-class="opacity-100 scale-100 translate-y-0"
                 leave-to-class="opacity-0 scale-95 -translate-y-1">
-                <div v-if="userMenuOpen" id="user-menu" class="absolute right-0 top-full mt-2 w-56 bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/40 py-1 z-50">
+                <div v-if="userMenuOpen" id="user-menu" class="absolute right-0 top-full mt-2 w-56 max-h-[calc(100vh-5rem)] overflow-y-auto bg-slate-800/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl shadow-black/40 py-1 z-50">
                   <!-- User header -->
                   <div class="px-4 py-3 border-b border-white/10">
                     <p class="text-sm font-semibold text-white truncate">{{ currentUser?.name }}</p>
                     <p class="text-xs text-slate-400 truncate">{{ currentUser?.email }}</p>
                   </div>
+
+                  <!-- On a phone the top nav links live here (the strip is hidden below sm). -->
+                  <nav aria-label="Pages" class="sm:hidden py-1 border-b border-white/10">
+                    <router-link v-for="link in topLinks" :key="link.to" :to="link.to" @click="userMenuOpen = false"
+                      :aria-current="$route.path === link.to ? 'page' : undefined"
+                      :class="['block px-4 py-2.5 text-sm transition-all',
+                        $route.path === link.to
+                          ? 'text-indigo-300 bg-indigo-500/10'
+                          : 'text-slate-300 hover:text-white hover:bg-white/5']">
+                      {{ link.label }}
+                    </router-link>
+                  </nav>
 
                   <!-- Menu Items -->
                   <div class="py-1">
@@ -297,6 +310,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../axios.js';
+import { useAlarms } from '../composables/useAlarms.js';
 import { modalLayerCount, useFocusTrap } from '../composables/useFocusTrap.js';
 import { isLoggedOut } from '../fetchCurrentUser.js';
 import { logoutFailureMessage, logoutWithRetry } from '../logout.js';
@@ -350,8 +364,14 @@ function onDocumentKeydown(event) {
     userMenuButtonRef.value?.focus();
   }
 }
-const latestAlarms = ref([]);
-const unreadAlarmCount = ref(0);
+// Shared with the Notifications page, so marking alarms read there updates this badge too.
+const {
+  latest: latestAlarms,
+  unreadCount: unreadAlarmCount,
+  refresh: refreshAlarms,
+  markRead,
+  markAllRead,
+} = useAlarms();
 let alarmPollTimer = null;
 
 function stopAlarmPoll() {
@@ -361,12 +381,7 @@ function stopAlarmPoll() {
 
 async function fetchAlarms() {
   try {
-    const [latestRes, countRes] = await Promise.all([
-      api.get('/api/alarms/latest'),
-      api.get('/api/alarms/unread-count'),
-    ]);
-    latestAlarms.value = latestRes.data;
-    unreadAlarmCount.value = countRes.data.count;
+    await refreshAlarms();
   } catch (error) {
     // Signed out (sessionExpiry.js takes them to the login page): stop polling a dead session.
     if (isLoggedOut(error)) stopAlarmPoll();
@@ -378,25 +393,14 @@ watch(currentUser, (user) => {
   if (!user) stopAlarmPoll();
 });
 
-async function markAlarmRead(alarm) {
-  if (!alarm.read_at) {
-    try {
-      await api.put(`/api/alarms/${alarm.id}/read`);
-      alarm.read_at = new Date().toISOString();
-      unreadAlarmCount.value = Math.max(0, unreadAlarmCount.value - 1);
-    } catch {}
-  }
+// Optimistic: the badge drops at once; a refused mark-read is rolled back with a toast.
+function markAlarmRead(alarm) {
   alarmDropdownOpen.value = false;
+  markRead(alarm);
 }
 
-async function markAllAlarmsRead() {
-  try {
-    await api.put('/api/alarms/read-all');
-    latestAlarms.value.forEach((a) => {
-      a.read_at = a.read_at || new Date().toISOString();
-    });
-    unreadAlarmCount.value = 0;
-  } catch {}
+function markAllAlarmsRead() {
+  markAllRead();
 }
 
 function getAlarmIcon(type) {

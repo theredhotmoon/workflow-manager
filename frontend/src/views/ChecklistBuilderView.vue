@@ -472,6 +472,7 @@ function moveItem(group, index, direction) {
 
 // Save
 async function saveTemplate() {
+  if (saving.value) return;
   // Validate
   if (!form.value.name.trim()) {
     showToast('Template name is required.', 'error');

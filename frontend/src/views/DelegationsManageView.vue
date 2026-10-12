@@ -247,6 +247,7 @@ import BaseModal from '../components/BaseModal.vue';
 import DelegationForm from '../components/DelegationForm.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';
+import { formatCalendarDate } from '../dates.js';
 import { isDelegationCompleted } from '../delegationStatus.js';
 
 const { showToast } = useToast();
@@ -277,14 +278,8 @@ function getInitials(name) {
     .substring(0, 2);
 }
 
-function formatDate(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+// Delegation days are calendar dates: the same day whatever the browser's timezone.
+const formatDate = formatCalendarDate;
 
 function formatDateTime(d) {
   if (!d) return '';
@@ -360,11 +355,16 @@ async function runAction(key, request, fallback, { delegationId } = {}) {
     await request();
   } catch (err) {
     showError(err, fallback);
+    busy.delete(key);
     return false;
+  }
+  // Still busy until the list is reloaded: until then the old form (e.g. the person just added,
+  // still selected) is on screen, and a second click would send the same request again.
+  try {
+    await fetchData();
   } finally {
     busy.delete(key);
   }
-  await fetchData();
   if (delegationId) refreshLogs(delegationId);
   return true;
 }

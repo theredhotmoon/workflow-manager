@@ -265,6 +265,7 @@ async function fetchEntries() {
 }
 
 async function saveEntry() {
+  if (saving.value) return; // a second Enter/click while saving would add the entry twice
   saving.value = true;
   try {
     const payload = {

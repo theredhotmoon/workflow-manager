@@ -204,6 +204,34 @@ class ScheduleController extends Controller
     }
 
     /**
+     * Sets the work mode of several shifts in one request, all or nothing (e.g. "generate as
+     * remote" switching every office shift on the month's closed dates). Same rules as the single
+     * update: a shift of an archived group refuses the whole request (422) and nothing changes.
+     */
+    public function updateShiftsWorkMode(Request $request)
+    {
+        $validated = $request->validate([
+            'shift_ids' => ['required', 'array', 'min:1', 'max:500'],
+            'shift_ids.*' => ['required', 'integer', 'distinct', 'exists:shifts,id'],
+            'work_mode' => ['required', 'string', 'in:office,remote'],
+        ]);
+
+        $updated = DB::transaction(function () use ($validated) {
+            $shifts = Shift::whereIn('id', $validated['shift_ids'])->get(['id', 'shift_group_id'])->all();
+            // Groups first, FOR SHARE (ShiftGroup's lock order): an archive can't land halfway.
+            $this->lockGroupsOrRefuse($shifts);
+
+            return Shift::whereIn('id', $validated['shift_ids'])->update(['work_mode' => $validated['work_mode']]);
+        });
+
+        return response()->json([
+            'message' => "Work mode set to {$validated['work_mode']} for {$updated} shift".($updated === 1 ? '' : 's').'.',
+            'updated' => $updated,
+            'work_mode' => $validated['work_mode'],
+        ]);
+    }
+
+    /**
      * Update the number of shift slots for a specific day.
      *
      * Growing adds slots with default times. Shrinking removes empty slots first (latest first);

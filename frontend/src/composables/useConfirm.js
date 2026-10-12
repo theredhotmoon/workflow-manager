@@ -29,6 +29,13 @@ let resolveFn = null;
  * @param {boolean} [opts.danger]       - Use red/destructive button style (default: true)
  */
 export function confirm(opts = {}) {
+  // Only one dialog at a time: a caller still waiting on an earlier one gets "not confirmed"
+  // rather than a promise that never settles.
+  if (resolveFn) {
+    const previous = resolveFn;
+    resolveFn = null;
+    previous(false);
+  }
   title.value = opts.title ?? 'Confirm';
   message.value = opts.message ?? '';
   confirmLabel.value = opts.confirmLabel ?? 'Confirm';

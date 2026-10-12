@@ -116,6 +116,7 @@
         </button>
       </div>
     </main>
+    <AppToast />
   </AppLayout>
 </template>
 
@@ -123,6 +124,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import AppToast from '../components/AppToast.vue';
+import { useAlarms } from '../composables/useAlarms.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 
 const loading = ref(true);
@@ -168,22 +171,16 @@ async function fetchAlarms() {
   }
 }
 
-async function handleAlarmClick(alarm) {
-  if (!alarm.read_at) {
-    try {
-      await api.put(`/api/alarms/${alarm.id}/read`);
-      alarm.read_at = new Date().toISOString();
-    } catch {}
-  }
+// Shared with the header bell: its badge follows what's marked read here (rolled back, with a
+// toast, when the server refuses).
+const alarmStore = useAlarms();
+
+function handleAlarmClick(alarm) {
+  alarmStore.markRead(alarm, [alarms.value]);
 }
 
-async function markAllRead() {
-  try {
-    await api.put('/api/alarms/read-all');
-    alarms.value.forEach((a) => {
-      a.read_at = a.read_at || new Date().toISOString();
-    });
-  } catch {}
+function markAllRead() {
+  alarmStore.markAllRead([alarms.value]);
 }
 
 function clearFilters() {

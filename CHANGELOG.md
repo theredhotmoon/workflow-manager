@@ -4,6 +4,43 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-10 — 🧭 Frontend lows: guarded routes, a 404 page, honest load errors, no double submits
+
+> **Deploy notes**
+> - No migrations. One new route (`PUT /api/schedule/work-mode`, admins and schedule maintainers). Rebuild backend and frontend.
+>
+> **Behaviour changes**
+> - **Generate month → "Switch to Remote"** stops when generating fails and shows the server's reason (was "Failed to generate month." and then switched the existing shifts anyway). The closed dates' office shifts are switched in **one** all-or-nothing request, `PUT /api/schedule/work-mode` (`shift_ids` 1..500 distinct existing ids, `work_mode` office/remote; same rules as the single update: a shift of an archived group refuses the whole request with 422). A failed switch says the month was generated but the closed dates are still office.
+> - **Settlement Periods and On-Call** are guarded in the router too (`meta.requiresScheduleManager`): an employee opening the URL lands on the dashboard, as with admin-only pages. The nav already hid them; the API already answered 403.
+> - **Unknown addresses** show a "Page not found" page inside the app layout with a link to the dashboard; signed out, they go to login first (and come back after signing in).
+> - **Notifications:** the bell badge and the Notifications page share one alarm store (`useAlarms`). Marking read lowers the badge at once; when the server refuses, the change is rolled back and a toast says so (failures were swallowed and the badge stayed stale until the next poll).
+> - **Overlapping confirm dialogs:** opening a confirm while another is waiting answers the first with "cancel" instead of leaving its caller hanging.
+> - **Double clicks:** creating a shift colour or a shift group (and Enter + click) sends one request; the same in-flight guard on user, user-group, newbie period, availability, office closure, on-call period, callback, handover submit/confirm and checklist template saves. Delegation management keeps an action busy until the list has reloaded, so a second "+ Add" can't resend the same person.
+> - **Procedures:** a procedure that can't be loaded no longer bounces silently to the list: 404 (including an archived one for non-admins) says "Procedure not found" with a link back; other failures show the reason and Retry. A reload after an edit that fails keeps the page and toasts. The procedure list drops the previous search's results when a load fails and offers Retry. The admin user list for the owner picker is optional (its failure no longer hides the procedure).
+> - **Storage and timers:** `localStorage` goes through `safeStorage.js` (private mode / blocked storage fall back to the default view); the procedures search debounce is cleared on unmount.
+> - **Delegation dates** are shown as calendar dates in every timezone (`formatCalendarDate`): west of UTC they showed the day before (`new Date('YYYY-MM-DD')` is UTC midnight). Same on My Shifts and the Users delegation picker, which showed a UTC-midnight time.
+> - **Schedule drag and drop:** dropping someone on a shift they're already on, including again while the first drop is still being saved, takes the new chip straight back off ("… is already on this shift."). A chip whose save is still in flight can't be dragged on or removed (it had no id yet, so a move left the first assignment behind).
+> - **Fill checklist:** the shift picker lists the outgoing employee's own shifts first; someone filing for themselves sees only theirs (plus one already chosen from a link). Admins still see every shift of the day.
+> - **Phone header:** below 640 px the nav links move into the account menu instead of a sideways-scrolling strip.
+> - **On-Call:** "Include archived groups" lists archived groups ("(archived)") so their past duties and callbacks can be corrected; an archived group shows a note and no "+ Add On-Call Period".
+
+- **Frontend lows from the 2026-10-09 audit (L21–L30) and follow-ups.** L22 (login always landed on the dashboard) was already fixed in #35: the guard and the session interceptor pass `redirect`, LoginView follows it (`e2e/auth/session-expiry.spec.js`: "an expired session sends the next action to login, and signing in returns there").
+
+### Backend
+| What | Details |
+|------|---------|
+| New | `ScheduleController::updateShiftsWorkMode` (`PUT /api/schedule/work-mode`, admin:schedule): validates ids, locks the shifts' groups FOR SHARE and refuses archived ones (as the single update), one `UPDATE` in a transaction |
+| Tests | New `BulkWorkModeTest` (switches only the given shifts, maintainer allowed / employee 403, archived group refuses all, validation incl. duplicates and the 500 cap). Route matrix: the new route in the schedule group |
+
+### Frontend
+| What | Details |
+|------|---------|
+| New | `NotFoundView` (catch-all route), `alarmStore.js` + `composables/useAlarms.js`, `safeStorage.js`, `formatCalendarDate` in `dates.js` |
+| Changed | Router guard `requiresScheduleManager`. `useConfirm` settles a superseded dialog. `AppLayout` (shared alarms, phone nav in the account menu), `AlarmsView` (shared alarms, toast), `ScheduleView` (generate/remote flow, bulk switch, group create guard, duplicate-drop and pending-chip guards), `ShiftSettingsView`, `ProcedureDetailView`, `ProceduresListView`, `ChecklistFillView`, `OnCallView`, `DelegationsView` / `DelegationsManageView` / `DelegationArchiveView`, `MyShiftsView`, `UsersView`, plus in-flight guards in `ChecklistBuilderView`, `MyAvailabilityView`, `OfficeAvailabilityView` |
+| Tests | Unit: `useConfirm` overlapping calls, `safeStorage`, `alarmStore`, `calendarDate` (TZ America/Los_Angeles and UTC+14). E2E new: `navigation/routes.spec.js` (guards, 404 signed in/out, phone header), `procedures/load-errors.spec.js`, `shift-settings/double-submit.spec.js` (colour, group), `schedule/generate-remote.spec.js` (2091-03), `schedule/drop-twice.spec.js` (2091-04), `checklists/fill-shift-picker.spec.js` (2091-05), `on-call/archived-groups.spec.js` (2025-03); `alarms.spec.js` badge test. `procedures/archive.spec.js`: an employee's link to an archived procedure now shows "not found" instead of returning to the list |
+
+---
+
 ## 2026-10-10 — 🧱 Backend hardening: validated filters, race-safe writes, honest logs and counts
 
 > **Deploy notes**

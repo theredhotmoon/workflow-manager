@@ -651,7 +651,7 @@
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-white truncate">{{ del.name }}</p>
                 <p class="text-xs text-slate-400">📍 {{ del.destination }}</p>
-                <p class="text-[10px] text-slate-500">{{ formatDT(del.start_datetime) }} → {{ formatDT(del.end_datetime) }}</p>
+                <p class="text-[10px] text-slate-500">{{ formatCalendarDate(del.start_datetime) }} → {{ formatCalendarDate(del.end_datetime) }}</p>
                 <div v-if="del.users?.length" class="flex items-center gap-1 mt-1 flex-wrap">
                   <span v-for="u in del.users" :key="u.id"
                     class="px-1.5 py-0.5 text-[9px] bg-purple-500/15 text-purple-300 rounded-md">{{ u.name }}</span>
@@ -733,7 +733,7 @@ import BaseModal from '../components/BaseModal.vue';
 import DelegationForm from '../components/DelegationForm.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast.js';
-import { todayStr } from '../dates.js';
+import { formatCalendarDate, todayStr } from '../dates.js';
 import { canManageSchedule, isAdmin, ROLE_OPTIONS, roleLabel } from '../roles.js';
 import { currentUser } from '../router/index.js';
 
@@ -918,16 +918,6 @@ function formatDate(dateStr) {
   });
 }
 
-function formatDT(dt) {
-  if (!dt) return '';
-  const d = new Date(dt);
-  return (
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-    ' ' +
-    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  );
-}
-
 function isCurrentNewbie(userId) {
   const today = todayStr();
   return allNewbiePeriods.value.some((np) => {
@@ -970,6 +960,7 @@ function closeUserModal() {
 }
 
 async function saveUser() {
+  if (saving.value) return;
   saving.value = true;
   formError.value = '';
   try {
@@ -1146,6 +1137,7 @@ function closeGroupModal() {
 }
 
 async function saveGroup() {
+  if (savingGroup.value) return;
   savingGroup.value = true;
   groupFormError.value = '';
   try {
@@ -1305,6 +1297,7 @@ async function openNewbieModal(user) {
 }
 
 async function createNewbiePeriod() {
+  if (savingNewbie.value) return;
   savingNewbie.value = true;
   try {
     await api.post('/api/newbie-periods', {

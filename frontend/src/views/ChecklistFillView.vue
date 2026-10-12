@@ -30,7 +30,7 @@
             <select v-model="setup.shiftId" @change="onShiftSelected"
               class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-pointer">
               <option :value="null" class="bg-slate-800 text-slate-400">No shift selected</option>
-              <option v-for="s in availableShifts" :key="s.id" :value="s.id" class="bg-slate-800">
+              <option v-for="s in shiftOptions" :key="s.id" :value="s.id" class="bg-slate-800">
                 Shift {{ s.shift_number }} {{ s.start_time ? '(' + s.start_time.substring(0,5) + ' – ' + s.end_time.substring(0,5) + ')' : '' }}
                 {{ s.assignments?.map(a => a.user?.name).filter(Boolean).join(', ') }}
               </option>
@@ -701,6 +701,21 @@ function onShiftSelected() {
   }
 }
 
+// The shifts offered: the outgoing employee's own first. Someone filing for themselves only sees
+// their own (a handover on anyone else's shift is refused); an admin filing for someone else sees
+// every shift of the day, theirs first. A shift already chosen (e.g. from a link) stays listed.
+const shiftOptions = computed(() => {
+  const outgoing = setup.outgoingUserId;
+  const isOutgoingOn = (shift) =>
+    !!outgoing && !!shift.assignments?.some((a) => a.user_id === outgoing);
+  if (!canFileForOthers.value) {
+    return availableShifts.value.filter((s) => isOutgoingOn(s) || s.id === setup.shiftId);
+  }
+  return [...availableShifts.value].sort(
+    (a, b) => Number(isOutgoingOn(b)) - Number(isOutgoingOn(a)),
+  );
+});
+
 // A chosen shift must be the outgoing employee's (the server checks it too).
 const outgoingNotOnShift = computed(() => {
   const shift = availableShifts.value.find((s) => s.id === setup.shiftId);
@@ -857,6 +872,7 @@ function validateNumberRange(item) {
 }
 
 async function submitChecklist() {
+  if (submitting.value) return; // one handover per click
   const errorCount = Object.keys(rangeErrors.value).length;
   if (errorCount > 0) {
     showToast(
@@ -982,6 +998,7 @@ function setConfirmValue(responseId, value) {
 }
 
 async function submitConfirmation() {
+  if (confirming.value) return;
   confirming.value = true;
   try {
     await api.put(`/api/checklist-submissions/${confirmSubmission.value.id}/confirm`, {

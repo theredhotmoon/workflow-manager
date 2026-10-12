@@ -148,6 +148,7 @@ import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useToast } from '../composables/useToast.js';
+import { formatCalendarDate } from '../dates.js';
 import { DELEGATION_STATUS_LABELS, delegationStatus } from '../delegationStatus.js';
 import { currentUser } from '../router/index.js';
 
@@ -167,14 +168,8 @@ const currentUserId = ref(null);
 // Delegations with a join/withdraw request in flight: their button is disabled.
 const busyIds = reactive(new Set());
 
-function formatDate(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+// Delegation days are calendar dates: the same day whatever the browser's timezone.
+const formatDate = formatCalendarDate;
 
 function approvedUsers(del) {
   return (del.users || []).filter((u) => u.pivot?.status === 'approved');

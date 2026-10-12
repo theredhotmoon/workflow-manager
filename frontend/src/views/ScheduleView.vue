@@ -146,7 +146,7 @@
             <input v-model="newGroupName" type="text" placeholder="Group name (e.g. Event Coverage)"
               class="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-500"
               @keyup.enter="createShiftGroup" />
-            <button @click="createShiftGroup" :disabled="!newGroupName.trim()"
+            <button @click="createShiftGroup" :disabled="creatingGroup || !newGroupName.trim()"
               class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition-all text-sm disabled:opacity-40 disabled:cursor-not-allowed">Create</button>
             <button @click="showNewGroupInput = false" class="px-3 py-2 text-sm text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">Cancel</button>
           </div>
@@ -529,11 +529,17 @@
                         v-model="shift.assignments"
                         :group="{ name: 'shifts', pull: canManageSchedule, put: canManageSchedule }"
                         :data-shift-id="shift.id"
+                        filter=".chip-pending"
+                        :prevent-on-filter="false"
                         @add="onDrop($event, shift, day.dateStr)"
                         class="min-h-[28px] bg-white/[0.03] border border-dashed border-white/10 rounded-lg flex flex-wrap gap-1 p-1 transition-colors hover:border-indigo-500/30 hover:bg-indigo-500/5"
                       >
+                        <!-- A chip whose assign is still being saved (no id yet) can't be dragged on:
+                             the server doesn't know it yet, so moving it would leave the first one behind. -->
                         <div v-for="assignment in shift.assignments" :key="assignment.user_id"
+                          :data-pending="assignment.id ? undefined : 'true'"
                           :class="['flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium cursor-grab active:cursor-grabbing whitespace-nowrap min-w-0 max-w-full',
+                            assignment.id ? '' : 'chip-pending opacity-60',
                             assignment.has_change_request
                               ? 'bg-amber-500/20 border border-amber-500/30 text-amber-300'
                               : 'bg-indigo-500/20 border border-indigo-500/30 text-indigo-300']"
@@ -561,7 +567,7 @@
                           <span v-if="currentUser && !isAdmin(currentUser) && currentUser.id === assignment.user_id && assignment.has_change_request"
                             class="ml-0.5 shrink-0 text-[7px] px-1 py-0.5 bg-orange-500/20 text-orange-300 rounded font-bold uppercase">Pending</span>
                           <!-- Admin: remove button -->
-                          <button v-if="canManageSchedule" @click.stop="removeAssignment(assignment, shift)"
+                          <button v-if="canManageSchedule && assignment.id" @click.stop="removeAssignment(assignment, shift)"
                             class="ml-0.5 w-3 h-3 shrink-0 flex items-center justify-center text-indigo-400/60 hover:text-red-400 transition-colors">
                             ×
                           </button>
@@ -1373,6 +1379,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { VueDraggable } from 'vue-draggable-plus';
 import { useRoute, useRouter } from 'vue-router';
+import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import AppToast from '../components/AppToast.vue';
@@ -1418,6 +1425,8 @@ const restoringGroupId = ref(null);
 const activeGroupId = ref(null);
 const showNewGroupInput = ref(false);
 const newGroupName = ref('');
+// A create in flight: a double click (or Enter + click) must not create the group twice.
+const creatingGroup = ref(false);
 const newGroupColor = ref('#6366f1');
 const editingGroupId = ref(null);
 const editingGroupName = ref('');
@@ -1469,7 +1478,8 @@ function switchGroup(groupId) {
 }
 
 async function createShiftGroup() {
-  if (!newGroupName.value.trim()) return;
+  if (creatingGroup.value || !newGroupName.value.trim()) return;
+  creatingGroup.value = true;
   try {
     const res = await api.post('/api/shift-groups', {
       name: newGroupName.value.trim(),
@@ -1485,6 +1495,8 @@ async function createShiftGroup() {
     showToast(`Group "${res.data.name}" created.`);
   } catch (err) {
     showToast(err.response?.data?.message || 'Failed to create group.', 'error');
+  } finally {
+    creatingGroup.value = false;
   }
 }
 
@@ -2411,26 +2423,32 @@ async function proceedGenerateAsRemote() {
     (c) => c.date?.substring?.(0, 10) || c.date,
   );
   closureConflict.value = { show: false, closures: [] };
-  await doGenerateMonth();
-  // Now switch all shifts on closed dates to remote
-  let switched = 0;
-  for (const dateStr in schedule.value) {
-    if (closedDates.includes(dateStr)) {
-      for (const shift of schedule.value[dateStr]) {
-        if (shift.work_mode === 'office') {
-          try {
-            await api.put(`/api/schedule/shifts/${shift.id}/work-mode`, { work_mode: 'remote' });
-            shift.work_mode = 'remote';
-            switched++;
-          } catch {
-            /* skip */
-          }
-        }
-      }
+  // Nothing generated, nothing to switch (doGenerateMonth already showed why).
+  if (!(await doGenerateMonth())) return;
+  // Every office shift on a closed date goes remote, in one all-or-nothing request.
+  const office = closedDates.flatMap((dateStr) =>
+    (schedule.value[dateStr] ?? []).filter((shift) => shift.work_mode === 'office'),
+  );
+  if (office.length === 0) return;
+  try {
+    await api.put('/api/schedule/work-mode', {
+      shift_ids: office.map((shift) => shift.id),
+      work_mode: 'remote',
+    });
+    for (const shift of office) shift.work_mode = 'remote';
+    showToast(
+      `Switched ${office.length} shift${office.length > 1 ? 's' : ''} to remote on closed dates.`,
+    );
+  } catch (err) {
+    const e = describeApiError(err, 'Could not switch the closed dates to remote');
+    if (!e.silent) {
+      showToast(
+        `The month was generated, but the shifts on closed dates are still office: ${e.message}`,
+        'error',
+        8000,
+      );
     }
   }
-  if (switched > 0)
-    showToast(`Switched ${switched} shift${switched > 1 ? 's' : ''} to remote on closed dates.`);
 }
 
 function formatClosureDate(dateStr) {
@@ -2438,6 +2456,7 @@ function formatClosureDate(dateStr) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+/** Generates the month; true when it worked (on failure the server's reason is shown). */
 async function doGenerateMonth() {
   generating.value = true;
   showGenerateModal.value = false;
@@ -2467,8 +2486,11 @@ async function doGenerateMonth() {
     });
     showToast(response.data.message);
     await fetchSchedule();
-  } catch {
-    showToast('Failed to generate month.', 'error');
+    return true;
+  } catch (err) {
+    const e = describeApiError(err, 'Failed to generate month');
+    if (!e.silent) showToast(e.message, 'error', 6000);
+    return false;
   } finally {
     generating.value = false;
   }
@@ -2670,6 +2692,18 @@ const pendingMoves = new WeakMap();
 async function onDrop(evt, shift, dateStr) {
   const item = shift.assignments[evt.newIndex];
   if (!item?.user_id) return;
+  // One chip per person and shift: dropping someone again while their first drop is still being
+  // saved (or onto a shift they're already on) takes the new chip straight back off.
+  if (shift.assignments.some((a, i) => i !== evt.newIndex && a.user_id === item.user_id)) {
+    shift.assignments.splice(evt.newIndex, 1);
+    // A chip moved from another shift left its list on screen; the server never moved it.
+    if (evt.from !== evt.to && evt.from?.dataset?.shiftId) fetchSchedule({ quiet: true });
+    showToast(
+      `${item.user_name || item.name || 'This employee'} is already on this shift.`,
+      'warning',
+    );
+    return;
+  }
   // Roster cards are clones without an id; a chip from another shift still carries its assignment id.
   if (evt.from !== evt.to && evt.from?.dataset?.shiftId && item.id) {
     pendingMoves.set(item, item.id);

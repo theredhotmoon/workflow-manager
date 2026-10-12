@@ -296,14 +296,21 @@ async function saveClosure() {
       });
       showToast('Closure updated.');
     } else {
-      await api.post('/api/office-closures', {
+      const res = await api.post('/api/office-closures', {
         start_date: form.value.date,
         end_date: form.value.end_date || form.value.date,
         title: trimmedTitle,
         description: form.value.description?.trim() || null,
       });
-      const days = daysBetween(form.value.date, form.value.end_date || form.value.date);
-      showToast(`Office closure added for ${days} day${days > 1 ? 's' : ''}.`);
+      // Days that were already closed keep their closure: the server counts only the new ones.
+      const days = res.data?.created ?? 0;
+      const skipped = res.data?.already_closed ?? 0;
+      showToast(
+        `Office closure added for ${days} day${days === 1 ? '' : 's'}.` +
+          (skipped > 0
+            ? ` ${skipped} day${skipped === 1 ? ' was' : 's were'} already closed.`
+            : ''),
+      );
     }
     showModal.value = false;
     await fetchClosures();
@@ -332,12 +339,6 @@ async function deleteClosure(c) {
 }
 
 const { showToast } = useToast();
-
-function daysBetween(start, end) {
-  const s = new Date(start + 'T12:00:00');
-  const e = new Date(end + 'T12:00:00');
-  return Math.round((e - s) / 86400000) + 1;
-}
 
 watch(monthKey, fetchClosures);
 onMounted(fetchClosures);

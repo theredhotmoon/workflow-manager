@@ -9,6 +9,7 @@ class ChecklistSubmission extends Model
     protected $fillable = [
         'checklist_template_id',
         'shift_id',
+        'filed_without_shift',
         'date',
         'outgoing_user_id',
         'incoming_user_id',
@@ -26,7 +27,17 @@ class ChecklistSubmission extends Model
         'submitted_at' => 'datetime',
         'confirmed_at' => 'datetime',
         'submitted_on_time' => 'boolean',
+        'filed_without_shift' => 'boolean',
+        'incoming_reassigned_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // A handover created without a shift was filed without one (F8); set unless given.
+        static::creating(function (self $submission) {
+            $submission->filed_without_shift ??= $submission->shift_id === null;
+        });
+    }
 
     public function template()
     {
@@ -41,6 +52,18 @@ class ChecklistSubmission extends Model
     public function incomingUser()
     {
         return $this->belongsTo(User::class, 'incoming_user_id');
+    }
+
+    /** The incoming user this handover had before an admin handed it on (F7), if it was. */
+    public function previousIncomingUser()
+    {
+        return $this->belongsTo(User::class, 'previous_incoming_user_id');
+    }
+
+    /** The admin who handed the handover to its current incoming user, if one did. */
+    public function incomingReassignedBy()
+    {
+        return $this->belongsTo(User::class, 'incoming_reassigned_by_id');
     }
 
     /** Who filed the handover: its outgoing user, or an admin filing on their behalf (null on old rows). */

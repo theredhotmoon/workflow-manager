@@ -6,6 +6,7 @@ use App\Models\ArchivedDelegation;
 use App\Models\ArchivedDelegationLog;
 use App\Models\Delegation;
 use App\Models\DelegationLog;
+use App\Support\LikePattern;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -16,6 +17,16 @@ class DelegationArchiveController extends Controller
      */
     public function index(Request $request)
     {
+        $request->validate([
+            'start_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'start_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'end_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'end_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'destination' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'employee_id' => ['sometimes', 'nullable', 'integer'],
+            'per_page' => ['sometimes', 'nullable', 'integer'],
+        ]);
+
         $query = ArchivedDelegation::with(['users:id,name,email', 'creator:id,name', 'archivedByUser:id,name']);
 
         // Filter by date range (start)
@@ -36,7 +47,7 @@ class DelegationArchiveController extends Controller
 
         // Filter by destination
         if ($dest = $request->input('destination')) {
-            $query->where('destination', 'like', "%{$dest}%");
+            $query->where('destination', 'ilike', LikePattern::contains($dest));
         }
 
         // Filter by employee
@@ -46,8 +57,10 @@ class DelegationArchiveController extends Controller
             });
         }
 
-        $delegations = $query->orderByDesc('archived_at')->get();
-        return response()->json($delegations);
+        // One page at a time (per_page 1..100); the archive screen pages through it with fetchAllPages.
+        $perPage = max(1, min((int) $request->input('per_page', 20), 100));
+
+        return response()->json($query->orderByDesc('archived_at')->orderByDesc('id')->paginate($perPage));
     }
 
     /**

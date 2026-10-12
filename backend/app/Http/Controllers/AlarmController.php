@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Alarm;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class AlarmController extends Controller
 {
@@ -12,6 +13,13 @@ class AlarmController extends Controller
      */
     public function index(Request $request)
     {
+        $request->validate([
+            'type' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'status' => ['sometimes', 'nullable', 'in:read,unread'],
+            'date_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'date_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+        ]);
+
         $query = Alarm::where('user_id', auth()->id())
             ->orderBy('created_at', 'desc');
 
@@ -68,6 +76,10 @@ class AlarmController extends Controller
      */
     public function markRead($id)
     {
+        // Alarm ids are uuids: anything else can't be one (404, not a 500 from PostgreSQL).
+        if (!Str::isUuid($id)) {
+            abort(404);
+        }
         $alarm = Alarm::where('user_id', auth()->id())->findOrFail($id);
         $alarm->markAsRead();
         return response()->json($alarm);

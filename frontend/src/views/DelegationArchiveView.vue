@@ -181,6 +181,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { fetchAllPages } from '../fetchAllPages.js';
 
 const archived = ref([]);
 const allUsers = ref([]);
@@ -297,14 +298,15 @@ async function fetchData() {
       if (v) params[k] = v;
     });
 
-    const [archRes, destRes, usersRes] = await Promise.all([
-      api.get('/api/delegation-archive', { params }),
+    // The archive endpoint is paginated; the screen shows every match, so it pages through.
+    const [archItems, destRes, usersRes] = await Promise.all([
+      fetchAllPages((url, config) => api.get(url, config), '/api/delegation-archive', params),
       api.get('/api/delegation-archive/destinations'),
       // The archive filter also offers deactivated users (their past delegations stay).
       api.get('/api/users', { params: { include_deactivated: 1 } }),
     ]);
     if (!archiveRequests.isCurrent(token)) return;
-    archived.value = archRes.data;
+    archived.value = archItems;
     destinations.value = destRes.data;
     allUsers.value = usersRes.data;
   } catch (e) {

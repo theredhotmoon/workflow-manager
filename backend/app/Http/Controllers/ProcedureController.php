@@ -9,6 +9,7 @@ use App\Models\ProcedureUserRead;
 use App\Models\ProcedureVersion;
 use App\Models\User;
 use App\Services\ProcedureHtmlSanitizer;
+use App\Support\LikePattern;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,18 +27,43 @@ class ProcedureController extends Controller
      */
     public function index(Request $request)
     {
+        // tags comes as "1,2,3" (the SPA) or tags[]=1 (an array); validated as a list of ids.
+        if (is_string($tags = $request->input('tags'))) {
+            $request->merge(['tags' => array_values(array_filter(explode(',', $tags), fn ($id) => $id !== ''))]);
+        }
+        $request->validate([
+            'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'tags' => ['sometimes', 'nullable', 'array'],
+            'tags.*' => ['integer'],
+            'created_after' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'created_before' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'updated_after' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'updated_before' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'node_id' => ['sometimes', 'nullable', 'regex:/^(root|\d+)$/'],
+            'per_page' => ['sometimes', 'nullable', 'integer'],
+        ]);
+
         $archived = $request->boolean('archived');
         if ($archived && !$request->user()->isAdmin()) {
             abort(403, 'Only admins can list archived procedures.');
         }
         $query = Procedure::with(['owner:id,name', 'tags:id,name,color'])
-            ->when($archived, fn ($q) => $q->whereNotNull('archived_at'), fn ($q) => $q->notArchived());
+            ->when($archived, fn ($q) => $q->whereNotNull('archived_at'), fn ($q) => $q->notArchived())
+            // The viewer's last access, in the same query (one subquery, not one query per row).
+            ->addSelect(['last_accessed' => ProcedureAccessLog::select('accessed_at')
+                ->whereColumn('procedure_access_logs.procedure_id', 'procedures.id')
+                ->where('procedure_access_logs.user_id', $request->user()->id)
+                ->orderByDesc('accessed_at')
+                ->limit(1)])
+            ->withCasts(['last_accessed' => 'datetime']);
 
         if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%{$search}%")
-                    ->orWhere('identifier', 'like', "%{$search}%")
-                    ->orWhere('purpose', 'like', "%{$search}%");
+            // Case-insensitive; % and _ in the search are matched literally.
+            $pattern = LikePattern::contains($search);
+            $query->where(function ($q) use ($pattern) {
+                $q->where('title', 'ilike', $pattern)
+                    ->orWhere('identifier', 'ilike', $pattern)
+                    ->orWhere('purpose', 'ilike', $pattern);
             });
         }
 
@@ -89,16 +115,7 @@ class ProcedureController extends Controller
         // Pagination
         $perPage = (int) $request->input('per_page', 30);
         $perPage = min(max($perPage, 1), 100);
-        $paginated = $query->paginate($perPage);
-
-        // Attach last access for current user
-        $userId = $request->user()->id;
-        foreach ($paginated->items() as $proc) {
-            $last = $proc->accessLogs()->where('user_id', $userId)->orderByDesc('accessed_at')->first();
-            $proc->last_accessed = $last?->accessed_at;
-        }
-
-        return response()->json($paginated);
+        return response()->json($query->paginate($perPage));
     }
 
     /**
@@ -509,6 +526,14 @@ class ProcedureController extends Controller
         if (!$procedure->isAdminOrOwner($request->user())) {
             return response()->json(['message' => 'Only admins and the procedure owner can see its access log.'], 403);
         }
+
+        $request->validate([
+            'user_id' => ['sometimes', 'nullable', 'integer'],
+            // version_read is a 4-byte integer column.
+            'version' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:2147483647'],
+            'date_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'date_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+        ]);
 
         $query = $procedure->accessLogs()
             ->with('user:id,name')

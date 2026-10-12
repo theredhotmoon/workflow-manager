@@ -83,9 +83,9 @@
 
       <!-- Crew + Today's Schedule Row -->
       <!-- Two columns only when there is a live crew to show next to the schedule. -->
-      <div :class="['grid grid-cols-1 gap-6 mb-8 items-start', activeShift ? 'lg:grid-cols-2' : '']">
-      <!-- Current Crew on Shift -->
-      <div v-if="activeShift" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+      <div :class="['grid grid-cols-1 gap-6 mb-8 items-start', activeShifts.length ? 'lg:grid-cols-2' : '']">
+      <!-- Current Crew on Shift: one block per shift on now, labelled with its group. -->
+      <div v-if="activeShifts.length" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6" data-testid="current-crew">
         <div class="flex items-center gap-3 mb-4">
           <div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
             <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -97,25 +97,31 @@
               Current Crew on Shift
               <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-full bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 animate-pulse">● LIVE</span>
             </h2>
-            <p class="text-sm text-slate-400">
-              Shift {{ activeShift.shift_number }} — {{ activeShift.start_time }}–{{ activeShift.end_time }}
-              <span v-if="activeShift.is_overnight" class="text-xs">🌙 overnight</span>
+            <p v-if="activeShifts.length > 1" class="text-sm text-slate-400">{{ activeShifts.length }} shifts on now</p>
+          </div>
+        </div>
+        <div class="space-y-4">
+          <section v-for="active in activeShifts" :key="active.id" data-testid="current-crew-shift">
+            <p class="text-sm text-slate-400 mb-2">
+              <span v-if="active.shift_group_name" class="font-semibold text-slate-200">{{ active.shift_group_name }} · </span>
+              Shift {{ active.shift_number }} — {{ active.start_time }}–{{ active.end_time }}
+              <span v-if="active.is_overnight" class="text-xs">🌙 overnight</span>
             </p>
-          </div>
-        </div>
-        <div v-if="activeShift.crew.length > 0" class="flex flex-wrap gap-3">
-          <div v-for="member in activeShift.crew" :key="member.id"
-            class="flex items-center gap-2.5 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-            <div class="w-8 h-8 rounded-full bg-emerald-500/25 flex items-center justify-center text-emerald-300 text-xs font-bold">
-              {{ getInitials(member.name) }}
+            <div v-if="active.crew.length > 0" class="flex flex-wrap gap-3">
+              <div v-for="member in active.crew" :key="member.id"
+                class="flex items-center gap-2.5 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                <div class="w-8 h-8 rounded-full bg-emerald-500/25 flex items-center justify-center text-emerald-300 text-xs font-bold">
+                  {{ getInitials(member.name) }}
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-white">{{ member.name }}</p>
+                  <p v-if="member.email" class="text-xs text-slate-400">{{ member.email }}</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p class="text-sm font-medium text-white">{{ member.name }}</p>
-              <p v-if="member.email" class="text-xs text-slate-400">{{ member.email }}</p>
-            </div>
-          </div>
+            <p v-else class="text-sm text-slate-500 italic">No one is assigned to this shift.</p>
+          </section>
         </div>
-        <p v-else class="text-sm text-slate-500 italic">No one is assigned to this shift.</p>
       </div>
 
       <!-- Today's Schedule Preview -->
@@ -157,17 +163,17 @@
         <!-- Shifts Grid -->
         <div v-else class="space-y-3">
           <div v-for="shift in todayShifts" :key="shift.id"
-            :class="['rounded-xl p-4 border transition-all', activeShift && activeShift.id === shift.id ? 'border-emerald-500/40' : 'border-white/10 bg-white/[0.02]']"
-            :style="activeShift && activeShift.id === shift.id ? {
+            :class="['rounded-xl p-4 border transition-all', isActiveShift(shift) ? 'border-emerald-500/40' : 'border-white/10 bg-white/[0.02]']"
+            :style="isActiveShift(shift) ? {
               backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(16, 185, 129, 0.08) 4px, rgba(16, 185, 129, 0.08) 8px)',
               boxShadow: 'inset 0 0 0 1px rgba(16, 185, 129, 0.15)'
             } : {}">
             <!-- Shift header -->
             <div class="flex items-center gap-2 mb-3 flex-wrap">
-              <span :class="['text-sm font-bold uppercase tracking-wide', activeShift && activeShift.id === shift.id ? 'text-emerald-400' : 'text-slate-400']">
+              <span :class="['text-sm font-bold uppercase tracking-wide', isActiveShift(shift) ? 'text-emerald-400' : 'text-slate-400']">
                 Shift {{ shift.shift_number }}
               </span>
-              <span v-if="activeShift && activeShift.id === shift.id"
+              <span v-if="isActiveShift(shift)"
                 class="px-2 py-0.5 text-[9px] font-bold uppercase rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 animate-pulse tracking-wider">
                 ● LIVE
               </span>
@@ -248,7 +254,9 @@ const router = useRouter();
 const user = ref(null);
 const currentShiftAlerts = ref([]);
 const overdueAlerts = ref([]);
-const activeShift = ref(null);
+// Every shift on right now, one per group (or more where a group's slots overlap).
+const activeShifts = ref([]);
+const isActiveShift = (shift) => activeShifts.value.some((active) => active.id === shift.id);
 const todayShifts = ref([]);
 const todayShiftsLoading = ref(true);
 
@@ -315,7 +323,7 @@ onMounted(async () => {
   // Fetch current active shift crew
   try {
     const shiftRes = await api.get('/api/current-shift');
-    activeShift.value = shiftRes.data.active_shift;
+    activeShifts.value = shiftRes.data.active_shifts || [];
   } catch {
     // silently fail
   }

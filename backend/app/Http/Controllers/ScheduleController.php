@@ -9,12 +9,14 @@ use App\Models\ShiftChecklist;
 use App\Models\ShiftGroup;
 use App\Models\User;
 use App\Models\ChecklistTemplate;
+use App\Services\BusyIntervals;
 use App\Services\RestPolicyJanitor;
 use App\Services\ShiftTypeChanger;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,7 +34,8 @@ class ScheduleController extends Controller
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
-            'shift_group_id' => ['sometimes'],
+            // A group id, or "all" for every group that isn't archived.
+            'shift_group_id' => ['sometimes', 'nullable', 'regex:/^(all|\d+)$/'],
         ]);
 
         $start = Month::start($request->month);
@@ -141,6 +144,8 @@ class ScheduleController extends Controller
                 for ($i = $existing + 1; $i <= $shiftsPerDay; $i++) {
                     $times = $shiftTimes[$i - 1] ?? $this->defaultShiftTimes($shiftsPerDay)[$i - 1] ?? [];
                     $isWeekend = $current->isWeekend();
+                    // firstOrCreate falls back to createOrFirst: a slot a concurrent generate created
+                    // first (unique on date, slot and group) is found, not a 500.
                     $shift = Shift::firstOrCreate(
                         ['date' => $dateStr, 'shift_number' => $i, 'shift_group_id' => $groupId],
                         [
@@ -167,7 +172,10 @@ class ScheduleController extends Controller
                         }
                     }
 
-                    $created++;
+                    // Only slots this run created count (a concurrent run's are reported by that run).
+                    if ($shift->wasRecentlyCreated) {
+                        $created++;
+                    }
                 }
 
                 $current->addDay();
@@ -348,6 +356,8 @@ class ScheduleController extends Controller
             // Only the assigned user's own assignment can be the source of their move (re-checked below).
             'move_from_assignment_id' => ['nullable', 'integer', Rule::exists('shift_assignments', 'id')
                 ->where('user_id', (int) $request->input('user_id'))],
+            // The manager's go-ahead after a 409 short_daily_rest.
+            'confirm_short_rest' => ['sometimes', 'boolean'],
         ]);
 
         if (!$request->filled('move_from_assignment_id')) {
@@ -406,7 +416,7 @@ class ScheduleController extends Controller
 
         if ($existing) {
             return response()->json([
-                'message' => 'User is already assigned to this shift.',
+                'message' => self::ALREADY_ASSIGNED_MESSAGE,
                 'assignment' => $existing,
             ], 422);
         }
@@ -478,13 +488,162 @@ class ScheduleController extends Controller
             ], 409);
         }
 
+        // Less than 11 h of rest next to the employee's other work needs the manager's go-ahead.
+        // An overlap (booked twice at the same time) is said as such; the go-ahead covers both.
+        if (!$request->boolean('confirm_short_rest') && ($conflicts = $this->shortRestConflicts($shift, $userId)) !== []) {
+            $list = implode('; ', array_map(fn ($c) => $c['label'], $conflicts));
+            $overlaps = collect($conflicts)->contains('overlaps', true);
+
+            return response()->json([
+                'code' => 'short_daily_rest',
+                'overlaps' => $overlaps,
+                'message' => $overlaps
+                    ? "This overlaps an existing shift of the employee (they would be booked twice at the same time): {$list}."
+                    : 'This leaves the employee less than ' . BusyIntervals::MIN_DAILY_REST_HOURS . " hours of rest: {$list}.",
+                'conflicts' => array_map(fn ($c) => array_diff_key($c, ['label' => true]), $conflicts),
+            ], 409);
+        }
+
         // The chosen policy applies to the whole chain: stamping it can push further shifts into rest.
         $laterPolicy = $affectedIds !== [] ? $request->input('later_rest_policy') : null;
         $updatedIds = $laterPolicy !== null
             ? $timeline->cascadePolicy($userId, $shift->shift_type, $shift->date, $shift->shift_number, $restPolicy, $laterPolicy)
             : [];
 
-        $assignment = DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor) {
+        try {
+            $assignment = $this->createAssignment($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor);
+        } catch (UniqueConstraintViolationException) {
+            // A concurrent assign of the same person to this shift committed between the check above
+            // and this insert (shift_id + user_id is unique): the same answer as the check gives.
+            return response()->json(['message' => self::ALREADY_ASSIGNED_MESSAGE], 422);
+        }
+        $assignment->load('user:id,name');
+
+        return response()->json([
+            'id' => $assignment->id,
+            'shift_id' => $assignment->shift_id,
+            'user_id' => $assignment->user_id,
+            'user_name' => $assignment->user->name,
+            'rest_policy' => $assignment->rest_policy,
+            'updated_assignment_ids' => $updatedIds,
+            'updated_rest_policy' => $laterPolicy,
+        ], 201);
+    }
+
+    private const ALREADY_ASSIGNED_MESSAGE = 'User is already assigned to this shift.';
+
+    /**
+     * The employee's other work (shifts in any group, on-call callbacks) that would leave less than
+     * MIN_DAILY_REST_HOURS of rest next to $shift: empty when the rest is enough. The decision is
+     * BusyIntervals::allowsDailyRest(), the rule auto-fill uses; the list only explains it. Shifts
+     * without both times are left out (when they happen isn't known). For a move, the source is
+     * already deleted in the surrounding transaction, so it doesn't count.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function shortRestConflicts(Shift $shift, int $userId): array
+    {
+        if (!$shift->start_time || !$shift->end_time) {
+            return [];
+        }
+        // The longest shift is 24 h, so two days either side hold every neighbour that matters.
+        $from = $shift->date->copy()->subDays(2)->toDateString();
+        $to = $shift->date->copy()->addDays(2)->toDateString();
+        $others = BusyIntervals::loadAssignedShifts([$userId], $from, $to)
+            ->filter(fn (Shift $other) => $other->id !== $shift->id && $other->start_time && $other->end_time)
+            ->load('shiftGroup:id,name');
+        $callbacks = BusyIntervals::loadCallbacks([$userId], $from, $to);
+
+        $busy = new BusyIntervals();
+        foreach ($others as $other) {
+            $busy->add($userId, ...BusyIntervals::shiftSpan($other));
+        }
+        foreach ($callbacks as $callback) {
+            $busy->add($userId, ...BusyIntervals::callbackSpan($callback));
+        }
+        [$start, $end] = BusyIntervals::shiftSpan($shift);
+        if ($busy->allowsDailyRest($userId, $start, $end)) {
+            return [];
+        }
+
+        // Which neighbours make the rest too short: raw seconds against the rule. Rounding is only
+        // for display (floored, so a gap under 11 h never reads "11 h").
+        $minRest = BusyIntervals::MIN_DAILY_REST_HOURS * 3600;
+        $gapOf = fn (int $a, int $b): int => $b <= $start ? $start - $b : ($a >= $end ? $a - $end : 0);
+        $overlaps = fn (int $a, int $b): bool => $a < $end && $b > $start;
+        $shown = fn (int $gap): float => floor($gap / 360) / 10;
+        $conflicts = [];
+        foreach ($others as $other) {
+            [$a, $b] = BusyIntervals::shiftSpan($other);
+            $gap = $gapOf($a, $b);
+            if ($gap < $minRest) {
+                $rest = $shown($gap);
+                $overlap = $overlaps($a, $b);
+                $times = substr($other->start_time, 0, 5) . '–' . substr($other->end_time, 0, 5);
+                $where = $other->shiftGroup?->name ? ", {$other->shiftGroup->name}" : '';
+                $conflicts[] = [
+                    'type' => 'shift',
+                    'shift_id' => $other->id,
+                    'date' => $other->date->toDateString(),
+                    'shift_number' => $other->shift_number,
+                    'start_time' => substr($other->start_time, 0, 5),
+                    'end_time' => substr($other->end_time, 0, 5),
+                    'shift_group_name' => $other->shiftGroup?->name,
+                    'rest_hours' => $rest,
+                    'overlaps' => $overlap,
+                    'starts_at' => $a,
+                    'label' => self::restLabel($rest, $overlap, $a >= $end) . " shift {$other->shift_number} on {$other->date->toDateString()} ({$times}{$where})",
+                ];
+            }
+        }
+        foreach ($callbacks as $callback) {
+            [$a, $b] = BusyIntervals::callbackSpan($callback);
+            $gap = $gapOf($a, $b);
+            if ($gap < $minRest) {
+                $rest = $shown($gap);
+                $overlap = $overlaps($a, $b);
+                $conflicts[] = [
+                    'type' => 'on_call_callback',
+                    'callback_id' => $callback->id,
+                    'date' => BusyIntervals::callbackDate($callback),
+                    'start_time' => $callback->starts_at->format('H:i'),
+                    'end_time' => $callback->ends_at->format('H:i'),
+                    'rest_hours' => $rest,
+                    'overlaps' => $overlap,
+                    'starts_at' => $a,
+                    'label' => self::restLabel($rest, $overlap, $a >= $end) . ' an on-call callback on ' . BusyIntervals::callbackDate($callback)
+                        . ' (' . $callback->starts_at->format('H:i') . '–' . $callback->ends_at->format('H:i') . ')',
+                ];
+            }
+        }
+        // The rule refused, so the answer is a conflict even if no neighbour could be named.
+        if ($conflicts === []) {
+            return [[
+                'type' => 'other', 'rest_hours' => null, 'overlaps' => false,
+                'label' => "other work of the employee close to this shift",
+            ]];
+        }
+        // Overlaps first: they are the harder conflict.
+        usort($conflicts, fn ($x, $y) => [$y['overlaps'], $x['starts_at']] <=> [$x['overlaps'], $y['starts_at']]);
+
+        return array_map(fn ($c) => array_diff_key($c, ['starts_at' => true]), $conflicts);
+    }
+
+    /** "overlaps" / "8 h after" / "0 h before": how the candidate sits next to other work. */
+    private static function restLabel(float $restHours, bool $overlaps, bool $otherIsLater): string
+    {
+        if ($overlaps) {
+            return 'overlaps';
+        }
+        $hours = rtrim(rtrim(number_format($restHours, 1, '.', ''), '0'), '.');
+
+        return "{$hours} h " . ($otherIsLater ? 'before' : 'after');
+    }
+
+    /** The insert of placeAssignment(), with its locks and the later shifts' policy stamps. */
+    private function createAssignment(Shift $shift, int $userId, ?string $restPolicy, array $updatedIds, ?string $laterPolicy, RestPolicyJanitor $janitor): ShiftAssignment
+    {
+        return DB::transaction(function () use ($shift, $userId, $restPolicy, $updatedIds, $laterPolicy, $janitor) {
             // The group first (ShiftGroup's lock order), re-checked: an archive since the check
             // above is refused here instead of leaving future work in an archived group.
             $this->lockGroupsOrRefuse([$shift]);
@@ -509,17 +668,6 @@ class ScheduleController extends Controller
 
             return $created;
         });
-        $assignment->load('user:id,name');
-
-        return response()->json([
-            'id' => $assignment->id,
-            'shift_id' => $assignment->shift_id,
-            'user_id' => $assignment->user_id,
-            'user_name' => $assignment->user->name,
-            'rest_policy' => $assignment->rest_policy,
-            'updated_assignment_ids' => $updatedIds,
-            'updated_rest_policy' => $laterPolicy,
-        ], 201);
     }
 
     /**
@@ -694,26 +842,31 @@ class ScheduleController extends Controller
         $attachedIds = $shift->shiftChecklists()->pluck('checklist_template_id')->all();
         $request->validate([
             'checklists' => ['present', 'array'],
-            'checklists.*.checklist_template_id' => ['required', Rule::exists('checklist_templates', 'id')
+            // Each template once per shift (alerts and the fill form key on shift + template).
+            'checklists.*.checklist_template_id' => ['required', 'integer', 'distinct', Rule::exists('checklist_templates', 'id')
                 ->where(fn ($q) => $q->whereNull('archived_at')->orWhereIn('id', $attachedIds))],
             'checklists.*.is_required' => ['required', 'boolean'],
             'checklists.*.deadline_minutes' => ['nullable', 'integer', 'min:1'],
             'checklists.*.deadline_reference' => ['nullable', 'in:shift_start,shift_end'],
         ]);
 
-        // Sync: delete existing, insert new
-        $shift->shiftChecklists()->delete();
+        // Sync, all or nothing: delete existing, insert new. The group is locked first (ShiftGroup's
+        // lock order) and re-checked, so an archive since the check above is refused here.
+        DB::transaction(function () use ($request, $shift) {
+            $this->lockGroupsOrRefuse([$shift]);
+            $shift->shiftChecklists()->delete();
 
-        foreach ($request->checklists as $i => $item) {
-            ShiftChecklist::create([
-                'shift_id' => $shift->id,
-                'checklist_template_id' => $item['checklist_template_id'],
-                'is_required' => $item['is_required'],
-                'deadline_minutes' => $item['deadline_minutes'] ?? null,
-                'deadline_reference' => $item['deadline_reference'] ?? 'shift_start',
-                'sort_order' => $i,
-            ]);
-        }
+            foreach ($request->checklists as $i => $item) {
+                ShiftChecklist::create([
+                    'shift_id' => $shift->id,
+                    'checklist_template_id' => $item['checklist_template_id'],
+                    'is_required' => $item['is_required'],
+                    'deadline_minutes' => $item['deadline_minutes'] ?? null,
+                    'deadline_reference' => $item['deadline_reference'] ?? 'shift_start',
+                    'sort_order' => $i,
+                ]);
+            }
+        });
 
         $shift->load('shiftChecklists.template:id,name');
 

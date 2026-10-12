@@ -7,6 +7,7 @@ use App\Models\DelegationLog;
 use App\Models\User;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -115,19 +116,28 @@ class DelegationController extends Controller
             ]);
         }
 
+        // Only what really changes is logged: dates compared as dates (the stored value carries a
+        // midnight time), text with an empty value the same as none.
         $changes = [];
         foreach ($validated as $key => $value) {
-            $old = $delegation->$key;
-            if ($key === 'registration_open') {
-                $old = (bool) $old;
-                $value = (bool) $value;
-            }
-            if ((string) $old !== (string) $value) {
-                if ($key === 'registration_open') {
-                    $changes[] = $value ? 'Registration opened' : 'Registration closed';
-                } else {
-                    $changes[] = ucfirst(str_replace('_', ' ', $key)) . " changed";
-                }
+            switch ($key) {
+                case 'registration_open':
+                    if ((bool) $value !== (bool) $delegation->registration_open) {
+                        $changes[] = $value ? 'Registration opened' : 'Registration closed';
+                    }
+                    break;
+                case 'start_datetime':
+                case 'end_datetime':
+                    $old = $delegation->$key?->format('Y-m-d');
+                    if ($old !== $value) {
+                        $label = $key === 'start_datetime' ? 'Start date' : 'End date';
+                        $changes[] = "{$label} changed ({$old} → {$value})";
+                    }
+                    break;
+                default:
+                    if ((string) ($delegation->$key ?? '') !== (string) ($value ?? '')) {
+                        $changes[] = ucfirst($key) . ' changed';
+                    }
             }
         }
 
@@ -157,6 +167,13 @@ class DelegationController extends Controller
             $pivotData['custom_start'] = self::dateOnly($request->custom_start);
         if ($request->has('custom_end'))
             $pivotData['custom_end'] = self::dateOnly($request->custom_end);
+        // A date not sent stays as stored, so the check uses the member's current one.
+        $current = $delegation->users()->where('users.id', $request->user_id)->first()?->pivot;
+        $this->ensureTravelDatesFit(
+            $delegation,
+            array_key_exists('custom_start', $pivotData) ? $pivotData['custom_start'] : $current?->custom_start,
+            array_key_exists('custom_end', $pivotData) ? $pivotData['custom_end'] : $current?->custom_end,
+        );
 
         DB::transaction(function () use ($request, $delegation, $pivotData) {
             // Locked like destroy(), so a delete can't miss a member added at the same moment.
@@ -184,14 +201,18 @@ class DelegationController extends Controller
             'custom_start' => ['sometimes', 'nullable', 'date'],
             'custom_end' => ['sometimes', 'nullable', 'date'],
         ]);
+        $member = $this->memberOr404($delegation, (int) $request->user_id);
+
+        $customStart = self::dateOnly($request->custom_start);
+        $customEnd = self::dateOnly($request->custom_end);
+        $this->ensureTravelDatesFit($delegation, $customStart, $customEnd);
 
         $delegation->users()->updateExistingPivot($request->user_id, [
-            'custom_start' => self::dateOnly($request->custom_start),
-            'custom_end' => self::dateOnly($request->custom_end),
+            'custom_start' => $customStart,
+            'custom_end' => $customEnd,
         ]);
 
-        $userName = User::find($request->user_id)?->name ?? $request->user_id;
-        $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$userName}");
+        $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$member->name}");
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
         return response()->json($delegation);
@@ -207,10 +228,10 @@ class DelegationController extends Controller
         DB::transaction(function () use ($request, $delegation) {
             // Locked like destroy(), so a delete can't miss a member approved at the same moment.
             Delegation::lockOrGone($delegation->id);
-            $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'approved']);
+            $member = $this->memberOr404($delegation, (int) $request->user_id);
+            $delegation->users()->updateExistingPivot($member->id, ['status' => 'approved']);
 
-            $userName = User::find($request->user_id)?->name ?? $request->user_id;
-            $this->log($delegation->id, $request->user()->id, 'user_approved', "Approved {$userName}");
+            $this->log($delegation->id, $request->user()->id, 'user_approved', "Approved {$member->name}");
         });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
@@ -224,10 +245,10 @@ class DelegationController extends Controller
     {
         $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
 
-        $delegation->users()->updateExistingPivot($request->user_id, ['status' => 'rejected']);
+        $member = $this->memberOr404($delegation, (int) $request->user_id);
+        $delegation->users()->updateExistingPivot($member->id, ['status' => 'rejected']);
 
-        $userName = User::find($request->user_id)?->name ?? $request->user_id;
-        $this->log($delegation->id, $request->user()->id, 'user_rejected', "Rejected {$userName}");
+        $this->log($delegation->id, $request->user()->id, 'user_rejected', "Rejected {$member->name}");
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
         return response()->json($delegation);
@@ -240,9 +261,9 @@ class DelegationController extends Controller
     {
         $request->validate(['user_id' => ['required', 'integer', 'exists:users,id']]);
 
-        $userName = User::find($request->user_id)?->name ?? $request->user_id;
-        $delegation->users()->detach($request->user_id);
-        $this->log($delegation->id, $request->user()->id, 'user_removed', "Removed {$userName}");
+        $member = $this->memberOr404($delegation, (int) $request->user_id);
+        $delegation->users()->detach($member->id);
+        $this->log($delegation->id, $request->user()->id, 'user_removed', "Removed {$member->name}");
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
         return response()->json($delegation);
@@ -308,6 +329,10 @@ class DelegationController extends Controller
         if (!$delegation->registration_open) {
             return response()->json(['message' => 'Registration for this delegation is closed.'], 403);
         }
+        // Open through its last day (business date), as the open list shows it.
+        if ($delegation->end_datetime->format('Y-m-d') < BusinessDate::todayString()) {
+            return response()->json(['message' => 'This delegation has ended; registration is closed.'], 422);
+        }
 
         // Check if already in the list
         $existing = $delegation->users()->where('user_id', $request->user()->id)->first();
@@ -315,7 +340,13 @@ class DelegationController extends Controller
             return response()->json(['message' => 'You have already applied for this delegation.'], 422);
         }
 
-        $delegation->users()->attach($request->user()->id, ['status' => 'pending']);
+        try {
+            // In a transaction (savepoint) so a racing duplicate's failed insert can't poison an outer one.
+            DB::transaction(fn () => $delegation->users()->attach($request->user()->id, ['status' => 'pending']));
+        } catch (UniqueConstraintViolationException) {
+            // A concurrent request (double click, second tab) applied first: delegation + user is unique.
+            return response()->json(['message' => 'You have already applied for this delegation.'], 422);
+        }
         $this->log($delegation->id, $request->user()->id, 'self_registered', "{$request->user()->name} requested to join");
 
         $delegation->load([...Delegation::membersFor($request->user()), 'creator:id,name']);
@@ -344,19 +375,25 @@ class DelegationController extends Controller
      */
     public function myDelegations(Request $request)
     {
-        $delegations = Delegation::with(['creator:id,name'])
-            ->whereHas('users', function ($q) use ($request) {
-                $q->where('user_id', $request->user()->id);
+        $userId = $request->user()->id;
+        // The viewer's own membership row is eager loaded (one query, not one per delegation).
+        $delegations = Delegation::with([
+            'creator:id,name',
+            'users' => fn ($q) => $q->select('users.id')->where('users.id', $userId),
+        ])
+            ->whereHas('users', function ($q) use ($userId) {
+                $q->where('user_id', $userId);
             })
             ->orderByDesc('start_datetime')
             ->get();
 
-        $userId = $request->user()->id;
-        $delegations->each(function ($del) use ($userId) {
-            $pivot = $del->users()->where('user_id', $userId)->first()?->pivot;
+        $delegations->each(function ($del) {
+            $pivot = $del->users->first()?->pivot;
             $del->my_status = $pivot?->status;
             $del->my_custom_start = $pivot?->custom_start;
             $del->my_custom_end = $pivot?->custom_end;
+            // Only the my_* fields go out, as before: not the membership list.
+            $del->unsetRelation('users');
         });
 
         return response()->json($delegations);
@@ -387,6 +424,44 @@ class DelegationController extends Controller
             ->get();
 
         return response()->json($delegations);
+    }
+
+    /**
+     * The user as a member of the delegation (with pivot), or 404 naming them: approving,
+     * rejecting, removing or re-dating someone who isn't on it changes nothing and logs nothing.
+     */
+    private function memberOr404(Delegation $delegation, int $userId): User
+    {
+        $member = $delegation->users()->where('users.id', $userId)->first();
+        if (!$member) {
+            $name = User::whereKey($userId)->value('name') ?? "User {$userId}";
+            abort(response()->json(['message' => "{$name} is not on this delegation."], 404));
+        }
+
+        return $member;
+    }
+
+    /**
+     * A member's own travel dates (either may be unset) lie within the delegation's days, and the
+     * last is on or after the first.
+     */
+    private function ensureTravelDatesFit(Delegation $delegation, ?string $customStart, ?string $customEnd): void
+    {
+        $first = $delegation->start_datetime->format('Y-m-d');
+        $last = $delegation->end_datetime->format('Y-m-d');
+        $outside = "Travel dates must fall within the delegation ({$first} to {$last}).";
+        $errors = [];
+        if ($customStart !== null && ($customStart < $first || $customStart > $last)) {
+            $errors['custom_start'] = $outside;
+        }
+        if ($customEnd !== null && ($customEnd < $first || $customEnd > $last)) {
+            $errors['custom_end'] = $outside;
+        } elseif ($customStart !== null && $customEnd !== null && $customEnd < $customStart) {
+            $errors['custom_end'] = 'The travel end date must be on or after the travel start date.';
+        }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**

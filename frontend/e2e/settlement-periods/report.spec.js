@@ -41,6 +41,8 @@ function shiftHours({ start_time, end_time }) {
   return minutes / 60;
 }
 
+// Every test here puts the same seeded employee on the period's first day(s) (08:00-16:00) in its
+// own group, so their shifts overlap across tests: the short-rest question is answered yes.
 test.describe('Settlement Periods report', () => {
   test('a slow initial report for the default group does not overwrite the group the user picked', async ({
     adminPage,
@@ -54,7 +56,11 @@ test.describe('Settlement Periods report', () => {
     await generateMonthShifts(context, { monthKey, shiftGroupId: groupId });
     const employeeId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
     const { schedule } = await getShiftGroupsAndShifts(context, monthKey, groupId);
-    await assignShift(context, { shiftId: schedule[current.start][0].id, userId: employeeId });
+    await assignShift(context, {
+      shiftId: schedule[current.start][0].id,
+      userId: employeeId,
+      confirmShortRest: true,
+    });
 
     // The page fetches the default group's report on load. Hold that first request until the user
     // has picked another group and its report has arrived, so the default group's response lands last.
@@ -109,7 +115,11 @@ test.describe('Settlement Periods report', () => {
     // The period is anchored on the group's creation date (not the 1st), so assign the shift on
     // the period's first day. One assignment also keeps us under the API throttle.
     const [periodStartShift] = schedule[current.start];
-    await assignShift(context, { shiftId: periodStartShift.id, userId: employeeId });
+    await assignShift(context, {
+      shiftId: periodStartShift.id,
+      userId: employeeId,
+      confirmShortRest: true,
+    });
 
     await openReportFor(adminPage, 'Report Team', groupId);
 
@@ -146,7 +156,11 @@ test.describe('Settlement Periods report', () => {
     const employeeId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
     const { schedule } = await getShiftGroupsAndShifts(context, monthKey, groupId);
     const [periodStartShift] = schedule[current.start];
-    await assignShift(context, { shiftId: periodStartShift.id, userId: employeeId });
+    await assignShift(context, {
+      shiftId: periodStartShift.id,
+      userId: employeeId,
+      confirmShortRest: true,
+    });
     const hours = shiftHours(periodStartShift);
     expect(hours).toBeGreaterThan(CAP);
 
@@ -196,14 +210,26 @@ test.describe('Settlement Periods report', () => {
     }
     const employeeId = await getEmployeeIdByEmail(context, 'regular@shiftchanger.com');
 
-    await assignShift(context, { shiftId: shiftByDay[days[0]].id, userId: employeeId });
-    await assignShift(context, { shiftId: shiftByDay[days[1]].id, userId: employeeId });
+    await assignShift(context, {
+      shiftId: shiftByDay[days[0]].id,
+      userId: employeeId,
+      confirmShortRest: true,
+    });
+    await assignShift(context, {
+      shiftId: shiftByDay[days[1]].id,
+      userId: employeeId,
+      confirmShortRest: true,
+    });
     await openReportFor(adminPage, 'Streak Report Team', groupId);
     const row = adminPage.getByRole('row', { name: /Regular Employee/ });
     await expect(row).toBeVisible();
     await expect(row.getByRole('cell').last()).toHaveText('night: 2/3');
 
-    await assignShift(context, { shiftId: shiftByDay[days[2]].id, userId: employeeId });
+    await assignShift(context, {
+      shiftId: shiftByDay[days[2]].id,
+      userId: employeeId,
+      confirmShortRest: true,
+    });
     const restEnd = new Date(`${days[2]}T12:00:00Z`);
     restEnd.setUTCDate(restEnd.getUTCDate() + 2); // rest_days
     const restingUntil = restEnd.toISOString().slice(0, 10); // resting_until is serialised as Y-m-d

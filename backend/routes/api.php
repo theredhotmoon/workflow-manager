@@ -76,12 +76,15 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
     // Shifts for a specific date (for checklist setup)
     Route::get('/shifts-by-date', function (Request $request) {
-        $request->validate(['date' => ['required', 'date']]);
+        $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'shift_group_id' => ['sometimes', 'nullable', 'integer'],
+        ]);
         $query = \App\Models\Shift::where('date', $request->date)
             ->with(['assignments.user:id,name', 'shiftChecklists.template:id,name'])
             ->orderBy('shift_number');
 
-        if ($request->has('shift_group_id')) {
+        if ($request->filled('shift_group_id')) {
             $query->where('shift_group_id', $request->shift_group_id);
         }
 
@@ -92,7 +95,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('/user-availabilities', [UserAvailabilityController::class, 'index']);
     Route::post('/user-availabilities', [UserAvailabilityController::class, 'store']);
     Route::delete('/user-availabilities/{userAvailability}', [UserAvailabilityController::class, 'destroy']);
-    Route::get('/user-availabilities/{userId}/month', [UserAvailabilityController::class, 'forMonth']);
+    Route::get('/user-availabilities/{userId}/month', [UserAvailabilityController::class, 'forMonth'])->whereNumber('userId');
 
     // My shifts (any authenticated user)
     Route::get('/my-shifts', function (Request $request) {
@@ -105,6 +108,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
             ->whereHas('shift', fn($q) => $q->whereBetween('date', [$start->toDateString(), $end->toDateString()]))
             ->with([
                 'shift' => fn($q) => $q->with([
+                    'shiftGroup:id,name',
                     'shiftChecklists.template:id,name',
                     'submissions' => fn($sq) => $sq->where(function ($w) use ($user) {
                         $w->where('outgoing_user_id', $user->id)->orWhere('incoming_user_id', $user->id);
@@ -269,6 +273,9 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::delete('/shift-colors/{shiftColor}', [ShiftColorController::class, 'destroy']);
         Route::post('/shift-colors/reorder', [ShiftColorController::class, 'reorder']);
 
+        // A pending handover whose incoming user was deactivated, handed to another user (F7)
+        Route::put('/checklist-submissions/{checklistSubmission}/incoming', [ChecklistSubmissionController::class, 'reassignIncoming']);
+
         // Checklist template management
         Route::apiResource('checklist-templates', ChecklistTemplateController::class)->except(['index']);
 
@@ -298,7 +305,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
         // Newbie periods
         Route::get('/newbie-periods/all', [NewbiePeriodController::class, 'all']);
-        Route::get('/newbie-periods/user/{userId}', [NewbiePeriodController::class, 'forUser']);
+        Route::get('/newbie-periods/user/{userId}', [NewbiePeriodController::class, 'forUser'])->whereNumber('userId');
         Route::post('/newbie-periods', [NewbiePeriodController::class, 'store']);
         Route::put('/newbie-periods/{newbiePeriod}', [NewbiePeriodController::class, 'update']);
         Route::delete('/newbie-periods/{newbiePeriod}', [NewbiePeriodController::class, 'destroy']);

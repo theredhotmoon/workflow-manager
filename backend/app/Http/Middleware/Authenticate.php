@@ -7,15 +7,19 @@ use Illuminate\Auth\Middleware\Authenticate as Middleware;
 class Authenticate extends Middleware
 {
     /**
-     * Get the path the user should be redirected to when they are not authenticated.
+     * Where a browser that isn't signed in is sent. API routes never redirect: they answer 401 JSON
+     * whatever the Accept header (see Handler::shouldReturnJson). There is no named 'login' route:
+     * the SPA's /login screen is the shell's own route.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return string|null
      */
     protected function redirectTo($request)
     {
-        if (! $request->expectsJson()) {
-            return route('login');
+        if ($request->expectsJson() || $request->is('api', 'api/*')) {
+            return null;
         }
+
+        return url('/login');
     }
 }

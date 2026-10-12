@@ -12,6 +12,11 @@ class ProcedureFeedbackController extends Controller
 {
     public function index(Request $request)
     {
+        $request->validate([
+            'status' => ['sometimes', 'nullable', 'in:open,reviewed,resolved'],
+            'per_page' => ['sometimes', 'nullable', 'integer'],
+        ]);
+
         $query = ProcedureFeedback::with(['procedure:id,identifier,title', 'user:id,name'])
             ->orderByDesc('created_at');
 
@@ -19,7 +24,10 @@ class ProcedureFeedbackController extends Controller
             $query->where('status', $status);
         }
 
-        return response()->json($query->get());
+        // One page at a time (newest first, per_page 1..100): the list grows with every report.
+        $perPage = max(1, min((int) $request->input('per_page', 50), 100));
+
+        return response()->json($query->orderByDesc('id')->paginate($perPage));
     }
 
     public function store(Request $request, Procedure $procedure)
@@ -71,8 +79,9 @@ class ProcedureFeedbackController extends Controller
         $feedback->update($validated);
         $feedback->load(['user:id,name', 'procedure:id,title']);
 
-        // Notify feedback author when issue is resolved
-        if (isset($validated['status']) && $validated['status'] === 'resolved' && $feedback->user_id) {
+        // Notify the author when the feedback becomes resolved: not again on later saves of a
+        // resolved one (a comment, a resolution).
+        if ($feedback->wasChanged('status') && $feedback->status === 'resolved' && $feedback->user_id) {
             (new AlarmService())->notifyUser(
                 Alarm::TYPE_PROCEDURE_ISSUE_SORTED,
                 $feedback->user_id,

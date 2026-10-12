@@ -8,6 +8,7 @@ use App\Models\Shift;
 use App\Models\Alarm;
 use App\Services\AlarmService;
 use App\Support\BusinessDate;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +26,43 @@ class ShiftChangeRequestController extends Controller
             'reason' => ['required', 'string', 'min:3', 'max:1000'],
         ]);
 
-        $result = DB::transaction(function () use ($request) {
+        try {
+            $result = $this->fileRequest($request);
+        } catch (UniqueConstraintViolationException) {
+            // Only one pending request per assignment (partial unique index): a concurrent one won.
+            return response()->json(['message' => self::ALREADY_PENDING_MESSAGE], 422);
+        }
+        if ($result instanceof JsonResponse) {
+            return $result;
+        }
+        [$assignment, $changeRequest] = $result;
+
+        // Dispatch alarm to admins and schedule maintainers
+        $userName = auth()->user()->name;
+        $userId = auth()->id();
+        $shiftDate = $assignment->shift->date->format('Y-m-d');
+        $shiftMonth = $assignment->shift->date->format('Y-m');
+        (new AlarmService())->notifyAdminsAndMaintainers(
+            Alarm::TYPE_EMPLOYEE_CANNOT_ATTEND_SHIFT,
+            "{$userName} cannot attend shift #{$assignment->shift->shift_number} on {$shiftDate}",
+            $request->reason,
+            "/schedule/{$shiftMonth}?highlight_user={$userId}&scroll_date={$shiftDate}",
+            'View Schedule'
+        );
+
+        return response()->json($changeRequest->load('user:id,name'), 201);
+    }
+
+    private const ALREADY_PENDING_MESSAGE = 'You already have a pending request for this shift.';
+
+    /**
+     * The checks and the insert of store(), in one transaction.
+     *
+     * @return JsonResponse|array{0: ShiftAssignment, 1: ShiftChangeRequest}
+     */
+    private function fileRequest(Request $request): JsonResponse|array
+    {
+        return DB::transaction(function () use ($request) {
             // The assignment row is locked: an unassign, move or bulk removal locks it too before it
             // settles requests and deletes it, so a request filed meanwhile either lands first (and
             // is settled with the rest) or waits and finds the assignment gone (404, not a 500 on
@@ -57,7 +94,7 @@ class ShiftChangeRequestController extends Controller
                 ->exists();
 
             if ($existing) {
-                return response()->json(['message' => 'You already have a pending request for this shift.'], 422);
+                return response()->json(['message' => self::ALREADY_PENDING_MESSAGE], 422);
             }
 
             $changeRequest = ShiftChangeRequest::create([
@@ -70,25 +107,6 @@ class ShiftChangeRequestController extends Controller
 
             return [$assignment, $changeRequest];
         });
-        if ($result instanceof JsonResponse) {
-            return $result;
-        }
-        [$assignment, $changeRequest] = $result;
-
-        // Dispatch alarm to admins and schedule maintainers
-        $userName = auth()->user()->name;
-        $userId = auth()->id();
-        $shiftDate = $assignment->shift->date->format('Y-m-d');
-        $shiftMonth = $assignment->shift->date->format('Y-m');
-        (new AlarmService())->notifyAdminsAndMaintainers(
-            Alarm::TYPE_EMPLOYEE_CANNOT_ATTEND_SHIFT,
-            "{$userName} cannot attend shift #{$assignment->shift->shift_number} on {$shiftDate}",
-            $request->reason,
-            "/schedule/{$shiftMonth}?highlight_user={$userId}&scroll_date={$shiftDate}",
-            'View Schedule'
-        );
-
-        return response()->json($changeRequest->load('user:id,name'), 201);
     }
 
     /**

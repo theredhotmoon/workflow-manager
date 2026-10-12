@@ -12,6 +12,7 @@ use App\Services\BusyIntervals;
 use App\Services\RestPolicyJanitor;
 use App\Services\StreakReplay;
 use App\Services\StreakTimeline;
+use App\Support\AdvisoryLock;
 use App\Support\BusinessDate;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -21,9 +22,56 @@ use App\Support\Month;
 class ShiftAutoAssignController extends Controller
 {
     /**
-     * Delete all shifts + assignments for a month.
+     * Auto-fill runs and clear-month for one group's month take turns (F4): each runs in a
+     * transaction that first takes the group+month advisory lock, before it reads the month, so a
+     * second run waits for the first to commit and then plans on top of its assignments instead of
+     * on the same starting state. (The group row lock is FOR SHARE: it keeps an archive out, but
+     * two runs both get it.) Other months and groups don't wait.
      */
     public function clearMonth(Request $request, RestPolicyJanitor $janitor)
+    {
+        return $this->oneRunPerMonth($request, fn () => $this->clearMonthRun($request, $janitor));
+    }
+
+    public function random(Request $request, RestPolicyJanitor $janitor)
+    {
+        return $this->oneRunPerMonth($request, fn () => $this->randomRun($request, $janitor));
+    }
+
+    public function rotating(Request $request, RestPolicyJanitor $janitor)
+    {
+        return $this->oneRunPerMonth($request, fn () => $this->rotatingRun($request, $janitor));
+    }
+
+    public function polishLaw(Request $request, RestPolicyJanitor $janitor)
+    {
+        return $this->oneRunPerMonth($request, fn () => $this->polishLawRun($request, $janitor));
+    }
+
+    /** The advisory lock name for one group's month (see oneRunPerMonth()). */
+    public static function monthLockName(int|string|null $groupId, string $month): string
+    {
+        return "schedule.month-run:{$groupId}:{$month}";
+    }
+
+    private function oneRunPerMonth(Request $request, callable $run)
+    {
+        // The same group the run will use: the one sent, or the default. An invalid value only
+        // names an odd lock; the run's own validation then refuses it.
+        $groupId = $request->input('shift_group_id') ?? ShiftGroup::where('is_default', true)->value('id');
+        $month = (string) $request->input('month');
+
+        return DB::transaction(function () use ($groupId, $month, $run) {
+            AdvisoryLock::forTransaction(self::monthLockName(is_scalar($groupId) ? $groupId : null, $month));
+
+            return $run();
+        });
+    }
+
+    /**
+     * Delete all shifts + assignments for a month.
+     */
+    private function clearMonthRun(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -78,7 +126,7 @@ class ShiftAutoAssignController extends Controller
      * Assigns random users to each shift, respecting availability, approved delegations, the
      * streak rest days and 11 h of rest around every other shift of the employee (in any group).
      */
-    public function random(Request $request, RestPolicyJanitor $janitor)
+    private function randomRun(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -215,7 +263,7 @@ class ShiftAutoAssignController extends Controller
      * Rotating Subteam Mode
      * Builds subteams that rotate every N days.
      */
-    public function rotating(Request $request, RestPolicyJanitor $janitor)
+    private function rotatingRun(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],
@@ -601,7 +649,7 @@ class ShiftAutoAssignController extends Controller
      * - No same-day double shifts
      * - Respects user unavailability and approved delegations
      */
-    public function polishLaw(Request $request, RestPolicyJanitor $janitor)
+    private function polishLawRun(Request $request, RestPolicyJanitor $janitor)
     {
         $request->validate([
             'month' => ['required', 'date_format:Y-m'],

@@ -52,10 +52,13 @@ export async function generateMonthShifts(context, { monthKey, shiftGroupId }) {
   if (!res.ok()) throw new Error(`generate month failed: ${res.status()} ${await res.text()}`);
 }
 
-export async function assignShift(context, { shiftId, userId }) {
+// Seeds an assignment. A spec that deliberately seeds shifts closer than 11 h (or overlapping) for
+// one employee passes confirmShortRest: true to answer the 409 short_daily_rest question; by
+// default it isn't answered, so an unexpected short-rest refusal fails the setup loudly.
+export async function assignShift(context, { shiftId, userId, confirmShortRest = false }) {
   const headers = await getXsrfHeader(context);
   const res = await send(context, 'post', '/api/schedule/assign', {
-    data: { shift_id: shiftId, user_id: userId },
+    data: { shift_id: shiftId, user_id: userId, confirm_short_rest: confirmShortRest },
     headers,
   });
   if (!res.ok()) throw new Error(`assign shift failed: ${res.status()} ${await res.text()}`);
@@ -127,6 +130,26 @@ export async function setShiftTypes(context, { shiftGroupId, month, shiftNumber,
   });
   if (!res.ok()) throw new Error(`set shift types failed: ${res.status()} ${await res.text()}`);
   return await res.json();
+}
+
+export async function setShiftTimes(context, { shiftId, startTime, endTime }) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'put', `/api/schedule/shifts/${shiftId}/times`, {
+    data: { start_time: startTime, end_time: endTime },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`set shift times failed: ${res.status()} ${await res.text()}`);
+  return await res.json();
+}
+
+// Archives a group a spec created (with its future assignments), so later specs don't get its tab.
+export async function archiveShiftGroup(context, groupId) {
+  const headers = await getXsrfHeader(context);
+  const res = await send(context, 'delete', `/api/shift-groups/${groupId}`, {
+    data: { remove_future_assignments: true },
+    headers,
+  });
+  if (!res.ok()) throw new Error(`archive shift group failed: ${res.status()} ${await res.text()}`);
 }
 
 export async function setShiftType(context, { shiftId, shiftType }) {

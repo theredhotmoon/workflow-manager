@@ -11,6 +11,7 @@ use App\Models\ShiftAssignment;
 use App\Models\ShiftChecklist;
 use App\Models\User;
 use App\Support\BusinessDate;
+use App\Support\LikePattern;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -90,7 +91,8 @@ class ChecklistSubmissionController extends Controller
             'user_id' => ['sometimes', 'nullable', 'integer'],
             'date_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'date_to' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
-            'status' => ['sometimes', 'nullable', 'string'],
+            'status' => ['sometimes', 'nullable', Rule::in(array_keys(self::STATUS_LABELS))],
+            'per_page' => ['sometimes', 'nullable', 'integer'],
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
             'sort' => ['sometimes', 'nullable', Rule::in(self::SORTS)],
             'direction' => ['sometimes', 'nullable', Rule::in(['asc', 'desc'])],
@@ -118,8 +120,8 @@ class ChecklistSubmissionController extends Controller
         }
         if ($request->filled('search')) {
             // Template or either person's name, case-insensitively; % and _ are matched literally.
-            $like = '%' . addcslashes(mb_strtolower($request->search), '\\%_') . '%';
-            $nameMatches = fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like]);
+            $like = LikePattern::contains($request->search);
+            $nameMatches = fn ($q) => $q->where('name', 'ilike', $like);
             $query->where(fn ($q) => $q->whereHas('template', $nameMatches)
                 ->orWhereHas('outgoingUser', $nameMatches)
                 ->orWhereHas('incomingUser', $nameMatches));
@@ -232,6 +234,8 @@ class ChecklistSubmissionController extends Controller
             $submission = ChecklistSubmission::create([
                 'checklist_template_id' => $request->checklist_template_id,
                 'shift_id' => $request->shift_id,
+                // Kept apart from a shift link nulled later (its shift removed): see the alerts.
+                'filed_without_shift' => !$request->filled('shift_id'),
                 'date' => $request->date,
                 'outgoing_user_id' => $request->outgoing_user_id,
                 'incoming_user_id' => $request->incoming_user_id,
@@ -335,6 +339,8 @@ class ChecklistSubmissionController extends Controller
             'template',
             'outgoingUser:id,name',
             'incomingUser:id,name',
+            'previousIncomingUser:id,name',
+            'incomingReassignedBy:id,name',
             'submittedBy:id,name',
             'responses',
         ]);
@@ -355,6 +361,59 @@ class ChecklistSubmissionController extends Controller
             }
             $template->setRelation('groups', $groups);
         }
+
+        return response()->json($checklistSubmission);
+    }
+
+    /**
+     * Admin: hand a pending handover whose incoming user was deactivated (so nobody can confirm
+     * it) to another active user, who then confirms it as usual (F7). Kept on the handover: the
+     * user it was handed over from, which admin did it and when. The new incoming user is someone
+     * other than the outgoing one and other than the admin doing it (as when filing for someone).
+     */
+    public function reassignIncoming(Request $request, ChecklistSubmission $checklistSubmission)
+    {
+        $request->validate([
+            'incoming_user_id' => ['required', 'integer', User::activeExistsRule()],
+        ], [
+            'incoming_user_id.exists' => 'The new incoming user has been deactivated. Pick someone else.',
+        ]);
+        $newIncoming = (int) $request->incoming_user_id;
+        if ($newIncoming === (int) $checklistSubmission->outgoing_user_id) {
+            throw ValidationException::withMessages(['incoming_user_id' => 'The incoming employee must be someone other than the outgoing one.']);
+        }
+        if ($newIncoming === (int) $request->user()->id) {
+            throw ValidationException::withMessages(['incoming_user_id' => 'You cannot hand a handover to yourself; pick another employee.']);
+        }
+
+        $refusal = DB::transaction(function () use ($request, $checklistSubmission, $newIncoming) {
+            // Locked and re-read: a confirmation or another reassignment meanwhile is seen.
+            $submission = ChecklistSubmission::whereKey($checklistSubmission->id)->lockForUpdate()->first();
+            if ($submission->status !== 'pending_confirmation') {
+                return 'This handover is not waiting for confirmation.';
+            }
+            $current = User::find($submission->incoming_user_id);
+            if (!$current?->isDeactivated()) {
+                return 'Only a handover whose incoming user was deactivated can be handed to someone else.';
+            }
+
+            $submission->forceFill([
+                'previous_incoming_user_id' => $submission->incoming_user_id,
+                'incoming_user_id' => $newIncoming,
+                'incoming_reassigned_by_id' => $request->user()->id,
+                'incoming_reassigned_at' => now(),
+            ])->save();
+
+            return null;
+        });
+        if ($refusal !== null) {
+            return response()->json(['message' => $refusal], 422);
+        }
+
+        $checklistSubmission->refresh()->load([
+            'template:id,name', 'outgoingUser:id,name', 'incomingUser:id,name',
+            'previousIncomingUser:id,name', 'incomingReassignedBy:id,name',
+        ]);
 
         return response()->json($checklistSubmission);
     }

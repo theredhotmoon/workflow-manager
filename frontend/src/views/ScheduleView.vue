@@ -540,6 +540,7 @@ import ShiftChecklistsModal from '../components/schedule/ShiftChecklistsModal.vu
 import ShiftTimesModal from '../components/schedule/ShiftTimesModal.vue';
 import UnavailableConfirmModal from '../components/schedule/UnavailableConfirmModal.vue';
 import { useAssignmentFlow } from '../composables/schedule/useAssignmentFlow.js';
+import { useChangeRequest } from '../composables/schedule/useChangeRequest.js';
 import { useEmployeeSelection } from '../composables/schedule/useEmployeeSelection.js';
 import { useGenerateMonth } from '../composables/schedule/useGenerateMonth.js';
 import { useScheduleMonth } from '../composables/schedule/useScheduleMonth.js';
@@ -607,7 +608,6 @@ const {
   currentMonth,
   schedule,
   hasScheduleShifts,
-  employees,
   employeePool,
   weekDays,
   monthKey,
@@ -619,21 +619,15 @@ const {
   showDelegations,
   monthDelegations,
   delegationsFailed,
-  fetchDelegations,
   getDayDelegations,
   showNewbies,
-  monthNewbies,
-  fetchNewbies,
   getDayNewbies,
   isCurrentNewbie,
   showClosures,
-  monthClosures,
-  fetchClosures,
   getClosureForDate,
   showShiftColors,
   shiftColors,
   shiftColorById,
-  fetchShiftColors,
   fetchSchedule,
 } = useScheduleMonth({
   activeGroupId,
@@ -646,21 +640,17 @@ const {
 
 // The roster, the selected employee's availability and the cell styles
 const {
-  selectedAvailability,
   empSort,
   getEmployeeShiftCount,
   getEmployeeTotalHours,
   sortedEmployeePool,
-  wasDragging,
   onDragStart,
   onDragEnd,
   handleEmployeeClick,
-  toggleEmployeeSelect,
   deselectEmployee,
   fetchAvailability,
   getDayAvailStyle,
   isSelectedEmployeeAssigned,
-  getShiftAssignedStyle,
   getShiftCellStyle,
 } = useEmployeeSelection({
   selectedEmployee,
@@ -743,6 +733,13 @@ const {
   openTimeEditor,
   saveShiftTimes,
 } = useShiftEditors({ canManageSchedule, showToast });
+
+// Request Day Off (employees, their own future shifts)
+const { changeRequestModal, isShiftFuture, openChangeRequestModal, submitChangeRequest } =
+  useChangeRequest({
+    schedule,
+    showToast,
+  });
 
 async function onShiftTypesSaved({ updated, rebooked }) {
   showShiftTypeEditor.value = false;
@@ -862,76 +859,5 @@ onMounted(async () => {
     router.replace({ name: 'schedule', params: { month: monthKey.value } });
   }
 });
-
-// Shift change requests
-const changeRequestModal = ref({
-  show: false,
-  assignmentId: null,
-  shiftNumber: null,
-  dateLabel: '',
-  reason: '',
-  error: '',
-  submitting: false,
-});
-
-function isShiftFuture(_shift, dateStr) {
-  if (!dateStr) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const shiftDate = new Date(dateStr + 'T00:00:00');
-  return shiftDate >= today;
-}
-
-function openChangeRequestModal(assignment, shift, dateStr) {
-  const d = new Date(dateStr + 'T12:00:00');
-  changeRequestModal.value = {
-    show: true,
-    assignmentId: assignment.id,
-    shiftNumber: shift.shift_number,
-    dateLabel: d.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    }),
-    reason: '',
-    error: '',
-    submitting: false,
-  };
-}
-
-async function submitChangeRequest() {
-  const modal = changeRequestModal.value;
-  if (!modal.reason.trim()) {
-    modal.error = 'Please provide a reason.';
-    return;
-  }
-  modal.submitting = true;
-  modal.error = '';
-  try {
-    const response = await api.post('/api/shift-change-requests', {
-      shift_assignment_id: modal.assignmentId,
-      reason: modal.reason.trim(),
-    });
-    modal.show = false;
-    showToast('Day-off request submitted successfully.', 'success');
-    // Update locally instead of refreshing entire schedule
-    for (const dateStr in schedule.value) {
-      for (const shift of schedule.value[dateStr]) {
-        const a = shift.assignments.find((a) => a.id === modal.assignmentId);
-        if (a) {
-          a.has_change_request = true;
-          a.change_request_reason = modal.reason.trim();
-          a.change_request_id = response.data?.id || null;
-          break;
-        }
-      }
-    }
-  } catch (err) {
-    modal.error = err.response?.data?.message || 'Failed to submit request.';
-  } finally {
-    modal.submitting = false;
-  }
-}
 </script>
 

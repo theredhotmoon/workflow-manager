@@ -278,5 +278,5 @@ it('exports in the list order for the timing (nullable boolean) and status sorts
             ->and(array_column($rows, 6))->toBe(caeListOrder($this, $admin, $query), json_encode($query));
     }
     // The timing cells really vary (and blanks are there), so the boolean keyset was exercised.
-    expect(array_unique(array_column($rows, 5)))->toEqualCanonicalizing(['On time', 'Late', '']);
+    expect(array_values(array_unique(array_column($rows, 5))))->toEqualCanonicalizing(['On time', 'Late', '']);
 });

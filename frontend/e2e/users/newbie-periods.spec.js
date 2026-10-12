@@ -1,6 +1,10 @@
 import { createNewbiePeriod, getEmployeeIdByEmail } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('users/newbie-periods');
+reserve.months('2097-07');
 
 // Newbie-period dates in 2097-07 are reserved for this file.
 test.describe('Users: newbie periods', () => {

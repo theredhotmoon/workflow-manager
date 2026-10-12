@@ -9,6 +9,10 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { dragToShiftDropzone } from '../fixtures/drag.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/move-assignment');
+reserve.months('2095-01', '2095-02', '2095-03', '2095-04');
 
 // Months reserved for this file (delegations are global, not per group): 2095-01 (cancelled move),
 // 2095-02 (move), 2095-03 (work mode), 2095-04 (maintainer delegation warning).

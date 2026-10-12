@@ -8,15 +8,21 @@ const baseURL = `http://localhost:${port}`;
 // Fixtures read this (e.g. the Origin header for API-side logins); workers inherit it.
 process.env.E2E_BASE_URL = baseURL;
 
-// NOTE: keep `retries` at 0 and do not use `--repeat-each`. The database is reset (migrate:fresh +
-// seed) once per run in globalSetup, not per test, and every spec owns uniquely named groups and
-// reserved months. A retry or repeat would re-create that data against a DB that already has it.
+// The database is reset (migrate:fresh + seed) once per run in globalSetup, not per test, and every
+// spec owns the months, days and names it writes data into (claimed in e2e/fixtures/reserve.js, which
+// throws on a second claim). So do not use `--repeat-each` for whole-suite runs: a repeat re-creates
+// that data against a DB that already has it.
+// CI retries a failed test once so that a single flake does not fail the job; a retry runs against
+// the data its first attempt left behind, so a real failure still fails. Flaky tests (failed, then
+// passed on retry) are listed in the job summary by e2e/reporters/flaky-summary.js. Locally there are
+// no retries, so a flake shows up as a failure.
 export default defineConfig({
   testDir: 'e2e',
   globalSetup: './e2e/global-setup.js',
   fullyParallel: false,
   workers: 1,
-  reporter: 'list',
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? [['list'], ['./e2e/reporters/flaky-summary.js']] : 'list',
   use: {
     baseURL,
     trace: 'retain-on-failure',

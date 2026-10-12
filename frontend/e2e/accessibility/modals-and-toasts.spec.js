@@ -1,9 +1,12 @@
 import { createShiftGroupWithStreakRule, createUser } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('accessibility/modals-and-toasts');
 
 // Keyboard and screen-reader basics for the shared modal shell (BaseModal), the toast live
 // regions and the header's notification menu. Nothing here writes data; the month is arbitrary.
-const MONTH = '2031-05';
+const MONTH = reserve.month('2031-05');
 
 const focusIsInside = (locator) => locator.evaluate((el) => el.contains(document.activeElement));
 

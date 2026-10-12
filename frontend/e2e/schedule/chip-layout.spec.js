@@ -6,6 +6,10 @@ import {
   getShiftGroupsAndShifts,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/chip-layout');
+reserve.months('2028-08');
 
 // Month 2028-08 is reserved for this file. Runs at Playwright's default 1280×720 viewport, where a
 // day column is ~133 px wide — narrower than "Regular Employee" plus its initials and × button.

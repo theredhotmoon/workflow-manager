@@ -8,6 +8,19 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/stale-overlays');
+reserve.months(
+  '2098-01',
+  '2098-02',
+  '2098-03',
+  '2098-04',
+  '2098-05',
+  '2098-06',
+  '2098-07',
+  '2098-12',
+);
 
 // Months reserved for this file (delegations, newbie periods, closures and availability are global,
 // not per group): 2098-01/02 delegations, 2098-03/04 newbies, 2098-05/06 closures, 2098-07 and

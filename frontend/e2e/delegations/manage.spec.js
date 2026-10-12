@@ -1,7 +1,12 @@
 import { createDelegation, getEmployeeIdByEmail } from '../fixtures/api-setup.js';
 import { expect, getXsrfHeader, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
 
-// Delegation dates in 2098-02 are reserved for this file.
+const reserve = reservationsFor('delegations/manage');
+reserve.months('2096-02');
+
+// Delegation dates in 2096-02 are reserved for this file (it used 2098-02, which stale-overlays
+// also writes delegations into).
 
 async function selfRegister(context, delegationId) {
   const headers = { Accept: 'application/json', ...(await getXsrfHeader(context)) };
@@ -18,8 +23,8 @@ test.describe('Delegations: create, act, withdraw', () => {
 
     await adminPage.getByLabel('Name').fill('Deleg One Day');
     await adminPage.getByLabel('Destination').fill('Gdańsk');
-    await adminPage.getByLabel('Start Date').fill('2098-02-10');
-    await adminPage.getByLabel('End Date').fill('2098-02-10');
+    await adminPage.getByLabel('Start Date').fill('2096-02-10');
+    await adminPage.getByLabel('End Date').fill('2096-02-10');
     const created = adminPage.waitForResponse(
       (res) => res.url().endsWith('/api/delegations') && res.request().method() === 'POST',
     );
@@ -30,7 +35,7 @@ test.describe('Delegations: create, act, withdraw', () => {
       has: adminPage.getByRole('heading', { name: 'Deleg One Day' }),
     });
     await expect(card).toBeVisible();
-    await expect(card.getByText('Feb 10, 2098 → Feb 10, 2098')).toBeVisible();
+    await expect(card.getByText('Feb 10, 2096 → Feb 10, 2096')).toBeVisible();
   });
 
   test('a failed approve shows why instead of failing silently', async ({
@@ -40,8 +45,8 @@ test.describe('Delegations: create, act, withdraw', () => {
     const delegation = await createDelegation(adminPage.context(), {
       name: 'Deleg Approve Fails',
       destination: 'Poznań',
-      start: '2098-02-12',
-      end: '2098-02-13',
+      start: '2096-02-12',
+      end: '2096-02-13',
     });
     await selfRegister(employeePage.context(), delegation.id);
 
@@ -66,8 +71,8 @@ test.describe('Delegations: create, act, withdraw', () => {
     const delegation = await createDelegation(adminPage.context(), {
       name: 'Deleg Withdraw',
       destination: 'Wrocław',
-      start: '2098-02-15',
-      end: '2098-02-16',
+      start: '2096-02-15',
+      end: '2096-02-16',
     });
     await selfRegister(employeePage.context(), delegation.id);
 
@@ -109,8 +114,8 @@ test.describe('Delegations: create, act, withdraw', () => {
     await adminPage.getByRole('button', { name: '+ New Delegation' }).click();
     await adminPage.getByLabel('Name').fill('Deleg Server Error');
     await adminPage.getByLabel('Destination').fill('Łódź');
-    await adminPage.getByLabel('Start Date').fill('2098-02-20');
-    await adminPage.getByLabel('End Date').fill('2098-02-21');
+    await adminPage.getByLabel('Start Date').fill('2096-02-20');
+    await adminPage.getByLabel('End Date').fill('2096-02-21');
     await adminPage.getByRole('button', { name: 'Create', exact: true }).click();
 
     const fieldError = adminPage.locator('form').getByText('The end date is not allowed.');
@@ -118,7 +123,7 @@ test.describe('Delegations: create, act, withdraw', () => {
     // Another field changing leaves it; changing the end date clears it.
     await adminPage.getByLabel('Name').fill('Deleg Server Error 2');
     await expect(fieldError).toBeVisible();
-    await adminPage.getByLabel('End Date').fill('2098-02-22');
+    await adminPage.getByLabel('End Date').fill('2096-02-22');
     await expect(fieldError).toHaveCount(0);
   });
 
@@ -130,12 +135,12 @@ test.describe('Delegations: create, act, withdraw', () => {
     await row.getByTitle('Delegation').click();
 
     await adminPage.getByLabel('Name').fill('Deleg Draft Kept');
-    await adminPage.getByLabel('Start Date').fill('2098-02-25');
+    await adminPage.getByLabel('Start Date').fill('2096-02-25');
     await adminPage.getByRole('button', { name: 'Assign Existing' }).click();
     await adminPage.getByRole('button', { name: 'Create New' }).click();
 
     await expect(adminPage.getByLabel('Name')).toHaveValue('Deleg Draft Kept');
-    await expect(adminPage.getByLabel('Start Date')).toHaveValue('2098-02-25');
+    await expect(adminPage.getByLabel('Start Date')).toHaveValue('2096-02-25');
   });
 });
 
@@ -147,8 +152,8 @@ test.describe('Delegations: delete only while nobody has joined', () => {
     const delegation = await createDelegation(context, {
       name: 'Deleg Has Member',
       destination: 'Lublin',
-      start: '2098-02-27',
-      end: '2098-02-28',
+      start: '2096-02-27',
+      end: '2096-02-28',
     });
 
     await adminPage.goto('/delegations-manage');

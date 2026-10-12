@@ -5,8 +5,12 @@ import {
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
 
-const GROUP = 'On-Call Team';
+const reserve = reservationsFor('on-call/on-call');
+reserve.months('2027-07', '2098-08', '2098-09');
+
+const GROUP = reserve.name('On-Call Team');
 
 // Months 2098-08/2098-09 are reserved for the stale-response tests below (each uses its own group).
 const isAssignments = (groupId, month) => (url) =>

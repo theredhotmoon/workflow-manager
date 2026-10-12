@@ -9,15 +9,18 @@ import {
 import { expect, test } from '../fixtures/auth.js';
 import { dragToShiftDropzone } from '../fixtures/drag.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/drop-twice');
 
 // F-b: while a drop is still being saved, dropping the same person on that shift again doesn't add
 // a second chip (or a second assignment), and the not-yet-saved chip can't be dragged elsewhere.
 // Month 2091-04 is reserved for this file.
-const MONTH = '2091-04';
+const MONTH = reserve.month('2091-04');
 const DAY = '2091-04-11';
 const NEXT_DAY = '2091-04-12';
 const EMPLOYEE = 'Regular Employee';
-const GROUP = 'Drop Twice Team';
+const GROUP = reserve.name('Drop Twice Team');
 
 test.describe('Schedule: dropping again before the save answers', () => {
   test('keeps one chip and sends one assign', async ({ adminPage }) => {

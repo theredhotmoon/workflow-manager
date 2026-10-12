@@ -6,10 +6,14 @@ import {
   getEmployeeIdByEmail,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('on-call/archived-groups');
+reserve.months('2025-03');
 
 // F-e: an archived group's past on-call duties stay reachable for corrections, on request.
 // March 2025 (in the past, so archiving keeps the duty) is reserved for this file.
-const GROUP = 'On-Call Archived Team';
+const GROUP = reserve.name('On-Call Archived Team');
 
 test.describe('On-call: archived groups', () => {
   test('a maintainer can list an archived group and log a callback on its past duty', async ({

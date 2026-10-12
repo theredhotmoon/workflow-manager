@@ -7,9 +7,12 @@ import {
   getShiftGroupsAndShifts,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('my-shifts/load-errors');
 
 // Month 2099-11 is reserved for this file.
-const MONTH = '2099-11';
+const MONTH = reserve.month('2099-11');
 
 const fail500 = (route) =>
   route.fulfill({

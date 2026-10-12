@@ -1,5 +1,9 @@
 import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/navigation');
+reserve.months('2027-09', '2028-07');
 
 // Every other schedule/on-call spec in this suite runs against a single, never-reset-between-files
 // database (playwright.config.js has workers: 1, and global-setup only resets once for the whole run —

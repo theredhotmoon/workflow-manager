@@ -5,8 +5,12 @@ import {
   getShiftGroupsAndShifts,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
 
-const MONTH = '2027-06';
+const reserve = reservationsFor('schedule/auto-fill');
+reserve.months('2027-11', '2027-12', '2028-01');
+
+const MONTH = reserve.month('2027-06');
 const EMPLOYEE = 'Regular Employee';
 
 // Same selector list as src/composables/useFocusTrap.js, so first/last match the trap's own.

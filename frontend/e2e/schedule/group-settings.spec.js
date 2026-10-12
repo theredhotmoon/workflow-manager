@@ -1,5 +1,9 @@
 import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/group-settings');
+reserve.months('2027-03');
 
 test.describe('Shift group settlement + streak-rule settings', () => {
   test('sets settlement mode, weekly cap, and a streak rule from the shared settings modal', async ({

@@ -1,5 +1,9 @@
 import { createShiftGroupWithStreakRule } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('schedule/generate-month');
+reserve.months('2027-04');
 
 test.describe('Generate Month', () => {
   test('generates a month of shifts with the default single-shift template', async ({

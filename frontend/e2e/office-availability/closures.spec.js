@@ -1,6 +1,10 @@
 import { createOfficeClosure, listOfficeClosures } from '../fixtures/api-setup.js';
 import { expect, loginAs, STATEFUL_ORIGIN, test } from '../fixtures/auth.js';
 import { holdRequests } from '../fixtures/hold.js';
+import { reservationsFor } from '../fixtures/reserve.js';
+
+const reserve = reservationsFor('office-availability/closures');
+reserve.months('2095-05', '2098-10', '2098-11');
 
 // Months 2098-10/2098-11 and 2095-05 are reserved for this file (office closures are global, not per
 // group).

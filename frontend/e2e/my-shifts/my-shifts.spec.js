@@ -7,8 +7,12 @@ import {
   getShiftGroupsAndShifts,
 } from '../fixtures/api-setup.js';
 import { expect, test } from '../fixtures/auth.js';
+import { reservationsFor } from '../fixtures/reserve.js';
 
-const FUTURE_MONTH = '2099-08';
+const reserve = reservationsFor('my-shifts/my-shifts');
+reserve.months('2099-07', '2099-09', '2099-10');
+
+const FUTURE_MONTH = reserve.month('2099-08');
 
 test.describe('My Shifts', () => {
   // Months 2099-09/2099-10 are reserved for this test.

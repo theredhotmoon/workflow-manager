@@ -18,9 +18,10 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same PR cancels its running build; builds of main always finish.
+# A newer push to the same PR cancels its running build. Builds of main get a group per commit
+# (the sha), so none is ever cancelled or dropped while pending.
 concurrency:
-  group: docker-build-${{ github.event.pull_request.number || github.ref }}
+  group: docker-build-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

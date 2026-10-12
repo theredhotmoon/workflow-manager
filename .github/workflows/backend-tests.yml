@@ -15,9 +15,10 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same PR cancels its running checks; runs on main always finish.
+# A newer push to the same PR cancels its running checks. Pushes to main get a group per commit
+# (the sha), so no main run is ever cancelled or dropped while pending.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

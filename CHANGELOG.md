@@ -4,6 +4,46 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-10 — 🧪 Tests, CI and config hygiene: e2e isolation, readiness checks, healthchecks, Node 22, Pint
+
+> **Deploy notes**
+> - No migrations. Rebuild **both** images: the frontend image now builds on **Node 22** (Node 20 is EOL); the backend image gains `postgresql-client` (`pg_dump`).
+> - **Healthchecks and start order:** the backend is healthy once `GET /api/health` answers 200 (PHP up and the database accepts `select 1`; 503 otherwise), the frontend once its Nginx serves the index. `docker compose up` now starts db → backend → frontend, each waiting for the previous one to be healthy (the backend has a 120 s start period for migrations). `docker compose ps` shows health.
+> - **New optional env vars** (root `.env`): `RUN_MIGRATIONS` (default `1`; `0` skips migrating on start, for multi-replica deploys that migrate as a separate step) and `BACKUP_BEFORE_MIGRATE` (default `0`; `1` writes a `pg_dump` to `storage/app/backups` on the `backend_storage` volume before pending migrations run, and stops the start if the dump fails). See README, "Migrations".
+> - **Logs:** every container uses Docker's json-file driver rotated at 5 × 10 MB. The `backend_logs` volume is no longer mounted or declared (the backend logs to stderr, now in the dev override too); the existing volume stays on disk, and `docker volume rm workflow-manager_backend_logs` removes it when you no longer need its old files.
+> - **Nginx:** request bodies up to 50 MB in both the backend and the frontend Nginx (PHP's limit; Nginx's default 1 MB refused large procedures with pasted images). `X-XSS-Protection` is no longer sent.
+> - **e2e safety:** the e2e global setup only resets the database with `E2E_ALLOW_RESET=1` (set by `npm run test:e2e`) and when the backend container runs `APP_ENV=local`/`testing`. A bare `npx playwright test` now refuses; use `npm run test:e2e -- <files/flags>`.
+> - **CI:** backend/frontend tests run on pushes to `main` only (PRs via `pull_request`), with timeouts, per-PR cancel-in-progress and Composer/Playwright caches; the e2e job waits on `/api/health`; CI retries a failed e2e test once and lists flaky tests in the job summary; `vendor/bin/pint --test` gates the backend.
+
+- **Tests, CI and configuration items from the 2026-10-09 audit (L31–L41), Node 22, Pint, and the flaky session-expiry spec.** L32 was half done: `procedures/list.spec.js` still had the last `waitForTimeout(400)`.
+
+### Fixed
+| What | Details |
+|------|---------|
+| Flaky `session-expiry.spec.js` ("an expired session sends the next action to login") | Failed on #38 and #40 in CI (stayed on `/my-shifts`). Root cause: the test cleared the cookies once the view's `/api/my-delegations` answered, while the header bell's `/api/alarms/latest` and `/api/alarms/unread-count` could still be in flight; their responses carry `Set-Cookie` and restored the still-valid session, so the next click succeeded. Reproduced by holding the bell's response until after `clearCookies()`. The test now waits until no `/api/` request is in flight. The app was right (a real expiry can't be undone by a late response) |
+| Two e2e month clashes | `delegations/manage` used 2098-02 for delegations, as `schedule/stale-overlays` does → moved to 2096-02. `privacy/need-to-know` used 2097-03, one of `my-availability`'s months → moved to 2097-09. Both found by the new reservation registry |
+
+### Tests and CI
+| What | Details |
+|------|---------|
+| L31 | `e2e/fixtures/reserve.js`: `reservationsFor(owner).month() / .day() / .name()` (+ `months()`, `days()`); a second claim in one run throws, naming both owners; a month clashes with days claimed inside it by another file. 31 specs migrated (claims at the top of each file). `retries: CI ? 1 : 0`; `e2e/reporters/flaky-summary.js` writes tests that passed only on retry to `$GITHUB_STEP_SUMMARY` |
+| L32 | No `waitForTimeout` left: the updating-indicator check waits for the stale request to finish plus two animation frames, then checks the state class |
+| L33 | `global-setup.js` refuses without `E2E_ALLOW_RESET=1` or when the container's `APP_ENV` isn't `local`/`testing` (or the DB name contains "prod"). `npm run test:e2e` runs `e2e/run.mjs`, which sets the variable on any OS |
+| L34 | New `e2e/users/crud.spec.js` (create, rename, change password, sign in with it), `e2e/procedures/tags.spec.js` (create, rename/recolour, delete with confirm/cancel). New `src/shiftHours.js` (+ unit tests: overnight wrap, 24 h shift, missing times, rounding, labels), now used by My Shifts' total, the Schedule's per-employee hours and the shift donut (each had its own copy) |
+| L35 | `GET /api/health` (`HealthController`, outside the api middleware: no session, no rate limit) + `HealthCheckTest` (200, 503 without details, no cookie / not throttled); route matrix lists it as public. Workflows: `push: branches: [main]`, `timeout-minutes` on every job, `concurrency` per PR with cancel-in-progress for pull requests, Composer cache, Playwright browser cache (`install-deps` on a hit) |
+| Pint | `backend/pint.json` (Laravel preset, no rules turned off: the churn was ordinary style — imports, braces, spacing); one formatting-only commit over 156 files; `pint --test` in backend CI |
+| Node 22 | `node-version: '22'` in CI, `node:22-alpine` in `frontend/Dockerfile` |
+
+### Config and docs
+| What | Details |
+|------|---------|
+| L37 | `backend/.env.example` rewritten for PostgreSQL and the variables the app reads (was the stock Laravel file with MySQL, Redis, mail, Pusher, AWS); root `.env.example` lists every compose variable |
+| L38 | Healthchecks, `depends_on: service_healthy`, `RUN_MIGRATIONS`, `BACKUP_BEFORE_MIGRATE` (above); README "Health checks and start order", "Migrations" |
+| L40 | Log rotation, `client_max_body_size 50M`, no `X-XSS-Protection`, `backend_logs` dropped (above) |
+| L41 | README: env table completed, a stray half-sentence about `X-Forwarded-Proto` fixed, Node 22, Pint and e2e guard/reservation docs, lint pointer. The planning docs under `docs/superpowers/` stay (history). Splitting `ScheduleView.vue` is out of scope |
+
+---
+
 ## 2026-10-10 — 🧭 Frontend lows: guarded routes, a 404 page, honest load errors, no double submits
 
 > **Deploy notes**

@@ -387,7 +387,15 @@ async function saveModal(payload) {
   modalFieldErrors.value = {};
   try {
     if (editingId.value) {
-      await api.put(`/api/delegations/${editingId.value}`, payload);
+      const res = await api.put(`/api/delegations/${editingId.value}`, payload);
+      // New dates move members' own travel dates that no longer fit (the server clamps them).
+      const adjusted = res.data?.adjusted_members ?? 0;
+      showToast(
+        adjusted === 0
+          ? 'Delegation saved.'
+          : `Delegation saved. Travel dates of ${adjusted} member${adjusted === 1 ? '' : 's'} adjusted to the new dates.`,
+        'success',
+      );
     } else {
       await api.post('/api/delegations', payload);
     }

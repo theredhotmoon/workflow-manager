@@ -143,15 +143,66 @@ class DelegationController extends Controller
             }
         }
 
-        $delegation->update($validated);
+        $datesChanged = ($validated['start_datetime'] ?? null) !== null && $validated['start_datetime'] !== $delegation->start_datetime?->format('Y-m-d')
+            || ($validated['end_datetime'] ?? null) !== null && $validated['end_datetime'] !== $delegation->end_datetime?->format('Y-m-d');
 
-        if ($changes) {
-            $this->log($delegation->id, $request->user()->id, 'updated', implode('; ', $changes));
-        }
+        // The edit, its log and the members' travel dates that no longer fit go in together. Locked
+        // like add-member, so a member added or re-dated at the same moment is seen and clamped too.
+        $adjusted = DB::transaction(function () use ($request, $delegation, $validated, $changes, $datesChanged) {
+            Delegation::lockOrGone($delegation->id);
+            $delegation->update($validated);
+
+            if ($changes) {
+                $this->log($delegation->id, $request->user()->id, 'updated', implode('; ', $changes));
+            }
+
+            return $datesChanged ? $this->clampMemberDates($delegation, $request->user()->id) : 0;
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
 
-        return response()->json($delegation);
+        return response()->json(array_merge($delegation->toArray(), ['adjusted_members' => $adjusted]));
+    }
+
+    /**
+     * Moves every member's own travel dates into the delegation's (new) days: each end is clamped
+     * into the range, an unset end stays unset (it means the delegation's own day). A member whose
+     * dates no longer overlap the delegation at all goes back to the delegation's dates. Each change
+     * is logged; returns how many members changed.
+     */
+    private function clampMemberDates(Delegation $delegation, int $performedBy): int
+    {
+        $first = $delegation->start_datetime->format('Y-m-d');
+        $last = $delegation->end_datetime->format('Y-m-d');
+        $day = fn ($value): ?string => $value === null ? null : substr((string) $value, 0, 10);
+        $range = fn (?string $start, ?string $end): string => ($start ?? 'start').' to '.($end ?? 'end');
+
+        $members = $delegation->users()
+            ->where(fn ($q) => $q->whereNotNull('delegation_user.custom_start')->orWhereNotNull('delegation_user.custom_end'))
+            ->orderBy('users.id')
+            ->get(['users.id', 'users.name']);
+
+        $adjusted = 0;
+        foreach ($members as $member) {
+            $start = $day($member->pivot->custom_start);
+            $end = $day($member->pivot->custom_end);
+            $from = max($start ?? $first, $first);
+            $to = min($end ?? $last, $last);
+            $reset = $from > $to;
+            $newStart = $reset || $start === null ? null : $from;
+            $newEnd = $reset || $end === null ? null : $to;
+            if ($newStart === $start && $newEnd === $end) {
+                continue;
+            }
+
+            $delegation->users()->updateExistingPivot($member->id, ['custom_start' => $newStart, 'custom_end' => $newEnd]);
+            $this->log($delegation->id, $performedBy, 'dates_adjusted', $reset
+                ? "Travel dates for {$member->name} reset to the delegation's dates (were {$range($start, $end)}, outside {$first} to {$last})"
+                : "Travel dates for {$member->name} moved into the delegation's dates: {$range($start, $end)} → {$range($newStart, $newEnd)}");
+            $adjusted++;
+        }
+
+        return $adjusted;
     }
 
     /**
@@ -211,14 +262,19 @@ class DelegationController extends Controller
 
         $customStart = self::dateOnly($request->custom_start);
         $customEnd = self::dateOnly($request->custom_end);
-        $this->ensureTravelDatesFit($delegation, $customStart, $customEnd);
 
-        $delegation->users()->updateExistingPivot($request->user_id, [
-            'custom_start' => $customStart,
-            'custom_end' => $customEnd,
-        ]);
+        DB::transaction(function () use ($request, $delegation, $member, $customStart, $customEnd) {
+            // Checked against the locked row: a date change of the delegation at the same moment
+            // either lands first (and these dates are checked against it) or clamps them after.
+            $this->ensureTravelDatesFit(Delegation::lockOrGone($delegation->id), $customStart, $customEnd);
 
-        $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$member->name}");
+            $delegation->users()->updateExistingPivot($request->user_id, [
+                'custom_start' => $customStart,
+                'custom_end' => $customEnd,
+            ]);
+
+            $this->log($delegation->id, $request->user()->id, 'dates_updated', "Updated dates for {$member->name}");
+        });
 
         $delegation->load(['users:id,name,email', 'creator:id,name']);
 

@@ -100,3 +100,57 @@ it('rolls the clamp back with the edit when the edit fails', function () {
     expect($this->delegation->fresh()->end_datetime->format('Y-m-d'))->toBe('2026-11-10')
         ->and(dcDates($this->delegation, $member))->toBe(['2026-11-04', '2026-11-09']);
 });
+
+/**
+ * Simulates another admin's edit committing between this request's route binding and its row lock:
+ * the first time the delegation is read (the binding), the row is changed underneath.
+ */
+function dcChangeAfterBinding(Delegation $delegation, array $columns): void
+{
+    $done = false;
+    Delegation::retrieved(function (Delegation $read) use ($delegation, $columns, &$done) {
+        if (! $done && $read->id === $delegation->id) {
+            $done = true;
+            DB::table('delegations')->where('id', $delegation->id)->update($columns);
+        }
+    });
+}
+
+it('checks and clamps an edit against the locked row, not the one read before the lock (m1)', function () {
+    $member = dcMember($this->delegation, '2026-11-05', '2026-11-08');
+    // Meanwhile another admin moved the start to the 5th.
+    dcChangeAfterBinding($this->delegation, ['start_datetime' => '2026-11-05']);
+
+    // Ending on the 3rd would end before the (new) start.
+    $this->actingAs($this->admin)
+        ->putJson("/api/delegations/{$this->delegation->id}", ['end_datetime' => '2026-11-03'])
+        ->assertUnprocessable()->assertJsonValidationErrors('end_datetime');
+
+    expect($this->delegation->fresh()->end_datetime->format('Y-m-d'))->toBe('2026-11-10')
+        ->and(dcDates($this->delegation, $member))->toBe(['2026-11-05', '2026-11-08']);
+});
+
+it('clamps against the locked dates when another edit landed first (m1)', function () {
+    $member = dcMember($this->delegation, '2026-11-02', '2026-11-09');
+    dcChangeAfterBinding($this->delegation, ['start_datetime' => '2026-11-04']);
+
+    $this->actingAs($this->admin)
+        ->putJson("/api/delegations/{$this->delegation->id}", ['end_datetime' => '2026-11-07'])
+        ->assertOk()->assertJsonPath('adjusted_members', 1);
+
+    expect(dcDates($this->delegation, $member))->toBe(['2026-11-04', '2026-11-07']);
+});
+
+it('checks a new member\'s travel dates against the locked row (m2)', function () {
+    $user = User::factory()->create();
+    // Meanwhile another admin shortened the delegation to the 6th.
+    dcChangeAfterBinding($this->delegation, ['end_datetime' => '2026-11-06']);
+
+    $this->actingAs($this->admin)
+        ->postJson("/api/delegations/{$this->delegation->id}/add-user", [
+            'user_id' => $user->id, 'custom_start' => '2026-11-04', 'custom_end' => '2026-11-09',
+        ])
+        ->assertUnprocessable()->assertJsonValidationErrors('custom_end');
+
+    expect($this->delegation->users()->where('users.id', $user->id)->exists())->toBeFalse();
+});

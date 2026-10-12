@@ -247,6 +247,12 @@ npm run test:all   # unit, then e2e
 > **Warning: `npm run test:e2e` resets your local development database** (`migrate:fresh` plus the
 > e2e baseline seed, run inside the `shift_changer_backend` container). Never run it against data
 > you want to keep.
+>
+> The reset has two guards. It needs `E2E_ALLOW_RESET=1`, which `npm run test:e2e` sets for you (a
+> bare `npx playwright test` refuses; pass files and flags through the script instead:
+> `npm run test:e2e -- e2e/schedule --headed`). And it refuses unless the backend container runs
+> with `APP_ENV=local` or `testing` (the dev override sets `local`; the production stack runs
+> `production`), so it never wipes a production database that shares the container name.
 
 Notes:
 
@@ -264,8 +270,12 @@ Notes:
   setup still clears the cache (and with it the limiter counters) once per run. If you see 429s,
   rebuild the backend with both compose files (`docker compose -f docker-compose.yml -f
   docker-compose.dev.yml up -d --build backend`) so the dev limit is applied.
-- Specs share one database per run, so give every group a unique name and use a month no other spec
-  uses. Do not enable Playwright `retries` or `--repeat-each`.
+- Specs share one database per run, so every spec claims the months, days and names it writes data
+  into, at the top of the file, with `reservationsFor()` from `e2e/fixtures/reserve.js`. A second
+  claim of the same month, day or name fails the run before any test starts, naming both files.
+- Locally there are no retries, so a flake shows up as a failure. CI retries a failed test once and
+  lists the tests that passed only on retry ("flaky") in the job summary. Do not use
+  `--repeat-each` for whole-suite runs: specs re-create their data on every repeat.
 
 ---
 

@@ -76,8 +76,9 @@ services:
       # that runs them as a separate step (README, "Migrations").
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-1}
       # 1 = pg_dump the database to storage/app/backups (backend_storage volume) before migrating,
-      # whenever migrations are pending.
+      # whenever migrations are pending; the newest BACKUP_KEEP dumps are kept. (1/true/yes = on.)
       BACKUP_BEFORE_MIGRATE: ${BACKUP_BEFORE_MIGRATE:-0}
+      BACKUP_KEEP: ${BACKUP_KEEP:-5}
     volumes:
       # Logs go to stderr (LOG_CHANNEL above) and so to Docker's rotated log, not to a volume.
       - backend_storage:/var/www/html/storage/app

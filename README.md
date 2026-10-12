@@ -155,10 +155,27 @@ The backend runs `php artisan migrate --force` every time its container starts
 the code and there is no separate step to forget. That is safe for this stack because it runs one
 backend container. The start log says `→ Running migrations...`.
 
-- **Backup first:** set `BACKUP_BEFORE_MIGRATE=1` in `.env`. Whenever migrations are pending, the
-  container then writes a `pg_dump` (custom format) to `storage/app/backups/pre-migrate-<UTC
-  time>.dump` on the `backend_storage` volume before migrating, and logs where. If the dump fails,
-  the container stops before migrating. Restore with `pg_restore`. Old dumps are not deleted.
+- **Backup first:** set `BACKUP_BEFORE_MIGRATE=1` in `.env` (`1`, `true` and `yes` all mean on,
+  for `RUN_MIGRATIONS` too). Whenever migrations are pending, the container then writes a `pg_dump`
+  (custom format) to `/var/www/html/storage/app/backups/pre-migrate-<UTC time>.dump`, on the
+  `backend_storage` volume, before migrating, and logs the file name. If the dump fails, the
+  container stops before migrating. The dumps contain password hashes, so they are readable by root
+  only (mode 600). Only the newest `BACKUP_KEEP` dumps are kept (default 5). The backend image ships
+  PostgreSQL **15** client tools, the db server's version: a dump from a newer `pg_dump` can't be
+  read by an older `pg_restore`.
+
+  List and restore a dump with the backend's own `pg_restore` (it replaces the current data):
+
+  ```bash
+  docker compose exec backend ls -l storage/app/backups
+  docker compose exec backend sh -c 'PGPASSWORD="$DB_PASSWORD" pg_restore --clean --if-exists \
+    -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" \
+    storage/app/backups/pre-migrate-<UTC time>.dump'
+  ```
+
+  Stop the frontend first (`docker compose stop frontend`) so nobody writes during the restore. A
+  restored database is at the old schema, so the next backend start migrates it again: roll back
+  the code first if the migration was the problem.
 - **Several backend replicas:** set `RUN_MIGRATIONS=0` so no container migrates on start (two
   replicas would race), and run the migrations once per deploy as their own step, before starting
   the new containers:

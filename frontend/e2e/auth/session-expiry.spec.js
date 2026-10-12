@@ -79,7 +79,10 @@ test.describe('Session expiry and logout', () => {
     await openAccountMenu(adminPage);
     await adminPage.getByRole('button', { name: 'Logout' }).click();
 
-    await expect(adminPage.getByRole('alert')).toContainText('You are still signed in.');
+    // The app-wide toast keeps an (empty) alert region on every page: pick the logout error.
+    await expect(
+      adminPage.getByRole('alert').filter({ hasText: 'You are still signed in.' }),
+    ).toBeVisible();
     await expect(adminPage).toHaveURL(/\/dashboard$/);
   });
 
@@ -97,7 +100,9 @@ test.describe('Session expiry and logout', () => {
     await openAccountMenu(adminPage);
     await adminPage.getByRole('button', { name: 'Logout' }).click();
 
-    await expect(adminPage.getByRole('alert')).toHaveText(
+    await expect(
+      adminPage.getByRole('alert').filter({ hasText: 'You are still signed in.' }),
+    ).toHaveText(
       /^Your session token expired; reload the page and try again\. You are still signed in\.\s*✕$/,
     );
     await expect(adminPage).toHaveURL(/\/dashboard$/);

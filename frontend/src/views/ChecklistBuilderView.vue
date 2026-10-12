@@ -276,7 +276,6 @@
     </div>
     </Transition>
 
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -284,7 +283,6 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
@@ -472,6 +470,7 @@ function moveItem(group, index, direction) {
 
 // Save
 async function saveTemplate() {
+  if (saving.value) return;
   // Validate
   if (!form.value.name.trim()) {
     showToast('Template name is required.', 'error');

@@ -4,6 +4,44 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-10 — 🧭 Frontend lows: guarded routes, a 404 page, honest load errors, no double submits
+
+> **Deploy notes**
+> - No migrations. One new route (`PUT /api/schedule/work-mode`, admins and schedule maintainers). Rebuild backend and frontend.
+>
+> **Behaviour changes**
+> - **Generate month → "Switch to Remote"** stops when generating fails and shows the server's reason (was "Failed to generate month." and then switched the existing shifts anyway). The closed dates' office shifts are switched in **one** all-or-nothing request, `PUT /api/schedule/work-mode` (`shift_ids` 1..500 distinct ids, checked to exist with one count — 422 "One or more of the selected shifts do not exist."; `work_mode` office/remote; same rules as the single update: a shift of an archived group refuses the whole request with 422). Nothing is switched, with an error saying so, when the reload after generating fails (or the screen moved to another month/group), or when more than 500 shifts would be switched (no chunking yet). A failed switch says the month was generated but the closed dates are still office.
+> - **Settlement Periods and On-Call** are guarded in the router too (`meta.requiresScheduleManager`): an employee opening the URL lands on the dashboard, as with admin-only pages. The nav already hid them; the API already answered 403.
+> - **Unknown addresses** show a "Page not found" page inside the app layout with a link to the dashboard; signed out, they go to login first (and come back after signing in).
+> - **Notifications:** the bell badge and the Notifications page share one alarm store (`useAlarms`); the page registers its list, so "Mark all read" in the bell updates it too. Marking read lowers the badge at once; when the server refuses, the change is rolled back, the count is re-read from the server and a toast says so (failures were swallowed and the badge stayed stale until the next poll). The store is emptied whenever the signed-in user changes or signs out, so the next user on the same tab never sees the previous one's alarms.
+> - **One toast for the whole app:** `AppToast` is mounted once in `App.vue` (views no longer mount their own), so messages show on every page, e.g. a failed mark-read from the bell on the Dashboard.
+> - **Overlapping confirm dialogs:** opening a confirm while another is waiting answers the first with "cancel" instead of leaving its caller hanging.
+> - **Double clicks:** creating a shift colour or a shift group (and Enter + click) sends one request; the same in-flight guard on user, user-group, newbie period, availability, office closure, on-call period, callback, handover submit/confirm and checklist template saves. Delegation management keeps an action busy until the list has reloaded, so a second "+ Add" can't resend the same person.
+> - **Procedures:** a procedure that can't be loaded no longer bounces silently to the list: 404 (including an archived one for non-admins) says "Procedure not found" with a link back; other failures show the reason and Retry. A reload after an edit that fails keeps the page and toasts. The procedure list drops the previous search's results when its latest load fails and offers Retry (an older, superseded request that fails late is ignored). The admin user list for the owner picker is optional (its failure no longer hides the procedure).
+> - **Storage and timers:** `localStorage` goes through `safeStorage.js` (private mode / blocked storage fall back to the default view); the procedures search debounce is cleared on unmount.
+> - **Delegation dates** are shown as calendar dates in every timezone (`formatCalendarDate`): west of UTC they showed the day before (`new Date('YYYY-MM-DD')` is UTC midnight). Same on My Shifts and the Users delegation picker, which showed a UTC-midnight time.
+> - **Schedule drag and drop:** dropping someone on a shift they're already on, including again while the first drop is still being saved, takes the new chip straight back off ("… is already on this shift."). A chip whose save is still in flight can't be dragged on or removed (it had no id yet, so a move left the first assignment behind).
+> - **Fill checklist:** the shift picker lists the outgoing employee's own shifts first; someone filing for themselves sees only theirs (plus one already chosen from a link). Admins still see every shift of the day.
+> - **Phone header:** below 640 px the nav links move into the account menu instead of a sideways-scrolling strip; its button then shows a hamburger and "Menu" and is named "Menu and account — <name>".
+> - **On-Call:** "Include archived groups" lists archived groups ("(archived)") so their past duties and callbacks can be corrected; an archived group shows a note and no "+ Add On-Call Period".
+
+- **Frontend lows from the 2026-10-09 audit (L21–L30) and follow-ups.** L22 (login always landed on the dashboard) was already fixed in #35: the guard and the session interceptor pass `redirect`, LoginView follows it (`e2e/auth/session-expiry.spec.js`: "an expired session sends the next action to login, and signing in returns there").
+
+### Backend
+| What | Details |
+|------|---------|
+| New | `ScheduleController::updateShiftsWorkMode` (`PUT /api/schedule/work-mode`, admin:schedule): validates ids, locks the shifts' groups FOR SHARE and refuses archived ones (as the single update), one `UPDATE` in a transaction |
+| Tests | New `BulkWorkModeTest` (switches only the given shifts, maintainer allowed / employee 403, archived group refuses all, validation incl. unknown ids, duplicates and the 500 cap, 300 ids in under 20 queries). Route matrix: the new route in the schedule group |
+
+### Frontend
+| What | Details |
+|------|---------|
+| New | `NotFoundView` (catch-all route), `alarmStore.js` (+ `resetAlarmsOnUserChange`) + `composables/useAlarms.js`, `safeStorage.js`, `formatCalendarDate` in `dates.js`. `AppToast` mounted once in `App.vue` |
+| Changed | Router guard `requiresScheduleManager`. `useConfirm` settles a superseded dialog. `AppLayout` (shared alarms, phone nav in the account menu), `AlarmsView` (shared alarms, toast), `ScheduleView` (generate/remote flow, bulk switch, group create guard, duplicate-drop and pending-chip guards), `ShiftSettingsView`, `ProcedureDetailView`, `ProceduresListView`, `ChecklistFillView`, `OnCallView`, `DelegationsView` / `DelegationsManageView` / `DelegationArchiveView`, `MyShiftsView`, `UsersView`, plus in-flight guards in `ChecklistBuilderView`, `MyAvailabilityView`, `OfficeAvailabilityView` |
+| Tests | Unit: `useConfirm` overlapping calls, `safeStorage`, `alarmStore`, `calendarDate` (TZ America/Los_Angeles and UTC+14). E2E new: `navigation/routes.spec.js` (guards, 404 signed in/out, phone header), `procedures/load-errors.spec.js`, `shift-settings/double-submit.spec.js` (colour, group), `schedule/generate-remote.spec.js` (2091-03), `schedule/drop-twice.spec.js` (2091-04), `checklists/fill-shift-picker.spec.js` (2091-05), `on-call/archived-groups.spec.js` (2025-03); `alarms.spec.js` badge (held PUT: N-1 while out, N after it fails), bell toast on the dashboard, bell "Mark all read" updating the page; `load-errors.spec.js` late-failing superseded search; `generate-remote.spec.js` failed reload. `session-expiry.spec.js` picks the logout error by its text (an empty toast alert region is now on every page). `procedures/archive.spec.js`: an employee's link to an archived procedure now shows "not found" instead of returning to the list |
+
+---
+
 ## 2026-10-10 — 🧱 Backend hardening: validated filters, race-safe writes, honest logs and counts
 
 > **Deploy notes**

@@ -77,13 +77,16 @@ test.describe('Procedure archive and restore', () => {
     const procedure = await adminProcedure(adminPage, title);
     await archiveViaApi(adminPage.context(), procedure.id);
 
-    // An employee's direct link answers 404: the page sends them back to the list.
+    // An employee's direct link answers 404: the page says "not found" (L29), with a link back.
     const denied = employeePage.waitForResponse(
       (res) => new URL(res.url()).pathname === `/api/procedures/${procedure.id}`,
     );
     await employeePage.goto(`/procedures/${procedure.id}`);
     expect((await denied).status()).toBe(404);
-    await expect(employeePage).toHaveURL(/\/procedures$/);
+    const notFound = employeePage.locator('main').getByRole('alert');
+    await expect(notFound).toContainText('Procedure not found');
+    await expect(notFound.getByRole('link', { name: 'Back to procedures' })).toBeVisible();
+    await expect(employeePage.getByRole('heading', { name: title })).toHaveCount(0);
 
     await adminPage.goto(`/procedures/${procedure.id}`);
     const banner = adminPage.locator('main').getByRole('status').filter({ hasText: 'Archived.' });

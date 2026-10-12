@@ -185,6 +185,7 @@ function rpmExpected(): array
             'PUT /api/schedule/shifts/{shift}/times',
             'PUT /api/schedule/shifts/{shift}/type',
             'PUT /api/schedule/shifts/{shift}/work-mode',
+            'PUT /api/schedule/work-mode',
             'PUT /api/shift-change-requests/{id}/acknowledge',
         ],
     ];

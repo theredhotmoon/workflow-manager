@@ -181,6 +181,7 @@ import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
+import { formatCalendarDate } from '../dates.js';
 import { fetchAllPages } from '../fetchAllPages.js';
 
 const archived = ref([]);
@@ -211,14 +212,8 @@ function getInitials(name) {
     .substring(0, 2);
 }
 
-function formatDate(d) {
-  if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+// Delegation days are calendar dates: the same day whatever the browser's timezone.
+const formatDate = formatCalendarDate;
 
 function formatDateTime(d) {
   if (!d) return '';

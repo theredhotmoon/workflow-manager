@@ -149,7 +149,6 @@
         </BaseModal>
       </Transition>
 
-      <AppToast />
     </main>
   </AppLayout>
 </template>
@@ -158,7 +157,6 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
@@ -282,6 +280,7 @@ async function fetchClosures() {
 }
 
 async function saveClosure() {
+  if (saving.value) return;
   saving.value = true;
   const trimmedTitle = form.value.title.trim();
   if (!trimmedTitle) {

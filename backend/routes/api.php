@@ -360,6 +360,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::put('/schedule/shifts/{shift}/type', [ScheduleController::class, 'updateShiftType']);
         Route::put('/schedule/shift-types', [ScheduleController::class, 'updateSlotShiftTypes']);
         Route::put('/schedule/shifts/{shift}/work-mode', [ScheduleController::class, 'updateShiftWorkMode']);
+        Route::put('/schedule/work-mode', [ScheduleController::class, 'updateShiftsWorkMode']);
         Route::get('/shift-change-requests', [ShiftChangeRequestController::class, 'index']);
         Route::put('/shift-change-requests/{id}/acknowledge', [ShiftChangeRequestController::class, 'acknowledge']);
         Route::post('/schedule/auto-assign/random', [ShiftAutoAssignController::class, 'random']);

@@ -5,8 +5,12 @@
     <component :is="Component" :key="route.meta.remountOn ? route.params[route.meta.remountOn] : undefined" />
   </router-view>
   <ConfirmModal />
+  <!-- The one toast for the whole app (useToast is a singleton): a message raised anywhere, such as
+       a failed mark-read from the header bell, shows on every page. Views don't mount their own. -->
+  <AppToast />
 </template>
 
 <script setup>
+import AppToast from './components/AppToast.vue';
 import ConfirmModal from './components/ConfirmModal.vue';
 </script>

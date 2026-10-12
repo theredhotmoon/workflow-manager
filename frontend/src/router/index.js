@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
-import { isAdmin } from '../roles.js';
+import { canManageSchedule, isAdmin } from '../roles.js';
 import { safeRedirect } from '../sessionExpiry.js';
 import AlarmsView from '../views/AlarmsView.vue';
 import ChecklistBuilderView from '../views/ChecklistBuilderView.vue';
@@ -14,6 +14,7 @@ import DelegationsView from '../views/DelegationsView.vue';
 import LoginView from '../views/LoginView.vue';
 import MyAvailabilityView from '../views/MyAvailabilityView.vue';
 import MyShiftsView from '../views/MyShiftsView.vue';
+import NotFoundView from '../views/NotFoundView.vue';
 import OfficeAvailabilityView from '../views/OfficeAvailabilityView.vue';
 import OnCallView from '../views/OnCallView.vue';
 import ProcedureDetailView from '../views/ProcedureDetailView.vue';
@@ -166,12 +167,20 @@ const routes = [
     path: '/settlement-periods',
     name: 'settlement-periods',
     component: SettlementPeriodsView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, requiresScheduleManager: true },
   },
   {
     path: '/on-call',
     name: 'on-call',
     component: OnCallView,
+    meta: { requiresAuth: true, requiresScheduleManager: true },
+  },
+  // Any other address: a "not found" page in the app's layout. Signed-out users go to login first
+  // (requiresAuth), and come back here after signing in.
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: NotFoundView,
     meta: { requiresAuth: true },
   },
 ];
@@ -187,6 +196,9 @@ router.beforeEach(async (to, _from, next) => {
       currentUser.value = await fetchCurrentUser();
 
       if (to.meta.requiresAdmin && !isAdmin(currentUser.value)) {
+        next({ name: 'dashboard' });
+      } else if (to.meta.requiresScheduleManager && !canManageSchedule(currentUser.value)) {
+        // Admins and schedule maintainers only (the API answers 403 to anyone else).
         next({ name: 'dashboard' });
       } else {
         next();

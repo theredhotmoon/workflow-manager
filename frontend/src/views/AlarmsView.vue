@@ -120,9 +120,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
+import { useAlarms } from '../composables/useAlarms.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 
 const loading = ref(true);
@@ -168,22 +169,19 @@ async function fetchAlarms() {
   }
 }
 
-async function handleAlarmClick(alarm) {
-  if (!alarm.read_at) {
-    try {
-      await api.put(`/api/alarms/${alarm.id}/read`);
-      alarm.read_at = new Date().toISOString();
-    } catch {}
-  }
+// Shared with the header bell: its badge follows what's marked read here (rolled back, with a
+// toast, when the server refuses).
+const alarmStore = useAlarms();
+// Registered with the store, so marking read from the header bell updates this list too.
+const unregisterList = alarmStore.registerList(alarms);
+onUnmounted(unregisterList);
+
+function handleAlarmClick(alarm) {
+  alarmStore.markRead(alarm);
 }
 
-async function markAllRead() {
-  try {
-    await api.put('/api/alarms/read-all');
-    alarms.value.forEach((a) => {
-      a.read_at = a.read_at || new Date().toISOString();
-    });
-  } catch {}
+function markAllRead() {
+  alarmStore.markAllRead();
 }
 
 function clearFilters() {

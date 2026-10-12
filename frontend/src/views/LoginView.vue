@@ -174,7 +174,6 @@
     </div>
 
     <!-- Toast lives outside the card so it renders above everything -->
-    <AppToast />
   </div>
 </template>
 
@@ -182,7 +181,6 @@
 import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../axios.js';
-import AppToast from '../components/AppToast.vue';
 import { useToast } from '../composables/useToast.js';
 import { safeRedirect } from '../sessionExpiry.js';
 

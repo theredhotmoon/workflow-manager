@@ -233,6 +233,12 @@
           <!-- Loading -->
           <div v-if="loading" class="text-center py-16"><p class="text-slate-400">Loading procedures...</p></div>
 
+          <!-- The list couldn't be loaded: no stale results from an earlier search, say so instead. -->
+          <div v-else-if="listError" role="alert" data-testid="procedures-load-error" class="text-center py-16">
+            <p class="text-red-300 text-sm mb-3">{{ listError }}</p>
+            <button @click="fetchProcedures" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">Retry</button>
+          </div>
+
           <!-- Tiles view -->
           <div v-else-if="procedures.length && viewMode === 'tiles'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <router-link v-for="proc in procedures" :key="proc.id" :to="`/procedures/${proc.id}`"
@@ -359,17 +365,15 @@
       :procedure-id="null"
       @close="showEditor = false"
       @saved="onProcedureCreated" />
-    <AppToast />
   </AppLayout>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import ProcedureEditorModal from '../components/procedure/ProcedureEditorModal.vue';
 import ProcedureTreeNode from '../components/procedure/ProcedureTreeNode.vue';
@@ -378,6 +382,7 @@ import { useToast } from '../composables/useToast.js';
 import { fetchAllPages } from '../fetchAllPages.js';
 import { isAdmin as userIsAdmin } from '../roles.js';
 import { currentUser as authUser } from '../router/index.js';
+import { readStorage, writeStorage } from '../safeStorage.js';
 
 const router = useRouter();
 
@@ -387,15 +392,16 @@ const currentPage = ref(1);
 const lastPage = ref(1);
 const perPage = ref(30);
 
-const viewMode = ref(localStorage.getItem('procedures_view_mode') || 'tiles');
+const viewMode = ref(readStorage('procedures_view_mode') || 'tiles');
 function setViewMode(mode) {
   viewMode.value = mode;
-  localStorage.setItem('procedures_view_mode', mode);
+  writeStorage('procedures_view_mode', mode);
 }
 const allTags = ref([]);
 const treeData = ref([]);
 const loading = ref(true);
 const filtering = ref(false); // true when a filter/sort change is in flight (results already shown)
+const listError = ref(''); // the latest list request failed
 const searchQuery = ref('');
 const selectedTags = ref([]);
 const selectedNodeId = ref(null);
@@ -589,7 +595,17 @@ async function fetchProcedures() {
     totalProcedures.value = res.data.total;
     currentPage.value = res.data.current_page;
     lastPage.value = res.data.last_page;
-  } catch {
+    listError.value = '';
+  } catch (err) {
+    // A superseded request that fails late must not wipe the newer results.
+    if (!procedureRequests.isCurrent(token)) return;
+    // The results on screen belong to the previous search/filters: drop them rather than pass
+    // them off as the answer to this one.
+    procedures.value = [];
+    totalProcedures.value = 0;
+    lastPage.value = 1;
+    const e = describeApiError(err, 'Could not load procedures, try again');
+    listError.value = e.silent ? '' : e.message;
   } finally {
     if (procedureRequests.isCurrent(token)) {
       loading.value = false;
@@ -638,4 +654,6 @@ watch(
 );
 
 onMounted(fetchInitial);
+// A search typed just before leaving must not fire a request for a page that's gone.
+onUnmounted(() => clearTimeout(fetchTimeout));
 </script>

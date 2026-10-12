@@ -38,3 +38,20 @@ test.describe('useConfirm', () => {
     await expect(resultPromise).resolves.toBe(false);
   });
 });
+
+test.describe('useConfirm — overlapping calls (L27)', () => {
+  test('a second confirm() resolves the first one with false instead of leaving it hanging', async () => {
+    const first = confirm({ title: 'First' });
+    const second = confirm({ title: 'Second' });
+
+    // The first caller gets its answer at once: it was never confirmed.
+    await expect(first).resolves.toBe(false);
+
+    const { isOpen, title, onConfirm } = useConfirmModal();
+    expect(isOpen.value).toBe(true);
+    expect(title.value).toBe('Second');
+
+    onConfirm();
+    await expect(second).resolves.toBe(true);
+  });
+});

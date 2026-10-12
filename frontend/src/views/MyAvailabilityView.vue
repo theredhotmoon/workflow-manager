@@ -146,7 +146,6 @@
         </BaseModal>
       </Transition>
 
-      <AppToast />
     </main>
   </AppLayout>
 </template>
@@ -155,7 +154,6 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import { confirm } from '../composables/useConfirm.js';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
@@ -265,6 +263,7 @@ async function fetchEntries() {
 }
 
 async function saveEntry() {
+  if (saving.value) return; // a second Enter/click while saving would add the entry twice
   saving.value = true;
   try {
     const payload = {

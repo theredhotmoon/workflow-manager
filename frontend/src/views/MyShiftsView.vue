@@ -100,7 +100,7 @@
                 <p class="text-sm font-semibold text-purple-300">{{ del.name }}</p>
                 <p class="text-xs text-slate-400">📍 {{ del.destination }}</p>
                 <p class="text-[10px] text-slate-500 mt-0.5">
-                  {{ formatDelegationTime(del.start_datetime) }} → {{ formatDelegationTime(del.end_datetime) }}
+                  {{ formatCalendarDate(del.start_datetime) }} → {{ formatCalendarDate(del.end_datetime) }}
                 </p>
               </div>
               <span class="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/20 shrink-0">Delegation</span>
@@ -222,7 +222,6 @@
       </BaseModal>
     </Transition>
 
-    <AppToast />
   </AppLayout>
 </template>
 
@@ -231,11 +230,10 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { describeApiError } from '../apiErrors.js';
 import api from '../axios.js';
 import AppLayout from '../components/AppLayout.vue';
-import AppToast from '../components/AppToast.vue';
 import BaseModal from '../components/BaseModal.vue';
 import { useLatestRequest } from '../composables/useLatestRequest.js';
 import { useToast } from '../composables/useToast';
-import { localDateStr } from '../dates.js';
+import { formatCalendarDate, localDateStr } from '../dates.js';
 
 const loading = ref(true);
 const shifts = ref({});
@@ -372,16 +370,6 @@ function getDayDelegations(dateStr) {
     const end = d.end_datetime.substring(0, 10);
     return dateStr >= start && dateStr <= end;
   });
-}
-
-function formatDelegationTime(dt) {
-  if (!dt) return '';
-  const d = new Date(dt);
-  return (
-    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-    ' ' +
-    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  );
 }
 
 watch(monthKey, fetchMyShifts);

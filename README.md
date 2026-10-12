@@ -63,6 +63,10 @@ Copy the printed `base64:...` string and paste it as `APP_KEY` in your `.env`.
 | `LOGIN_RATE_LIMIT`          | Failed logins allowed per minute for one email from one IP before `429` (default `5`) |
 | `TRUSTED_PROXIES`           | Proxies whose `X-Forwarded-For` is believed (default: private ranges, i.e. the compose network) |
 | `SESSION_SECURE_COOKIE`     | `true` to send the session cookie over HTTPS only. Set it in production (see below) |
+| `BUSINESS_TIMEZONE`         | The organisation's timezone, what "today" means for business rules (default `Europe/Warsaw`) |
+| `RUN_MIGRATIONS`            | `0` to skip migrating on container start (default `1`; see [Migrations](#migrations)) |
+| `BACKUP_BEFORE_MIGRATE`     | `1` to `pg_dump` the database before pending migrations run (default `0`) |
+| `BACKEND_PORT`, `SESSION_DOMAIN` | Hybrid dev only (`docker-compose.dev.yml`): backend host port (default `8090`) and cookie domain (default `localhost`) |
 
 ### HTTPS in production
 
@@ -90,13 +94,13 @@ real_ip_header    X-Forwarded-For;
 real_ip_recursive on;
 ```
 
+In the same file, also forward the proxy's scheme so Laravel knows the request was HTTPS:
+`proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;` instead of `$scheme`. Do neither
+without a proxy in front: a client could then forge both headers.
+
 If the TLS proxy runs on the same host, it reaches Nginx from the Docker bridge gateway, so also
 bind the frontend port to `127.0.0.1` in `docker-compose.yml`. Otherwise anything else that arrives
 from the gateway (e.g. IPv6 clients) could set its own `X-Forwarded-For` again.
-
-and, in the same file, forward the proxy's scheme so Laravel knows the request was HTTPS:
-`proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;` instead of `$scheme`. Do neither
-without a proxy in front: a client could then forge both headers.
 
 ### Content Security Policy and procedure HTML
 
@@ -268,7 +272,7 @@ npx playwright install chromium
 **Commands** (run from `frontend/`)
 
 ```bash
-npm run lint       # Biome (lint + format + import order), errors only — CI gate
+npm run lint       # Biome (lint + format + import order), errors only — CI gate (frontend/README.md)
 npm run test       # unit tests (composables), no backend needed
 npm run test:e2e   # end-to-end tests; starts `npm run dev:hybrid` on :5173 itself
 npm run test:all   # unit, then e2e
@@ -321,7 +325,7 @@ locally, but you still get instant frontend HMR.
 
 This brings up `db` and `backend` (using `docker-compose.dev.yml`, which exposes
 the backend on `http://localhost:8090` — override with `BACKEND_PORT` in `.env`
-if that's taken too — and relaxes a few env vars for local use), waits for the
+if that port is taken — and relaxes a few env vars for local use), waits for the
 backend to respond, then runs `npm run dev:hybrid` in `frontend/`.
 
 Open **`http://localhost:5173`**. The Vite dev server (`frontend/vite.config.hybrid.js`)
@@ -354,7 +358,7 @@ In local dev mode the Laravel backend and the Vite dev server run as separate pr
 
 - **PHP** ≥ 8.4 with extensions: `pdo_pgsql`, `zip`, `opcache`
 - **Composer** ≥ 2
-- **Node.js** ≥ 20 and **npm**
+- **Node.js** 22 (LTS) and **npm**
 - **PostgreSQL** ≥ 14 running locally
 
 ---
@@ -374,7 +378,8 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Open `backend/.env` and configure the database connection to point at your local Postgres instance:
+`backend/.env.example` is set up for PostgreSQL and lists every variable the app reads. Point the
+database connection at your local Postgres instance:
 
 ```dotenv
 DB_CONNECTION=pgsql
@@ -421,6 +426,7 @@ Vite will start and Laravel will automatically inject the HMR script. Open **`ht
 ```
 workflow-manager/
 ├── docker-compose.yml        # Orchestrates db, backend, frontend
+├── docker-compose.dev.yml    # Hybrid dev / e2e override (backend on 127.0.0.1:8090)
 ├── .env.example              # Root env template for Docker
 ├── backend/                  # Laravel 13 API (PHP 8.4)
 │   ├── Dockerfile

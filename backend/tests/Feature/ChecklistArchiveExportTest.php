@@ -2,6 +2,8 @@
 
 use App\Models\ChecklistTemplate;
 use App\Models\User;
+use App\Support\BusinessDate;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 // M23: the archive listed (and exported) at most 1000 handovers. The list is now paginated on the
@@ -184,18 +186,78 @@ it('starts the CSV with a UTF-8 BOM so Excel reads Polish names right', function
         ->and(caeCsv($response)[1][2])->toBe('Kuba Urbańczyk');
 });
 
-it('exports newest filed first (by id) across chunks, whatever the list sort', function () {
+/**
+ * Inserts $count handovers with the same date and filing time (so only the id orders them) and a
+ * submitted_at one minute apart: its CSV cell tells the rows apart. Templates and incoming users
+ * cycle through the given lists (null = none).
+ */
+function caeInsertTied(int $count, array $templates, User $outgoing, array $incoming = [null], string $date = '2026-10-01', int $firstMinute = 0): void
+{
+    $filed = now()->setDate(2026, 10, 1)->setTime(12, 0);
+    $rows = [];
+    for ($i = 0; $i < $count; $i++) {
+        $rows[] = [
+            'checklist_template_id' => $templates[$i % count($templates)]->id,
+            'date' => $date,
+            'outgoing_user_id' => $outgoing->id,
+            'incoming_user_id' => $incoming[$i % count($incoming)]?->id,
+            'submitted_by_user_id' => $outgoing->id,
+            'status' => 'completed',
+            'submitted_at' => $filed->copy()->addMinutes($firstMinute + $i),
+            'created_at' => $filed,
+            'updated_at' => $filed,
+        ];
+    }
+    foreach (array_chunk($rows, 500) as $chunk) {
+        DB::table('checklist_submissions')->insert($chunk);
+    }
+}
+
+/** The list's order for $query, read page by page (per_page 100), as Submitted At cells. */
+function caeListOrder($test, User $admin, array $query): array
+{
+    $cells = [];
+    for ($page = 1; ; $page++) {
+        $res = $test->actingAs($admin)->getJson('/api/checklist-submissions?'.http_build_query($query + ['per_page' => 100, 'page' => $page]))->json();
+        foreach ($res['data'] as $row) {
+            $cells[] = Carbon::parse($row['submitted_at'])->setTimezone(BusinessDate::timezone())->format('Y-m-d H:i');
+        }
+        if ($page >= $res['last_page']) {
+            return $cells;
+        }
+    }
+}
+
+it('exports in the list order, ties broken by id, without dropping or repeating rows across chunks', function () {
     $admin = User::factory()->create(['role' => 'admin']);
     $template = caeTemplate();
-    // Filed in this order; their handover dates deliberately disagree with it.
-    foreach (['2026-10-01', '2026-10-09', '2026-10-05'] as $date) {
-        caeInsert(1, $template, $admin, null, ['date' => $date]);
+    // Filed first, but with handover dates on both sides of the rest: the list (newest handover
+    // first) puts them at the top and the bottom, not in filing order.
+    caeInsertTied(1, [$template], $admin, [null], '2026-10-09', 5000);
+    caeInsertTied(1, [$template], $admin, [null], '2026-09-01', 5001);
+    // 1203 rows tied on date and filing time: the 500-row chunks end inside the tie.
+    caeInsertTied(1203, [$template], $admin);
+
+    $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export')), 1);
+    $submitted = array_column($rows, 6);
+
+    expect($rows)->toHaveCount(1205)
+        ->and(array_unique($submitted))->toHaveCount(1205)
+        ->and($submitted)->toBe(caeListOrder($this, $admin, []))
+        ->and([$rows[0][0], $rows[1204][0]])->toBe(['2026-10-09', '2026-09-01'])
+        // Within the tie, newest id first: the last inserted (latest submitted_at) leads.
+        ->and($submitted[1])->toBeGreaterThan($submitted[1203]);
+});
+
+it('exports in the order of the list sort the screen sends, nulls included', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $templates = [caeTemplate('Bravo'), caeTemplate('Alpha'), caeTemplate('Charlie')];
+    $incoming = [null, User::factory()->create(['name' => 'Ann']), User::factory()->create(['name' => 'Zoe'])];
+    caeInsertTied(1100, $templates, $admin, $incoming);
+
+    foreach ([['sort' => 'template', 'direction' => 'asc'], ['sort' => 'incoming', 'direction' => 'desc'],
+        ['sort' => 'incoming', 'direction' => 'asc'], ['sort' => 'submitted_at', 'direction' => 'asc']] as $query) {
+        $rows = array_slice(caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?'.http_build_query($query))), 1);
+        expect(array_column($rows, 6))->toBe(caeListOrder($this, $admin, $query), json_encode($query));
     }
-    // Enough later rows for several 500-row chunks.
-    caeInsert(1200, $template, $admin, null, ['date' => '2026-01-01']);
-
-    $rows = caeCsv($this->actingAs($admin)->get('/api/checklist-submissions/export?sort=template&direction=asc'));
-
-    expect(count($rows) - 1)->toBe(1203)
-        ->and(array_column(array_slice($rows, -3), 0))->toBe(['2026-10-05', '2026-10-09', '2026-10-01']);
 });

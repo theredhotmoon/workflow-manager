@@ -1,7 +1,9 @@
 name: Frontend Tests
 
 on:
+  # Pushes to main only: a PR branch is already tested by its pull_request run.
   push:
+    branches: [main]
     paths:
       - 'frontend/**'
       - 'backend/**'
@@ -19,11 +21,17 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same PR cancels its running checks; runs on main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint-build:
     # Fast gate before the e2e job spins up Docker: Biome (errors only, the checks the pre-commit
     # hook runs) and a production build.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     defaults:
       run:
@@ -51,6 +59,7 @@ jobs:
   test:
     needs: lint-build
     runs-on: ubuntu-latest
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
@@ -67,15 +76,19 @@ jobs:
         # `npm run dev:hybrid`'s proxy (the e2e webServer) targets.
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db backend
 
-      - name: Wait for backend healthcheck
+      - name: Wait until the backend is ready
+        # /api/health answers 200 only once PHP-FPM is up and the database accepts a query (503
+        # before that); the container's own healthcheck uses it too. Migrations run on start, so
+        # this can take a while on a cold runner.
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8090/healthz > /dev/null; then
-              echo "backend is up"; exit 0
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8090/api/health > /dev/null; then
+              echo "backend is ready"; exit 0
             fi
             sleep 2
           done
           echo "backend did not become ready in time"
+          curl -s http://localhost:8090/api/health || true
           docker compose logs backend
           docker compose logs db
           exit 1
@@ -91,16 +104,40 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Get Playwright version
+        id: playwright
+        working-directory: frontend
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        # The browser came from the cache; the OS packages it needs are not cached.
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: frontend
+        run: npx playwright install-deps chromium
 
       - name: Run unit tests
         working-directory: frontend
         run: npm run test
 
       - name: Run e2e tests
+        # Retries a failed test once (playwright.config.js); tests that passed only on retry are
+        # listed in the job summary. E2E_ALLOW_RESET: the suite resets this throwaway CI database
+        # (npm run test:e2e sets it as well; stated here so the consent is visible in CI).
         working-directory: frontend
+        env:
+          E2E_ALLOW_RESET: '1'
         run: npm run test:e2e
 
       - name: Collect container logs

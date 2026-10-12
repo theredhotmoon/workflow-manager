@@ -4,6 +4,36 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-12 — ✨ Change Requests screen for managers, and handing over stuck handovers
+
+> **Deploy notes**
+> - **One migration** (`2026_10_12_100000_add_acknowledged_by_to_shift_change_requests_table`): adds nullable `acknowledged_by_id` (FK to users, null on delete) and `acknowledged_at` to `shift_change_requests`, plus an index on `(status, created_at)`. No backfill: existing rows stay valid, and requests acknowledged before this (or settled by removing their work) simply have no acknowledger on record. Rebuild the backend image (migrations run on start unless `RUN_MIGRATIONS=0`); rebuild the frontend image for the new screen.
+> - **API changes:** `GET /api/shift-change-requests` (schedule managers) is **paginated** (`{ data, current_page, last_page, total, … }`, `per_page` 1..100, default 20) and `month` is now **optional**; new filters `status` (`pending` — the default —, `acknowledged`, `all`) and `shift_group_id`; order: pending first, then newest filed. New `GET /api/shift-change-requests/pending-count` (`{ count }`, same `admin:schedule` group). `PUT /api/shift-change-requests/{id}/acknowledge` is idempotent, answers with the request as the list shows it (incl. `acknowledged_by`), and only takes a numeric id (else 404).
+> - **New alarm types:** `SHIFT_CHANGE_REQUEST_ACKNOWLEDGED`.
+
+- **Managers get a screen for the change requests employees file from My Shifts** (until now they only saw them as alarms). Decided with the user: list + acknowledge, a link to the shift, a nav badge; no employee history view.
+
+### Added
+| What | Details |
+|------|---------|
+| Change Requests screen (`/change-requests`) | Admins and schedule maintainers (`requiresScheduleManager`; the API answers 403 to employees). Table of employee, date and shift time, group, reason, filed at, status (stacked cards below `md`, no sideways scroll on a phone). Filters: status (Pending by default / Acknowledged / All), group, month. Pages of 20. Loading, empty, error-with-Retry states |
+| Acknowledge | Button per pending row, disabled while its request is in flight (a second click does nothing). No confirm dialog: acknowledging only records that a manager has seen the request and tells the employee; it changes no schedule. The row updates in place ("Acknowledged by …" with the time) and stays visible under the Pending filter until the next load. The server records who and when, once: a second acknowledge (a colleague, a double click) keeps the first acknowledger and time and notifies nobody again; the row is locked meanwhile |
+| Link to the shift | "View in schedule" opens the Schedule on the request's month, on the shift's group tab (new `?group=<id>`; an archived group has no tab, so the default one opens), scrolled to the day with the requester highlighted (existing `scroll_date` / `highlight_user`) |
+| Removed work | A request whose assignment or shift has been removed since (#38) shows "Assignment removed" / "Shift removed", keeps the date and slot it was about, and reads "Settled" (removing the work settles it). A group filter can't match a request whose shift is gone (its group went with it) |
+| Archived groups | **Flagged, not dropped**: the group comes with its `archived_at` and the row shows an "Archived" chip. Archiving settles a group's pending requests, so in practice they appear among the acknowledged ones; dropping them would hide history |
+| Nav entry + badge | "Change Requests" in the top nav (and the phone menu) for schedule managers only, with a red count of pending requests. Polled with the alarm bell (every 60 s), re-read after each acknowledge; one shared store (`pendingChangeRequestsStore.js`, emptied when the signed-in user changes) |
+| Notifications | Filing already alerted every active admin and schedule maintainer (`EMPLOYEE_CANNOT_ATTEND_SHIFT`); kept as is (one alarm each, not duplicated). New: the requester is told when their request is acknowledged (`SHIFT_CHANGE_REQUEST_ACKNOWLEDGED`, link to My Shifts) — not when they acknowledge their own request as a manager, and not once deactivated |
+| Privacy | The list shows names only (no emails, for admins too: the screen doesn't need them) and the reason, which #39 already allows schedule managers to see |
+
+### Tests
+| What | Details |
+|------|---------|
+| Pest | `ShiftChangeRequestScreenTest` (status default/filters, group and month filters, order with same-second tie, paging and per_page clamp, no email for a maintainer, archived-group flag, pending-count, employee 403 on list/count/acknowledge, who/when recorded + requester alarm, idempotent second acknowledge, settled request gets no acknowledger, no self-notification, filing alerts every active manager once, 404 for unknown/non-numeric id, migration down/up over existing rows); `ShiftChangeRequestTest` updated for the paged list; `RoutePermissionMatrixTest` gains the pending-count route |
+| Unit | `changeRequests.test.js` (shift label, removed states, group, schedule link incl. archived group, status text), `pendingChangeRequestsStore.test.js` (stale answer dropped, reset drops in-flight, failure keeps the count, user change empties it) |
+| Playwright | `change-requests/change-requests.spec.js`: a maintainer acknowledges, the badge drops by one, the employee gets the alarm, the link opens the right month and group tab; a request whose shift was removed by a day-count reduction shows "Shift removed" / "Settled"; an employee has no nav entry and `/change-requests` sends them to the dashboard |
+
+---
+
 ## 2026-10-12 — 🔧 Post-audit follow-ups: one rest question, delegation date clamp and paging, request body limits
 
 > **Deploy notes**

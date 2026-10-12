@@ -172,6 +172,7 @@ function rpmExpected(): array
             'GET /api/on-call-assignments',
             'GET /api/settlement-periods',
             'GET /api/shift-change-requests',
+            'GET /api/shift-change-requests/pending-count',
             'GET /api/shift-groups',
             'POST /api/on-call-assignments',
             'POST /api/on-call-assignments/{onCallAssignment}/callbacks',

@@ -11,6 +11,7 @@ class ShiftChangeRequest extends Model
     protected $casts = [
         'shift_date' => 'date:Y-m-d',
         'shift_number' => 'integer',
+        'acknowledged_at' => 'datetime',
     ];
 
     /**
@@ -74,5 +75,11 @@ class ShiftChangeRequest extends Model
     public function shift()
     {
         return $this->belongsTo(Shift::class);
+    }
+
+    /** The manager who acknowledged it (null: settled by removing its work, or acknowledged before this was recorded). */
+    public function acknowledgedBy()
+    {
+        return $this->belongsTo(User::class, 'acknowledged_by_id');
     }
 }

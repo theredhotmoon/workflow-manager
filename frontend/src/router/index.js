@@ -4,6 +4,7 @@ import { fetchCurrentUser, isLoggedOut } from '../fetchCurrentUser.js';
 import { canManageSchedule, isAdmin } from '../roles.js';
 import { safeRedirect } from '../sessionExpiry.js';
 import AlarmsView from '../views/AlarmsView.vue';
+import ChangeRequestsView from '../views/ChangeRequestsView.vue';
 import ChecklistBuilderView from '../views/ChecklistBuilderView.vue';
 import ChecklistFillView from '../views/ChecklistFillView.vue';
 import ChecklistHistoryView from '../views/ChecklistHistoryView.vue';
@@ -167,6 +168,12 @@ const routes = [
     path: '/settlement-periods',
     name: 'settlement-periods',
     component: SettlementPeriodsView,
+    meta: { requiresAuth: true, requiresScheduleManager: true },
+  },
+  {
+    path: '/change-requests',
+    name: 'change-requests',
+    component: ChangeRequestsView,
     meta: { requiresAuth: true, requiresScheduleManager: true },
   },
   {

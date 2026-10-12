@@ -370,7 +370,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::put('/schedule/shifts/{shift}/work-mode', [ScheduleController::class, 'updateShiftWorkMode']);
         Route::put('/schedule/work-mode', [ScheduleController::class, 'updateShiftsWorkMode']);
         Route::get('/shift-change-requests', [ShiftChangeRequestController::class, 'index']);
-        Route::put('/shift-change-requests/{id}/acknowledge', [ShiftChangeRequestController::class, 'acknowledge']);
+        Route::get('/shift-change-requests/pending-count', [ShiftChangeRequestController::class, 'pendingCount']);
+        Route::put('/shift-change-requests/{id}/acknowledge', [ShiftChangeRequestController::class, 'acknowledge'])->whereNumber('id');
         Route::post('/schedule/auto-assign/random', [ShiftAutoAssignController::class, 'random']);
         Route::post('/schedule/auto-assign/rotating', [ShiftAutoAssignController::class, 'rotating']);
         Route::post('/schedule/auto-assign/polish-law', [ShiftAutoAssignController::class, 'polishLaw']);

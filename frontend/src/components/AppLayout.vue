@@ -43,6 +43,11 @@
                     : 'text-slate-300 hover:text-white hover:bg-white/10'
                 ]">
                 {{ link.label }}
+                <span v-if="link.badge && badgeCount(link) > 0" data-testid="nav-badge"
+                  class="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-red-500 rounded-full leading-none align-middle">
+                  <span aria-hidden="true">{{ badgeText(link) }}</span>
+                  <span class="sr-only">({{ badgeCount(link) }} pending)</span>
+                </span>
               </router-link>
             </div>
 
@@ -156,6 +161,11 @@
                           ? 'text-indigo-300 bg-indigo-500/10'
                           : 'text-slate-300 hover:text-white hover:bg-white/5']">
                       {{ link.label }}
+                      <span v-if="link.badge && badgeCount(link) > 0"
+                        class="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold text-white bg-red-500 rounded-full leading-none align-middle">
+                        <span aria-hidden="true">{{ badgeText(link) }}</span>
+                        <span class="sr-only">({{ badgeCount(link) }} pending)</span>
+                      </span>
                     </router-link>
                   </nav>
 
@@ -318,6 +328,7 @@ import { useRouter } from 'vue-router';
 import api from '../axios.js';
 import { useAlarms } from '../composables/useAlarms.js';
 import { modalLayerCount, useFocusTrap } from '../composables/useFocusTrap.js';
+import { usePendingChangeRequests } from '../composables/usePendingChangeRequests.js';
 import { isLoggedOut } from '../fetchCurrentUser.js';
 import { logoutFailureMessage, logoutWithRetry } from '../logout.js';
 import { canManageSchedule as userCanManageSchedule, isAdmin as userIsAdmin } from '../roles.js';
@@ -390,6 +401,34 @@ const {
 } = useAlarms();
 let alarmPollTimer = null;
 
+// Pending change requests (schedule managers' nav badge): polled with the bell, and re-read by the
+// Change Requests screen after an acknowledge (the store is shared).
+const { count: pendingChangeRequests, refresh: refreshPendingChangeRequests } =
+  usePendingChangeRequests();
+
+async function fetchPendingChangeRequests() {
+  if (!canManageSchedule.value) return;
+  try {
+    await refreshPendingChangeRequests();
+  } catch {
+    // The badge keeps its last count; the next poll tries again.
+  }
+}
+
+function badgeCount(link) {
+  return link.badge === 'changeRequests' ? pendingChangeRequests.value : 0;
+}
+
+function badgeText(link) {
+  const n = badgeCount(link);
+  return n > 99 ? '99+' : String(n);
+}
+
+function pollHeader() {
+  fetchAlarms();
+  fetchPendingChangeRequests();
+}
+
 function stopAlarmPoll() {
   if (alarmPollTimer) clearInterval(alarmPollTimer);
   alarmPollTimer = null;
@@ -426,6 +465,7 @@ function getAlarmIcon(type) {
     PROCEDURE_NEW_QUESTION_ADDED: '❓',
     PROCEDURE_QUESTION_REPLIED: '💬',
     PROCEDURE_ISSUE_SORTED: '✅',
+    SHIFT_CHANGE_REQUEST_ACKNOWLEDGED: '👍',
   };
   return icons[type] || '🔔';
 }
@@ -437,6 +477,7 @@ function getAlarmStyle(type) {
     PROCEDURE_NEW_QUESTION_ADDED: 'bg-blue-500/20 text-blue-300',
     PROCEDURE_QUESTION_REPLIED: 'bg-emerald-500/20 text-emerald-300',
     PROCEDURE_ISSUE_SORTED: 'bg-green-500/20 text-green-300',
+    SHIFT_CHANGE_REQUEST_ACKNOWLEDGED: 'bg-sky-500/20 text-sky-300',
   };
   return styles[type] || 'bg-slate-500/20 text-slate-300';
 }
@@ -473,6 +514,12 @@ const topLinks = computed(() => {
     { to: '/procedures', label: 'Procedures' },
     { to: '/procedures-to-learn', label: 'To Learn' },
     { to: '/delegations', label: 'Delegations' },
+    {
+      to: '/change-requests',
+      label: 'Change Requests',
+      scheduleOnly: true,
+      badge: 'changeRequests',
+    },
     { to: '/settlement-periods', label: 'Settlement Periods', scheduleOnly: true },
     { to: '/on-call', label: 'On-Call', scheduleOnly: true },
   ];
@@ -582,8 +629,8 @@ async function changePassword() {
 }
 
 onMounted(() => {
-  fetchAlarms();
-  alarmPollTimer = setInterval(fetchAlarms, 60000);
+  pollHeader();
+  alarmPollTimer = setInterval(pollHeader, 60000);
   document.addEventListener('pointerdown', onDocumentPointerDown);
   document.addEventListener('keydown', onDocumentKeydown);
   phoneQuery?.addEventListener?.('change', onPhoneQueryChange);

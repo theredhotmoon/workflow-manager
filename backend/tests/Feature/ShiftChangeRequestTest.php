@@ -109,8 +109,8 @@ it('lists the month\'s requests to schedule managers only', function () {
     scrRequest(scrAssign($this->employee, '2026-11-02'));
 
     $this->actingAs($this->employee)->getJson('/api/shift-change-requests?month=2026-10')->assertForbidden();
-    $this->actingAs($maintainer)->getJson('/api/shift-change-requests')->assertStatus(422);
-    $ids = collect($this->actingAs($maintainer)->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->json())->pluck('id')->all();
+    $this->actingAs($maintainer)->getJson('/api/shift-change-requests?month=2026-13')->assertStatus(422);
+    $ids = collect($this->actingAs($maintainer)->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->json('data'))->pluck('id')->all();
 
     expect($ids)->toBe([$october->id]);
 });
@@ -169,10 +169,10 @@ it('keeps the change requests, settled, when the assignment is removed and the s
     expect($mine->json('0.assignment_removed'))->toBeTrue()
         ->and($mine->json('0.shift.date'))->toBe('2026-10-20')
         ->and($mine->json('0.shift_date'))->toBe('2026-10-20');
-    $index = $this->actingAs($maintainer)->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->assertJsonCount(2);
-    expect($index->json('0.assignment_removed'))->toBeTrue()
-        ->and($index->json('0.assignment'))->toBeNull()
-        ->and($index->json('0.user.id'))->toBe($this->employee->id);
+    $index = $this->actingAs($maintainer)->getJson('/api/shift-change-requests?month=2026-10&status=all')->assertOk()->assertJsonCount(2, 'data');
+    expect($index->json('data.0.assignment_removed'))->toBeTrue()
+        ->and($index->json('data.0.assignment'))->toBeNull()
+        ->and($index->json('data.0.user.id'))->toBe($this->employee->id);
     // The replacement doesn't inherit the old request.
     $this->actingAs($replacement)->getJson('/api/my-shifts?month=2026-10')
         ->assertOk()
@@ -192,10 +192,10 @@ it('keeps the request with its date and slot when the shift itself is deleted', 
         ->and($fresh->shift_id)->toBeNull()
         ->and($fresh->shift_assignment_id)->toBeNull();
     $index = $this->actingAs(User::factory()->create(['role' => 'admin']))
-        ->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->assertJsonCount(1);
-    expect($index->json('0.shift_removed'))->toBeTrue()
-        ->and($index->json('0.shift_date'))->toBe('2026-10-20')
-        ->and($index->json('0.shift_number'))->toBe(2);
+        ->getJson('/api/shift-change-requests?month=2026-10')->assertOk()->assertJsonCount(1, 'data');
+    expect($index->json('data.0.shift_removed'))->toBeTrue()
+        ->and($index->json('data.0.shift_date'))->toBe('2026-10-20')
+        ->and($index->json('data.0.shift_number'))->toBe(2);
 });
 
 it('settles and keeps the requests of slots removed by a day-count reduction', function () {

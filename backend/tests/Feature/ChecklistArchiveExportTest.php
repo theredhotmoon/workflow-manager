@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Support\BusinessDate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 // M23: the archive listed (and exported) at most 1000 handovers. The list is now paginated on the
 // server and the CSV comes from a streamed endpoint that exports every matching row, with the same
@@ -52,6 +53,8 @@ function caeCsv($response): array
         $rows[] = $row;
     }
     fclose($handle);
+    // The progress guard ends a stopped export with this row: no test expects it unless it says so.
+    expect(end($rows)[0] ?? '')->not->toStartWith('Export incomplete');
 
     return $rows;
 }
@@ -297,4 +300,30 @@ it('exports an ascending sort whose nulls (last) run across chunk boundaries', f
         ->and(array_unique($submitted))->toHaveCount(1100)
         ->and(array_values(array_unique(array_column(array_slice($rows, 330), 3))))->toBe([''])
         ->and($submitted)->toBe(caeListOrder($this, $admin, $query));
+});
+
+it('ends a stopped export with a row saying it is incomplete, and logs why', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    $template = caeTemplate();
+    caeInsert(500, $template, $admin);
+    // 600 older handovers filed while the first chunk is written: more rows than matched at the
+    // start plus a chunk, which the guard takes for an export that doesn't end.
+    $filed = false;
+    DB::listen(function ($query) use (&$filed, $template, $admin) {
+        if (! $filed && str_contains($query->sql, 'limit 500')) {
+            $filed = true;
+            caeInsert(600, $template, $admin, null, ['date' => '2020-01-01']);
+        }
+    });
+    Log::spy();
+
+    $content = $this->actingAs($admin)->get('/api/checklist-submissions/export')->assertOk()->streamedContent();
+
+    $lines = array_values(array_filter(explode(PHP_EOL, $content), fn ($line) => $line !== ''));
+    // Two full chunks (1000 rows) went out; the third would pass 500 matched + a chunk.
+    expect(end($lines))->toBe('"Export incomplete: stopped after 1000 of 500 rows. Please try again."')
+        ->and(count($lines))->toBe(1 + 1000 + 1)
+        ->and($content)->not->toContain('Server Error');
+    Log::shouldHaveReceived('error')->once()
+        ->withArgs(fn ($message, $context) => str_contains($message, 'export stopped') && $context['rows_matching'] === 500);
 });

@@ -19,7 +19,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
 
 class ChecklistSubmissionController extends Controller
 {
@@ -80,7 +79,8 @@ class ChecklistSubmissionController extends Controller
             // Progress guard, in constant memory: each chunk must move the cursor, bring none of the
             // previous chunk's rows, and the export can't write more rows than matched when it
             // started (plus a chunk, for rows filed meanwhile). A keyset that doesn't advance (a bug
-            // in whereAfter) would otherwise loop forever; it is logged and the download stops.
+            // in whereAfter) would otherwise loop forever; it is logged and the file ends with a row
+            // saying it is incomplete.
             $total = $query->clone()->reorder()->count();
             $written = 0;
             $previousIds = [];
@@ -94,11 +94,16 @@ class ChecklistSubmissionController extends Controller
                 $next = $tail === null ? null : array_map(fn ($i) => $tail->getAttributes()["keyset_{$i}"], array_keys($order));
                 $repeated = $chunk->first(fn ($submission) => isset($previousIds[$submission->id]));
                 if ($tail !== null && ($next === $last || $repeated !== null || $written + $chunk->count() > $total + self::EXPORT_CHUNK)) {
-                    Log::error('Checklist archive export stopped: the keyset did not advance.', [
+                    Log::error('Checklist archive export stopped: the keyset did not advance or brought more rows than matched.', [
                         'order' => $order, 'cursor' => $last, 'next' => $next, 'repeated_id' => $repeated?->id,
                         'rows_written' => $written, 'rows_matching' => $total,
                     ]);
-                    throw new RuntimeException('Checklist archive export stopped: the keyset did not advance.');
+                    // The 200 and part of the file are already sent, so no exception (its error page
+                    // would be appended to the file): the file says it is incomplete and ends here.
+                    self::csvRow($out, ["Export incomplete: stopped after {$written} of {$total} rows. Please try again."]);
+                    fclose($out);
+
+                    return;
                 }
                 $written += $chunk->count();
                 $previousIds = $chunk->pluck('id')->flip()->all();

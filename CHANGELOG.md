@@ -4,6 +4,10 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-13 — 📝 TODO list of open items
+
+- **New `TODO.md`** lists what is still open after the audit and its follow-ups. It covers deploy and operations steps for the owner, Schedule screen clean-ups and the page-load race, the checklist export index, and the decision to keep the settlement anchor as it is.
+
 ## 2026-10-12 — 🧩 Schedule screen split into composables and components (internal refactor, no behaviour change)
 
 > **Deploy notes**

@@ -2,6 +2,7 @@
 .claude/worktrees/
 frontend/test-results/
 frontend/playwright-report/
+.playwright-mcp/
 
 # Local secrets (APP_KEY, DB_PASSWORD): never commit. Template: .env.example
 .env

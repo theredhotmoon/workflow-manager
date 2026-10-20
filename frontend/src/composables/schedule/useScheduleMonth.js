@@ -153,7 +153,9 @@ export function useScheduleMonth({
 
   function getClosureForDate(dateStr) {
     if (!dateStr) return null;
-    return monthClosures.value.find((c) => (c.date?.substring?.(0, 10) || c.date) === dateStr);
+    return (
+      monthClosures.value.find((c) => (c.date?.substring?.(0, 10) || c.date) === dateStr) ?? null
+    );
   }
 
   watch(showClosures, (val) => {

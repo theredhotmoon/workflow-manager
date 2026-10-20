@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from 'vitest';
 import { logoutFailureMessage, logoutWithRetry } from './logout.js';
 
 function fakeApi(postResults) {

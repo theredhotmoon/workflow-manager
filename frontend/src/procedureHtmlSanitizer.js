@@ -1,7 +1,8 @@
 // Display-side cleaning of procedure HTML before it is rendered with v-html. The backend already
 // sanitises every write (ProcedureHtmlSanitizer, same allowlist); this is defence in depth for rows
-// stored before that, or anything that slips past it. No imports, so the unit test can load it into
-// a browser page next to DOMPurify's browser build.
+// stored before that, or anything that slips past it. DOMPurify comes in as a parameter, so each
+// caller gets its own hooked instance (procedureHtml.js builds the app's; the unit test builds one
+// under jsdom).
 
 // What the procedure editor (TipTap StarterKit + Link + Image + Underline) produces.
 const ALLOWED_TAGS = [

@@ -14,7 +14,10 @@ Open items after the 2026-10-09 audit (#33–#42) and its follow-ups (#43–#45)
 - [ ] Dialog and side-panel components edit their form objects through props (`timeForm`, `genConfig`, …). Move them to `defineModel` or emits.
 - [ ] `useGenerateMonth` also holds Delete Schedule, and `useEmployeeSelection` holds the shift-colour cell style. Rename or split them.
 - [ ] Router ↔ ScheduleView import cycle, now also through `useShiftGroups` and `ScheduleGroupTabs`. Move `currentUser` into its own module.
-- [ ] Add unit tests for `useAssignmentFlow` (the confirm chain) and an e2e test for "Request day off" on the Schedule.
+- [x] Add unit tests for `useAssignmentFlow` (the confirm chain) and an e2e test for "Request day off" on the Schedule. Done 2026-10-20, with the other six schedule composables.
+
+## Frontend tests
+- [ ] **Component-level tests for the Vue components and views.** Every `.js` module has unit tests (99.7 % of lines, 2026-10-20); the `.vue` files are covered only by the e2e suite. Add Vue Test Utils with the jsdom environment already set up for Vitest (`// @vitest-environment jsdom`), starting with the Schedule dialogs (`src/components/schedule/`) and `BaseModal`, and decide whether `BaseModal.browser.test.js` (the one remaining Playwright unit test) can then move too.
 
 ## Backend
 - [ ] The checklist archive CSV export follows the list's sort order, so its keyset can't use the primary-key index. Add a row-value comparison or an index for the default sort if archives get large.

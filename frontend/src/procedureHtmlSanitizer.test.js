@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { expect, test } from '@playwright/test';
-
-// DOMPurify needs a real DOM: the sanitiser runs in a browser page, with DOMPurify's browser build.
-const purifyPath = path.join(__dirname, '..', 'node_modules', 'dompurify', 'dist', 'purify.js');
-const sanitizerSource = readFileSync(path.join(__dirname, 'procedureHtmlSanitizer.js'), 'utf8');
+// @vitest-environment jsdom
+// DOMPurify needs a DOM: this file runs under jsdom (see the directive above).
+import DOMPurify from 'dompurify';
+import { describe, expect, test } from 'vitest';
+import { sanitizeProcedureHtml } from './procedureHtml.js';
+import { createProcedureSanitizer } from './procedureHtmlSanitizer.js';
 
 const TIPTAP =
   '<h2>Sub</h2><p>Plain <strong>bold</strong> <em>it</em> <u>under</u> <s>strike</s> <code>inline</code> and ' +
@@ -14,48 +13,60 @@ const TIPTAP =
   '<img src="https://example.com/x.png" alt="diagram" title="Diagram">' +
   '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==">';
 
-test.describe('procedure HTML sanitiser', () => {
-  let clean;
+describe('procedure HTML sanitiser', () => {
+  const clean = sanitizeProcedureHtml;
 
-  test.beforeEach(async ({ page }) => {
-    await page.setContent('<!doctype html><html><body></body></html>');
-    await page.addScriptTag({ path: purifyPath });
-    await page.addScriptTag({
-      type: 'module',
-      content: `${sanitizerSource}\nwindow.__clean = createProcedureSanitizer(window.DOMPurify);`,
-    });
-    await page.waitForFunction(() => typeof window.__clean === 'function');
-    clean = (html) => page.evaluate((h) => window.__clean(h), html);
-  });
-
-  test('strips event handlers, scripts and javascript: links', async () => {
-    expect(await clean('<p>Hi<img src="x" onerror="alert(1)"></p>')).toBe('<p>Hi<img src="x"></p>');
-    expect(await clean('<p>a</p><script>alert(2)</script>')).toBe('<p>a</p>');
-    expect(await clean('<p><a href="javascript:alert(3)">x</a></p>')).toBe('<p><a>x</a></p>');
-    expect(await clean('<p><a href="https://ok.example" onclick="alert(4)">x</a></p>')).toBe(
+  test('strips event handlers, scripts and javascript: links', () => {
+    expect(clean('<p>Hi<img src="x" onerror="alert(1)"></p>')).toBe('<p>Hi<img src="x"></p>');
+    expect(clean('<p>a</p><script>alert(2)</script>')).toBe('<p>a</p>');
+    expect(clean('<p><a href="javascript:alert(3)">x</a></p>')).toBe('<p><a>x</a></p>');
+    expect(clean('<p><a href="https://ok.example" onclick="alert(4)">x</a></p>')).toBe(
       '<p><a href="https://ok.example">x</a></p>',
     );
-    expect(await clean('<p><a href="data:text/html,<script>alert(5)</script>">x</a></p>')).toBe(
+    expect(clean('<p><a href="data:text/html,<script>alert(5)</script>">x</a></p>')).toBe(
       '<p><a>x</a></p>',
     );
     expect(
-      await clean(
+      clean(
         '<iframe src="https://e.example"></iframe><p style="position:fixed" class="fixed">s</p>',
       ),
     ).toBe('<p>s</p>');
-    expect(await clean('<pre><code class="fixed inset-0">x</code></pre>')).toBe(
+    expect(clean('<pre><code class="fixed inset-0">x</code></pre>')).toBe(
       '<pre><code>x</code></pre>',
     );
   });
 
-  test('keeps the editor markup, and makes new-tab links noopener', async () => {
-    expect(await clean(TIPTAP)).toBe(TIPTAP);
-    expect(await clean('<p><a href="https://x.example" target="_blank">x</a></p>')).toBe(
+  test('keeps the editor markup, and makes new-tab links noopener', () => {
+    expect(clean(TIPTAP)).toBe(TIPTAP);
+    expect(clean('<p><a href="https://x.example" target="_blank">x</a></p>')).toBe(
       '<p><a href="https://x.example" target="_blank" rel="noopener noreferrer">x</a></p>',
     );
-    expect(await clean('<p><a href="https://x.example" target="_top">x</a></p>')).toBe(
+    expect(clean('<p><a href="https://x.example" target="_top">x</a></p>')).toBe(
       '<p><a href="https://x.example">x</a></p>',
     );
-    expect(await clean(null)).toBe('');
+  });
+
+  test('keeps only a code block’s language class and no data- or aria- attributes', () => {
+    expect(clean('<pre><code class="language-c++">x</code></pre>')).toBe(
+      '<pre><code class="language-c++">x</code></pre>',
+    );
+    expect(clean('<p class="language-bash" data-x="1" aria-label="l">x</p>')).toBe('<p>x</p>');
+    expect(
+      clean('<p><a href="mailto:a@b.example" title="Mail">m</a> <a href="/relative">r</a></p>'),
+    ).toBe('<p><a href="mailto:a@b.example" title="Mail">m</a> <a href="/relative">r</a></p>');
+  });
+
+  test('nothing in, nothing out', () => {
+    expect(clean(null)).toBe('');
+    expect(clean(undefined)).toBe('');
+    expect(clean('')).toBe('');
+  });
+
+  test('each sanitiser is its own DOMPurify instance, with the same rules', () => {
+    const another = createProcedureSanitizer(DOMPurify);
+    expect(another('<p onclick="x">a<script>b</script></p>')).toBe('<p>a</p>');
+    expect(another(TIPTAP)).toBe(clean(TIPTAP));
+    // The shared `dompurify` default instance is untouched by the hooks above.
+    expect(DOMPurify.sanitize('<p class="fixed">s</p>')).toBe('<p class="fixed">s</p>');
   });
 });

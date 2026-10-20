@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from 'vitest';
 import { DEACTIVATED_MESSAGE, installSessionExpiry, safeRedirect } from './sessionExpiry.js';
 
 function setup({

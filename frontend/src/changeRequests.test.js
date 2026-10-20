@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import {
   removedState,
   requestGroup,
@@ -26,7 +26,7 @@ const live = {
   },
 };
 
-test.describe('change request helpers', () => {
+describe('change request helpers', () => {
   test('a live request: date, slot and times, group, schedule link on its group tab', () => {
     expect(requestShiftDate(live)).toBe('2026-10-20');
     expect(shiftTimeLabel(live)).toBe('Shift #2 · 08:00–16:00');

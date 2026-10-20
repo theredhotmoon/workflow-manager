@@ -1,16 +1,16 @@
-import { expect, test } from '@playwright/test';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { formatCalendarDate } from './dates.js';
 
 // F-a: delegation dates are calendar days. West of UTC, `new Date('2026-11-02')` (UTC midnight)
 // is still the 1st locally, so the old formatter showed the day before.
 const originalTz = process.env.TZ;
 
-test.describe('formatCalendarDate west of UTC', () => {
-  test.beforeAll(() => {
+describe('formatCalendarDate west of UTC', () => {
+  beforeAll(() => {
     process.env.TZ = 'America/Los_Angeles';
   });
 
-  test.afterAll(() => {
+  afterAll(() => {
     if (originalTz === undefined) delete process.env.TZ;
     else process.env.TZ = originalTz;
   });
@@ -42,12 +42,12 @@ test.describe('formatCalendarDate west of UTC', () => {
   });
 });
 
-test.describe('formatCalendarDate east of UTC', () => {
-  test.beforeAll(() => {
+describe('formatCalendarDate east of UTC', () => {
+  beforeAll(() => {
     process.env.TZ = 'Pacific/Kiritimati'; // UTC+14
   });
 
-  test.afterAll(() => {
+  afterAll(() => {
     if (originalTz === undefined) delete process.env.TZ;
     else process.env.TZ = originalTz;
   });

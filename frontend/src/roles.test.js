@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { canManageSchedule, isAdmin, roleLabel } from './roles.js';
 
-test.describe('roles', () => {
+describe('roles', () => {
   test('only role decides admin status, not a stale is_admin flag', () => {
     expect(isAdmin({ role: 'admin' })).toBe(true);
     expect(isAdmin({ role: 'employee', is_admin: true })).toBe(false);

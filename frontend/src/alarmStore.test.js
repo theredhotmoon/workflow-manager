@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { ref } from 'vue';
 import { createAlarmStore, resetAlarmsOnUserChange } from './alarmStore.js';
 
@@ -32,7 +32,7 @@ function fakeApi({ failPut = false, count = 2 } = {}) {
 
 const NOW = '2026-10-12T08:00:00Z';
 
-test.describe('alarm store (L24)', () => {
+describe('alarm store (L24)', () => {
   test('marking one alarm read lowers the badge at once and updates every copy', async () => {
     const api = fakeApi();
     const store = createAlarmStore({ api, now: () => NOW });
@@ -102,7 +102,7 @@ test.describe('alarm store (L24)', () => {
   });
 });
 
-test.describe('alarm store: review fixes', () => {
+describe('alarm store: review fixes', () => {
   test('a mark-read from the bell updates a registered page list (M1)', async () => {
     const store = createAlarmStore({ api: fakeApi(), now: () => NOW });
     await store.refresh();

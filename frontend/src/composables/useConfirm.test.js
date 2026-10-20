@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { confirm, useConfirmModal } from './useConfirm.js';
 
-test.describe('useConfirm', () => {
+describe('useConfirm', () => {
   test('resolves true when confirmed', async () => {
     const resultPromise = confirm({ title: 'Delete item', message: 'Are you sure?' });
 
@@ -39,7 +39,7 @@ test.describe('useConfirm', () => {
   });
 });
 
-test.describe('useConfirm — overlapping calls (L27)', () => {
+describe('useConfirm — overlapping calls (L27)', () => {
   test('a second confirm() resolves the first one with false instead of leaving it hanging', async () => {
     const first = confirm({ title: 'First' });
     const second = confirm({ title: 'Second' });

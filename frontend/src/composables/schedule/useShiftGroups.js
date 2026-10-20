@@ -138,8 +138,9 @@ export function useShiftGroups({ activeGroupId, fetchSchedule, showToast }) {
     try {
       const res = await api.post(`/api/shift-groups/${group.id}/restore`);
       archivedGroups.value = archivedGroups.value.filter((g) => g.id !== group.id);
-      if (archivedGroups.value.length === 0) showArchivedGroups.value = false;
       await fetchShiftGroups();
+      // Decided on the refreshed list, not the local one: the server may know of more, or fewer.
+      if (archivedGroups.value.length === 0) showArchivedGroups.value = false;
       showToast(res.data.message || `Group "${group.name}" restored.`);
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to restore group.', 'error');

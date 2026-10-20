@@ -270,10 +270,16 @@ On Windows in Git Bash, put `MSYS_NO_PATHCONV=1` in front of `docker run`
 (`MSYS_NO_PATHCONV=1 docker run ...`); otherwise Git Bash rewrites `/var/www/html` into a Windows
 path and the container can't find the mount.
 
-### Frontend tests (Playwright)
+### Frontend tests (Vitest + Playwright)
 
-The frontend uses Playwright for everything: Node-mode unit tests for composables, and end-to-end
-tests that drive real Chromium against the real Dockerized backend (no API mocks).
+Unit tests (`src/**/*.test.js`) run under [Vitest](https://vitest.dev/) with V8 coverage
+(`vitest.config.js`): in Node by default, or in jsdom when a file starts with
+`// @vitest-environment jsdom` (the router guard, the focus trap, the DOMPurify sanitiser). Modules
+that call the API are tested against `src/testing/fakeApi.js`, a stand-in for `src/axios.js` that
+answers by method and URL and records every call. One unit test needs a real browser
+(`BaseModal`: real focus, Tab and Escape): it is named `*.browser.test.js` and runs under Playwright
+(`playwright.unit.config.js`). End-to-end tests drive real Chromium against the real Dockerized
+backend (no API mocks).
 
 **Prerequisites**
 
@@ -293,10 +299,13 @@ npx playwright install chromium
 **Commands** (run from `frontend/`)
 
 ```bash
-npm run lint       # Biome (lint + format + import order), errors only — CI gate (frontend/README.md)
-npm run test       # unit tests (composables), no backend needed
-npm run test:e2e   # end-to-end tests; starts `npm run dev:hybrid` on :5173 itself
-npm run test:all   # unit, then e2e
+npm run lint           # Biome (lint + format + import order), errors only — CI gate (frontend/README.md)
+npm run test           # Vitest unit tests (composables, helpers), no backend needed
+npm run test:coverage  # the same, with a coverage report (text + frontend/coverage/index.html)
+npm run test:watch     # Vitest in watch mode
+npm run test:browser   # the browser-mode unit tests (Playwright, real Chromium)
+npm run test:e2e       # end-to-end tests; starts `npm run dev:hybrid` on :5173 itself
+npm run test:all       # unit, browser unit, then e2e
 ```
 
 > **Warning: `npm run test:e2e` resets your local development database** (`migrate:fresh` plus the

@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { describeApiError, fieldError, readBlobErrorBody } from './apiErrors.js';
 
 const fail = (status, data) => ({ response: { status, data } });
 
-test.describe('describeApiError', () => {
+describe('describeApiError', () => {
   test('a 422 gives the first message per field and the server summary', () => {
     const e = describeApiError(
       fail(422, {
@@ -56,7 +56,7 @@ test.describe('describeApiError', () => {
   });
 });
 
-test.describe('fieldError', () => {
+describe('fieldError', () => {
   test('finds a field or its array items', () => {
     const errors = { title: 'Required.', 'tag_ids.1': 'Bad tag.' };
     expect(fieldError(errors, 'title')).toBe('Required.');
@@ -66,7 +66,7 @@ test.describe('fieldError', () => {
   });
 });
 
-test.describe('readBlobErrorBody', () => {
+describe('readBlobErrorBody', () => {
   test('turns a JSON error body downloaded as a Blob back into data, so its message shows', async () => {
     const err = {
       response: {

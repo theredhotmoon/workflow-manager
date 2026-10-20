@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from 'vitest';
 import { MAX_CONFIRM_ROUNDS, putDayShiftCount } from './dayShiftCount.js';
 
 const PAYLOAD = { date: '2094-03-10', count: 1, shift_group_id: 7 };

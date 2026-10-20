@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { useLatestRequest } from './useLatestRequest.js';
 
 function deferred() {
@@ -24,7 +24,7 @@ function makeLoader(latest, state) {
   };
 }
 
-test.describe('useLatestRequest', () => {
+describe('useLatestRequest', () => {
   test('a request that was just begun is current', () => {
     const latest = useLatestRequest();
     const token = latest.begin();

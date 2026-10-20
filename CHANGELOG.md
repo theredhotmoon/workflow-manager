@@ -4,6 +4,39 @@ All notable changes to the Shift Changer application are documented here.
 
 ---
 
+## 2026-10-20 — 🧪 Test coverage: Vitest for frontend unit tests, backend unit suite, Schedule e2e gaps closed
+
+> **Deploy notes**
+> - Tests and docs only: no runtime code, no migrations, no API changes. Nothing to deploy.
+
+- **Frontend unit tests run under Vitest with V8 coverage.** The 19 Node-mode test files (106 tests) import from `vitest` instead of `@playwright/test`; `npm run test` runs them, `npm run test:coverage` adds a coverage report (text and `frontend/coverage/index.html`). The one test that needs a real browser (`BaseModal`: focus, Tab, Escape) is renamed `BaseModal.browser.test.js` and stays on Playwright (`npm run test:browser`, now also a CI step); the DOMPurify sanitiser test was rewritten for jsdom under Vitest. CI runs the Vitest suite in the lint-and-build gate job, before Docker starts. The seven composables under `src/composables/schedule/` (1,960 lines, previously covered by e2e only) now have 161 unit tests against a fake of the API client (`src/testing/fakeApi.js`), taking them from 0 % to 99 % line coverage; the frontend unit suite is 310 tests, 99.7 % of lines overall (see the next row for the rest).
+- **Backend unit suite.** `tests/Unit` held only the stock example test; it now has 177 tests (1,630 assertions) for the DB-free classes, bound to `TestCase` without `RefreshDatabase`, and passes with no database reachable.
+- **Five Schedule screen features that no e2e spec exercised** now have one each.
+
+### Tests
+| What | Details |
+|------|---------|
+| Composable unit tests | `useAssignmentFlow` (31: request bodies for a plain drop, a move with `move_from_assignment_id`, the three rest-policy resends and `confirm_short_rest`; the one-chip-per-person guard; availability, delegation and back-to-back dialogs with every Cancel path taking the chip back; the Back-to-Back answer not re-asked as short rest), `useGenerateMonth` (27: presets, donut maths, the closure conflict and its failed check, generate-as-remote's reload and 2000-shift guards, `clearMonth`), `useShiftGroups` (33: fetch/switch/create guard, archive with the future-work second confirm, restore, rename, settlement settings payload), `useScheduleMonth` (27: calendar grid, `fetchSchedule` params and follow-up loads, stale responses, overlays), `useEmployeeSelection` (27: sorting, selection and the stale availability guard, cell styles), `useShiftEditors` (10), `useChangeRequest` (6). Fake API: `vi.mock('../../axios.js')` → `src/testing/fakeApi.js` (handlers by method and URL, every call recorded) |
+| Remaining frontend modules | `router/index.test.js` (11, jsdom, the real views compiled: admin-only and schedule-manager guards, login redirect with `redirect`, safe-redirect on the login page, a throttled probe keeping a known session, an unknown user aborting the navigation), `composables/createFocusTrap.test.js` (13, jsdom: focus in/out, Tab and Shift+Tab wrapping, hidden and disabled controls skipped, the top-layer document listener, focus return to the opener, the dialog below, `returnFocus()` or `<main>` as a temporary target, `useFocusTrap` following its flag and unmount), `procedureHtmlSanitizer.test.js` (5, jsdom with the real DOMPurify; replaces the Playwright browser version), `fetchCurrentUser.test.js` (6: `isLoggedOut`, the 429 retry after `Retry-After` with the 1 s default and 3 s cap), `useAlarms.test.js` (4) and `usePendingChangeRequests.test.js` (2: the shared store, toast wiring, reset on user change), `axios.test.js` (1). Frontend unit suite: 33 files, 310 tests, 99.7 % of lines (branches 90 %); only the app bootstrap (`app.js`) is excluded. `jsdom` added as a dev dependency |
+| Vitest switch | `frontend/vitest.config.js` (Node environment, `src/**/*.test.js` minus `*.browser.test.js`, V8 coverage over `src/**/*.js`); `playwright.unit.config.js` narrowed to `**/*.browser.test.js`; scripts `test`, `test:watch`, `test:coverage`, `test:browser`, `test:all`; Biome ignores `coverage/`; README section rewritten |
+| Backend unit | `StreakTimelineTest` (44: windows, the three rest policies, append re-sorting and cache invalidation, `newlyResting` chain effects, `cascadePolicy`, `finalWindowAt` vs `activeWindow`, and a naive replay used as an oracle against random 70-event histories so the 16-event checkpoint path is exercised), `SettlementPeriodCalculatorTest` (54: monthly/quarterly/weekly/custom periods before and after the anchor, a 31st anchor, week-cap proration, `shiftTiming` incl. 7 h / 9 h DST nights and 23 h / 25 h 24-hour shifts), `BusyIntervalsTest` (18: exactly 11 h allowed, 10 h 59 refused, binary search and max-length early exit with 200+ intervals, `longestRestWith` window edges), `Support/BusinessDateTest` (29), `MonthTest` (3, the 31st-of-month overflow guard), `ShiftTypeTest` (16), `SqlStateTest` (14), `LikePatternTest` (7), `AdvisoryLockTest` (3) |
+| Playwright e2e (6 new tests, suite now 179) | `schedule/shift-checklists.spec.js` (attach a required template with a deadline, Cancel discards, reload, detach), `schedule/delete-schedule.spec.js` (two-step confirm: Cancel on either step keeps the month and sends nothing, confirm clears it in one request), `schedule/shift-times-colour.spec.js` (overnight times, a labelled colour tinting the cell, reload, "No color"), `schedule/request-day-off.spec.js` (an employee files from their own chip on the default group; Submit needs a reason, Cancel sends nothing, Pending survives a reload, the manager sees the flagged chip), `schedule/drop-and-generate-warnings.spec.js` (Unavailable Period: Cancel takes the chip back, Assign Anyway assigns; Office Closed before Generate Month: Cancel generates nothing, Generate as Office generates office shifts on the closed day) |
+
+### Fixed (found by the new unit tests)
+| What | Details |
+|------|---------|
+| `restoreShiftGroup` | Closed the Archived list only when the *local* list emptied, before `fetchShiftGroups()` refreshed it from the server; it now decides on the refreshed list |
+| `getClosureForDate` | Returned `null` for a missing date but `undefined` for a date with no closure; now `null` in both cases |
+
+### Observations from the unit tests (documented, not changed)
+| What | Details |
+|------|---------|
+| `BusinessDate::endsNextDay` | Compares `HH:MM` only, so `06:00:00` to `06:00:30` counts as ending the next day. Harmless: times are stored as `HH:MM` |
+| Generate Month with 5 shifts | `Math.floor(24 / 5)` gives 4 h shifts, so the day has a 4 h gap (the donut shows it); a blank time row counts as a full 24 h segment |
+| Settlement anchor on the 31st | Monthly periods clamp with `addMonthsNoOverflow`: 01-31..02-27, then 02-28..03-30. Contiguous, no double counting, but a "monthly" period can start on the 28th |
+
+---
+
 ## 2026-10-13 — 📝 TODO list of open items
 
 - **New `TODO.md`** lists what is still open after the audit and its follow-ups. It covers deploy and operations steps for the owner, Schedule screen clean-ups and the page-load race, the checklist export index, and the decision to keep the settlement anchor as it is.

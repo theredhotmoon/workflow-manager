@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { useToast } from './useToast.js';
 
-test.describe('useToast', () => {
+describe('useToast', () => {
   test('shows a toast with the given message and type', () => {
     const { toast, showToast } = useToast();
 

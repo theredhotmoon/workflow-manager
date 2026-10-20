@@ -1,9 +1,9 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { handleModalKeydown, modalLayerCount, pushModalLayer } from './useFocusTrap.js';
 
 const key = (k) => ({ key: k, preventDefault() {} });
 
-test.describe('modal layer stack', () => {
+describe('modal layer stack', () => {
   test('only the top layer gets a key; closing it hands keys back to the one below', () => {
     const calls = [];
     const releaseEditor = pushModalLayer((e) => calls.push(`editor:${e.key}`));

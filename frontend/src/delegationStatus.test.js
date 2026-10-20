@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from 'vitest';
 import { businessTodayStr, delegationStatus, isDelegationCompleted } from './delegationStatus.js';
 
 // Delegations are whole days in Europe/Warsaw; the API serialises their dates as UTC midnights

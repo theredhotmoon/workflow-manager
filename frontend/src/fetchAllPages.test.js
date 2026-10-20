@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from 'vitest';
 import { fetchAllPages } from './fetchAllPages.js';
 
 // A fake GET over `items` that pages like Laravel's paginator ({ data, last_page }).

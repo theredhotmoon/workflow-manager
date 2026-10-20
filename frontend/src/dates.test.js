@@ -1,16 +1,16 @@
-import { expect, test } from '@playwright/test';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { localDateStr, todayStr } from './dates.js';
 
 // Node reads TZ when a Date needs it, so setting it here moves this worker east of UTC, where the
 // old toISOString() formatting showed the previous day for local midnight.
 const originalTz = process.env.TZ;
 
-test.describe('local calendar dates', () => {
-  test.beforeAll(() => {
+describe('local calendar dates', () => {
+  beforeAll(() => {
     process.env.TZ = 'Europe/Warsaw';
   });
 
-  test.afterAll(() => {
+  afterAll(() => {
     if (originalTz === undefined) delete process.env.TZ;
     else process.env.TZ = originalTz;
   });

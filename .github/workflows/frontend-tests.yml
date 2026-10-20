@@ -30,7 +30,7 @@ concurrency:
 jobs:
   lint-build:
     # Fast gate before the e2e job spins up Docker: Biome (errors only, the checks the pre-commit
-    # hook runs) and a production build.
+    # hook runs), the Vitest unit tests and a production build.
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -53,6 +53,10 @@ jobs:
 
       - name: Lint (Biome)
         run: npm run lint
+
+      - name: Run unit tests (Vitest)
+        # Node and jsdom only: needs neither Docker nor a browser, so it fails fast here.
+        run: npm run test
 
       - name: Build
         run: npm run build
@@ -128,9 +132,10 @@ jobs:
         working-directory: frontend
         run: npx playwright install-deps chromium
 
-      - name: Run unit tests
+      - name: Run browser unit tests (Playwright)
+        # The one unit test that needs real Chromium (BaseModal focus handling).
         working-directory: frontend
-        run: npm run test
+        run: npm run test:browser
 
       - name: Run e2e tests
         # Retries a failed test once (playwright.config.js); tests that passed only on retry are

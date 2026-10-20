@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { readStorage, removeStorage, writeStorage } from './safeStorage.js';
 
 function memoryStorage() {
@@ -17,12 +17,12 @@ function throwingStorage() {
   return { getItem: fail, setItem: fail, removeItem: fail };
 }
 
-test.describe('safeStorage (L30)', () => {
+describe('safeStorage (L30)', () => {
   let original;
-  test.beforeEach(() => {
+  beforeEach(() => {
     original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   });
-  test.afterEach(() => {
+  afterEach(() => {
     if (original) Object.defineProperty(globalThis, 'localStorage', original);
     else delete globalThis.localStorage;
   });

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { describe, expect, test } from 'vitest';
 import { ref } from 'vue';
 import {
   createPendingChangeRequestsStore,
@@ -20,7 +20,7 @@ function deferredApi() {
   };
 }
 
-test.describe('pending change-request count', () => {
+describe('pending change-request count', () => {
   test('refresh reads the count', async () => {
     const api = { get: async () => ({ data: { count: 3 } }) };
     const store = createPendingChangeRequestsStore({ api });
